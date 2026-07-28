@@ -6,10 +6,10 @@ let seq = 0;
 const nextId = () => `chk-${Date.now()}-${seq++}`;
 
 const SEED: Despacho[] = [
-  { id: 'dsp-2045', codigo: 'DSP-2045', cliente: 'Distribuidora Andina', estado: 'pendiente' },
-  { id: 'dsp-2046', codigo: 'DSP-2046', cliente: 'Comercial del Sur', estado: 'pendiente' },
-  { id: 'dsp-2044', codigo: 'DSP-2044', cliente: 'Mayorista Central', estado: 'cargado' },
-  { id: 'dsp-2043', codigo: 'DSP-2043', cliente: 'Almacenes Norte', estado: 'aprobado' },
+  { id: '2045', codigo: '1000456', cliente: 'Distribuidora Andina', estado: 'pendiente' },
+  { id: '2046', codigo: '1000457', cliente: 'Comercial del Sur', estado: 'pendiente' },
+  { id: '2044', codigo: '1000458', cliente: 'Mayorista Central', estado: 'cargado' },
+  { id: '2043', codigo: '1000459', cliente: 'Almacenes Norte', estado: 'aprobado' },
 ];
 
 type DespachosState = {

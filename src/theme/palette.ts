@@ -17,7 +17,9 @@ export const palette = {
   slate500: 'hsl(215, 16%, 47%)',
   slate900: 'hsl(222, 47%, 11%)',
 
-  // Neutrals (dark)
+  // Neutrals (dark) — a monotonic elevation ramp. Surfaces separate by
+  // luminance alone because the UI is intentionally shadowless.
+  gray950: 'hsl(220, 14%, 10%)',
   gray900: 'hsl(220, 13%, 14%)',
   gray850: 'hsl(220, 13%, 16%)',
   gray800: 'hsl(220, 13%, 18%)',

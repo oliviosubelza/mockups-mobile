@@ -1,25 +1,160 @@
-import { Box, Text } from '@/theme';
+import type { LucideIcon } from 'lucide-react-native';
 
-type Props = {
-  count?: number;
+import {
+  Box,
+  Text,
+  useAppTheme,
+  type BadgeSize,
+  type ColorToken,
+} from '@/theme';
+
+/** Semantic color family. */
+export type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger';
+
+/** Visual weight, independent of the tone. */
+export type BadgeEmphasis = 'solid' | 'soft' | 'outline';
+
+type BadgeStyle = {
+  background: ColorToken;
+  foreground: ColorToken;
+  border: ColorToken | null;
 };
 
-/** Small count pill. Renders nothing when `count` is falsy or non-positive. */
-export function Badge({ count }: Props) {
-  if (!count || count <= 0) return null;
+const solid: Record<BadgeTone, BadgeStyle> = {
+  neutral: { background: 'secondary', foreground: 'secondaryForeground', border: null },
+  primary: { background: 'primary', foreground: 'primaryForeground', border: null },
+  success: { background: 'success', foreground: 'successForeground', border: null },
+  warning: { background: 'warning', foreground: 'warningForeground', border: null },
+  danger: { background: 'danger', foreground: 'dangerForeground', border: null },
+};
+
+const soft: Record<BadgeTone, BadgeStyle> = {
+  neutral: { background: 'mutedBackground', foreground: 'mutedForeground', border: null },
+  primary: { background: 'primarySoft', foreground: 'primary', border: null },
+  success: { background: 'successSoft', foreground: 'success', border: null },
+  warning: { background: 'warningSoft', foreground: 'warning', border: null },
+  danger: { background: 'dangerSoft', foreground: 'danger', border: null },
+};
+
+const outline: Record<BadgeTone, BadgeStyle> = {
+  neutral: { background: 'transparent', foreground: 'mutedForeground', border: 'border' },
+  primary: { background: 'transparent', foreground: 'primary', border: 'primary' },
+  success: { background: 'transparent', foreground: 'success', border: 'success' },
+  warning: { background: 'transparent', foreground: 'warning', border: 'warning' },
+  danger: { background: 'transparent', foreground: 'danger', border: 'danger' },
+};
+
+const emphasisStyles: Record<BadgeEmphasis, Record<BadgeTone, BadgeStyle>> = {
+  solid,
+  soft,
+  outline,
+};
+
+type Props = {
+  label: string | number;
+  /** Color family. Default `neutral`. */
+  tone?: BadgeTone;
+  /** Visual weight. Default `soft` — tinted background, colored label. */
+  emphasis?: BadgeEmphasis;
+  size?: BadgeSize;
+  /** Icon rendered before the label. */
+  icon?: LucideIcon;
+  /** `pill` is fully rounded (default); `rounded` uses the control radius. */
+  shape?: 'pill' | 'rounded';
+};
+
+/**
+ * Status/label pill.
+ *
+ * Two independent axes — `tone` picks the color family, `emphasis` picks the
+ * weight — so any status reads at any level of prominence without adding a
+ * variant per combination.
+ */
+export function Badge({
+  label,
+  tone = 'neutral',
+  emphasis = 'soft',
+  size = 'md',
+  icon: Icon,
+  shape = 'pill',
+}: Props) {
+  const theme = useAppTheme();
+  const spec = theme.badgeSizes[size];
+  const style = emphasisStyles[emphasis][tone];
 
   return (
     <Box
-      minWidth={20}
-      height={20}
-      paddingHorizontal="xs"
+      backgroundColor={style.background}
+      borderColor={style.border ?? 'transparent'}
+      borderWidth={style.border ? theme.borderWidths.hairline : 0}
+      borderRadius={shape === 'pill' ? 'full' : 'sm'}
+      minHeight={spec.height}
+      paddingHorizontal={spec.paddingHorizontal}
+      gap={spec.gap}
+      flexDirection="row"
+      alignItems="center"
+      justifyContent="center"
+      alignSelf="flex-start"
+    >
+      {Icon ? (
+        <Icon size={spec.iconSize} color={theme.colors[style.foreground]} strokeWidth={2.25} />
+      ) : null}
+      <Text
+        color={style.foreground}
+        fontSize={spec.fontSize}
+        lineHeight={spec.lineHeight}
+        fontWeight="600"
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </Box>
+  );
+}
+
+type CountBadgeProps = {
+  count?: number;
+  /** Values above this render as `{max}+`. Default 99. */
+  max?: number;
+  tone?: BadgeTone;
+  size?: BadgeSize;
+};
+
+/**
+ * Numeric notification pill. Renders nothing when `count` is falsy or
+ * non-positive, so callers can pass an optional count directly.
+ */
+export function CountBadge({
+  count,
+  max = 99,
+  tone = 'danger',
+  size = 'md',
+}: CountBadgeProps) {
+  const theme = useAppTheme();
+  const spec = theme.badgeSizes[size];
+
+  if (!count || count <= 0) return null;
+
+  const style = solid[tone];
+
+  return (
+    <Box
+      backgroundColor={style.background}
       borderRadius="full"
-      backgroundColor="danger"
+      minWidth={spec.height}
+      minHeight={spec.height}
+      paddingHorizontal="xxs"
       alignItems="center"
       justifyContent="center"
     >
-      <Text color="dangerForeground" fontSize={11} lineHeight={14} fontWeight="700">
-        {count > 99 ? '99+' : count}
+      <Text
+        color={style.foreground}
+        fontSize={spec.fontSize}
+        lineHeight={spec.lineHeight}
+        fontWeight="700"
+        numberOfLines={1}
+      >
+        {count > max ? `${max}+` : count}
       </Text>
     </Box>
   );

@@ -4,7 +4,7 @@ import { navigateTo } from '@/navigation/registry';
 import type { RouteInterface } from '@/navigation/types';
 import { Box, Text, useAppTheme } from '@/theme';
 
-import { Badge } from './Badge';
+import { CountBadge } from './Badge';
 
 type Props = {
   route: RouteInterface;
@@ -50,9 +50,9 @@ export function CardMenu({ route, badge }: Props) {
             alignItems="center"
             justifyContent="center"
           >
-            <Icon size={22} color={theme.colors.primary} />
+            <Icon size={theme.iconSizes.xl} color={theme.colors.primary} />
           </Box>
-          <Badge count={badgeCount} />
+          <CountBadge count={badgeCount} />
         </Box>
 
         <Box gap="xs">

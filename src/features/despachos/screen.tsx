@@ -1,175 +1,209 @@
-import { useState, useMemo } from 'react';
-import { ScrollView, TextInput, View, TouchableOpacity,Text as RNText } from 'react-native';
-import { Search, XCircle, PackageOpen, MapPin, Clock, ChevronRight, Weight,ListOrdered } from 'lucide-react-native'; // O la librería de íconos que uses
+import { useState, useMemo, useEffect } from "react";
+import { ScrollView, View, TouchableOpacity } from "react-native";
+import {
+  PackageOpen,
+  Layers,
+  Truck,
+  CheckCircle2,
+  Clock,
+} from "lucide-react-native";
 
-import { findRouteById, navigateTo } from '@/navigation/registry';
-import { Button, Card, Chip } from '@/shared/ui';
-import { Box, Text } from '@/theme';
-import { useDespachos } from './store';
-import { ESTADO_META, type Despacho } from './types';
+import { findRouteById, navigateTo } from "@/navigation/registry";
+import { SearchField, FilterChips, type FilterChipOption } from "@/shared/ui";
+import { Box, Text, useAppTheme } from "@/theme";
+import { useDespachos } from "./store";
+import { type Despacho, type EstadoDespacho } from "./types";
+import { ListSkeleton } from "@/shared/ui/Skeleton";
+import { DespachoCard } from "./components/DespachoCard";
 
 export default function DespachosScreen() {
+  const theme = useAppTheme();
   const despachos = useDespachos((state) => state.despachos);
   const setActive = useDespachos((state) => state.setActive);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState<"todos" | EstadoDespacho>("todos");
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  const statusCounts = useMemo(() => {
+    const counts = {
+      todos: despachos.length,
+      pendiente: 0,
+      cargado: 0,
+      aprobado: 0,
+    };
+    despachos.forEach((d) => {
+      if (d.estado in counts) {
+        counts[d.estado as EstadoDespacho]++;
+      }
+    });
+    return counts;
+  }, [despachos]);
+
+  const filterOptions: FilterChipOption<"todos" | EstadoDespacho>[] = useMemo(
+    () => [
+      {
+        id: "todos",
+        label: "Todos",
+        icon: Layers,
+        count: statusCounts.todos,
+        activeBgColor: theme.colors.foreground,
+        activeTextColor: theme.colors.mainBackground,
+        activeBorderColor: theme.colors.foreground,
+        badgeActiveBg: theme.colors.secondary,
+        badgeActiveText: theme.colors.foreground,
+      },
+      {
+        id: "pendiente",
+        label: "Pendientes",
+        icon: Clock,
+        count: statusCounts.pendiente,
+        activeBgColor: "#fef3c7",
+        activeTextColor: "#92400e",
+        activeBorderColor: "#f59e0b",
+        badgeActiveBg: "#fde68a",
+        badgeActiveText: "#78350f",
+      },
+      {
+        id: "cargado",
+        label: "Cargados",
+        icon: Truck,
+        count: statusCounts.cargado,
+        activeBgColor: "#dbeafe",
+        activeTextColor: "#1e40af",
+        activeBorderColor: "#3b82f6",
+        badgeActiveBg: "#bfdbfe",
+        badgeActiveText: "#1e3a8a",
+      },
+      {
+        id: "aprobado",
+        label: "Aprobados",
+        icon: CheckCircle2,
+        count: statusCounts.aprobado,
+        activeBgColor: "#dcfce7",
+        activeTextColor: "#166534",
+        activeBorderColor: "#22c55e",
+        badgeActiveBg: "#bbf7d0",
+        badgeActiveText: "#14532d",
+      },
+    ],
+    [statusCounts, theme]
+  );
 
   const despachosFiltrados = useMemo(() => {
-    if (!searchQuery.trim()) return despachos;
-    const query = searchQuery.toLowerCase();
-    return despachos.filter((d) => 
-      d.codigo.toLowerCase().includes(query) || d.cliente.toLowerCase().includes(query)
-    );
-  }, [despachos, searchQuery]);
+    const query = searchQuery.trim().toLowerCase();
+    return despachos.filter((d) => {
+      const matchesSearch =
+        !query ||
+        d.codigo.toLowerCase().includes(query) ||
+        d.cliente.toLowerCase().includes(query) ||
+        d.id.toLowerCase().includes(query);
+
+      const matchesStatus =
+        selectedStatus === "todos" || d.estado === selectedStatus;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [despachos, searchQuery, selectedStatus]);
 
   const openChequeo = (despacho: Despacho) => {
     setActive(despacho.id);
-    const route = findRouteById('despachos.chequeo');
+    const route = findRouteById("despachos.chequeo");
     if (route) navigateTo(route);
   };
 
+  const hasActiveFilters = searchQuery.length > 0 || selectedStatus !== "todos";
+
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 16 }}>
-      
-      <View style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#f4f4f5',
-        borderRadius: 12, 
-        paddingHorizontal: 12,
-        height: 48,
-      }}>
-        <Search color="#71717a" size={20} />
-        <TextInput
-          placeholder="Buscar ID SAP o Cliente..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          style={{ flex: 1, fontSize: 16, marginLeft: 8, color: '#27272a' }}
-          autoCapitalize="none"
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <XCircle color="#a1a1aa" size={20} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <Box paddingHorizontal="xs">
-        <Text variant="caption">
-          {searchQuery ? `Mostrando ${despachosFiltrados.length} resultados` : `${despachos.length} despachos pendientes`}
-        </Text>
-      </Box>
-
-      {/* LISTA FORMATO LIST TILE */}
-      {despachosFiltrados.length === 0 ? (
-        <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40, gap: 12 }}>
-          <PackageOpen color="#d4d4d8" size={64} />
-          <RNText style={{ color: '#71717a', textAlign: 'center', fontSize: 16 }}>
-            No encontramos la orden "{searchQuery}"
-          </RNText>
-        </View>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: theme.colors.mainBackground }}
+      contentContainerStyle={{ padding: 16, gap: 16 }}
+    >
+      {isLoading ? (
+        <ListSkeleton />
       ) : (
-        despachosFiltrados.map((despacho, index) => {
-          const meta = ESTADO_META[despacho.estado];
-          
-          // Datos simulados (mock) que luego vendrán de tu DB en NestJS
-          const mockSequence = index + 1; 
-          const mockTimeWindow = "7hr"; 
-          const mockWeight = "120 kg"; 
-          const mockParadas = "12 paradas"; // Nuevo dato simulado
+        <View style={{ gap: 12 }}>
+          {/* COMPONENTE REUTILIZABLE DE BÚSQUEDA */}
+          <SearchField
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Buscar ID SAP o Cliente..."
+          />
 
-          return (
-            <TouchableOpacity 
-              key={despacho.id} 
-              activeOpacity={0.7}
-              onPress={() => openChequeo(despacho)}
+          {/* COMPONENTE REUTILIZABLE DE CHIPS DE FILTRO */}
+          <FilterChips
+            options={filterOptions}
+            selectedId={selectedStatus}
+            onSelect={setSelectedStatus}
+          />
+
+          {/* INFORMACIÓN DE RESULTADOS Y LIMPIAR FILTROS */}
+          <Box
+            paddingHorizontal="xs"
+            flexDirection="row"
+            justifyContent="space-between"
+            alignItems="center"
+          >
+            <Text variant="caption">
+              {hasActiveFilters
+                ? `Mostrando ${despachosFiltrados.length} de ${despachos.length} despachos`
+                : `${despachos.length} despachos en total`}
+            </Text>
+            {hasActiveFilters && (
+              <TouchableOpacity
+                onPress={() => {
+                  setSearchQuery("");
+                  setSelectedStatus("todos");
+                }}
+              >
+                <Text
+                  variant="caption"
+                  style={{ color: theme.colors.primary, fontWeight: "600" }}
+                >
+                  Limpiar filtros
+                </Text>
+              </TouchableOpacity>
+            )}
+          </Box>
+
+          {/* LISTA DE TARJETAS UTILIZANDO COMPONENTE REUTILIZABLE DespachoCard */}
+          {despachosFiltrados.length === 0 ? (
+            <View
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: '#ffffff',
-                padding: 8,
-                borderRadius: 12,
-                marginBottom: 6,
-                borderWidth: 1,
-                borderColor: '#e4e4e7',
-                // Sombra sutil para dar profundidad
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.05,
-                shadowRadius: 2,
-                elevation: 2,
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: 40,
+                gap: 12,
               }}
             >
-              {/* LEADING: Indicador de Secuencia */}
-              <View style={{
-                backgroundColor: '#f4f4f5',
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginRight: 12,
-              }}>
-                <RNText style={{ fontWeight: 'bold', color: '#3f3f46', fontSize: 16 }}>
-                  {mockSequence}
-                </RNText>
-              </View>
-
-              {/* BODY: Información principal y secundaria */}
-              <View style={{ flex: 1, gap: 4 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <RNText style={{ fontSize: 18, fontWeight: '700', color: '#18181b', letterSpacing: 0.5 }}>
-                    {despacho.codigo}
-                  </RNText>
-                  {/* El Chip mantiene tu componente original */}
-                  <Chip label={meta.label} tone={meta.tone} />
-                </View>
-
-                {/* Fila de íconos con datos de BD */}
-                <View style={{ gap: 2, marginTop: 2 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <MapPin color="#71717a" size={14} style={{ marginRight: 4 }} />
-                    <RNText style={{ color: '#52525b', fontSize: 14 }} numberOfLines={1}>
-                      {despacho.cliente} - {despacho.id}
-                    </RNText>
-                  </View>
-                  
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2,gap:2 }}>
-                    {/* Paradas */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <ListOrdered color="#71717a" size={14} style={{ marginRight: 4 }} />
-                      <RNText style={{ color: '#71717a', fontSize: 13 }}>
-                        {mockParadas}
-                      </RNText>
-                    </View>
-
-                    {/* Ventana Horaria */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Clock color="#71717a" size={14} style={{ marginRight: 4 }} />
-                      <RNText style={{ color: '#71717a', fontSize: 13 }}>
-                        {mockTimeWindow}
-                      </RNText>
-                    </View>
-                    
-                    {/* Peso */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Weight color="#71717a" size={14} style={{ marginRight: 4 }} />
-                      <RNText style={{ color: '#71717a', fontSize: 13 }}>
-                        {mockWeight}
-                      </RNText>
-                    </View>
-                  </View>
-                </View>
-              </View>
-
-              {/* TRAILING: Flecha de acción (Indica que es cliqueable) */}
-              <View style={{ marginLeft: 8 }}>
-                <ChevronRight color="#d4d4d8" size={24} />
-              </View>
-              
-            </TouchableOpacity>
-          );
-        })
+              <PackageOpen color={theme.colors.mutedForeground} size={64} />
+              <Text
+                variant="label"
+                style={{ color: theme.colors.mutedForeground, textAlign: "center", fontSize: 16 }}
+              >
+                No encontramos la orden "{searchQuery}"
+              </Text>
+            </View>
+          ) : (
+            despachosFiltrados.map((despacho, index) => (
+              <DespachoCard
+                key={despacho.id}
+                despacho={despacho}
+                sequence={index + 1}
+                onPress={() => openChequeo(despacho)}
+              />
+            ))
+          )}
+        </View>
       )}
     </ScrollView>
   );
 }
+

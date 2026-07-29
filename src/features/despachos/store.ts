@@ -30,14 +30,14 @@ export const useDespachos = create<DespachosState>((set) => ({
 
   setActive: (id) => set({ activeId: id }),
 
-  addCheck: (despachoId, codigo, nombre) =>
+  addCheck: (despachoId, codigo, nombre ) =>
     set((state) => {
-      const item: ProductCheck = { id: nextId(), codigo, nombre };
+      const item: ProductCheck = { id: nextId(), codigo, nombre  };
       const current = state.checksByDespacho[despachoId] ?? [];
       return {
         checksByDespacho: {
           ...state.checksByDespacho,
-          [despachoId]: [...current, item],
+          [despachoId]: [item, ...current],
         },
       };
     }),

@@ -160,11 +160,13 @@ export const badgeSizes = {
   },
 } satisfies Record<BadgeSize, BadgeSpec>;
 
+// 1. AÑADIMOS fontFamily AL TIPO
 type TextVariantSpec = {
   fontSize: number;
   lineHeight: number;
   fontWeight?: TextStyle['fontWeight'];
   color?: ColorToken;
+  fontFamily?: string; 
 };
 
 /**
@@ -172,15 +174,16 @@ type TextVariantSpec = {
  * (header 28→26, title 20→19, subtitle 16→15, label 13→12) to match the
  * information density of the web app.
  */
+// 2. AÑADIMOS EL PESO DE MONTSERRAT CORRESPONDIENTE A CADA VARIANTE
 export const baseTextVariants = {
-  defaults: { fontSize: 14, lineHeight: 20, color: 'foreground' },
-  header: { fontSize: 26, lineHeight: 32, fontWeight: '700', color: 'foreground' },
-  title: { fontSize: 19, lineHeight: 25, fontWeight: '600', color: 'foreground' },
-  subtitle: { fontSize: 15, lineHeight: 21, fontWeight: '600', color: 'foreground' },
-  body: { fontSize: 14, lineHeight: 20, color: 'foreground' },
-  bodySmall: { fontSize: 13, lineHeight: 18, color: 'foreground' },
-  caption: { fontSize: 12, lineHeight: 16, color: 'mutedForeground' },
-  label: { fontSize: 12, lineHeight: 16, fontWeight: '500', color: 'foreground' },
+  defaults: { fontFamily: 'Montserrat_400Regular', fontSize: 14, lineHeight: 20, color: 'foreground' },
+  header: { fontFamily: 'Montserrat_700Bold', fontSize: 26, lineHeight: 32, fontWeight: '700', color: 'foreground' },
+  title: { fontFamily: 'Montserrat_600SemiBold', fontSize: 19, lineHeight: 25, fontWeight: '600', color: 'foreground' },
+  subtitle: { fontFamily: 'Montserrat_600SemiBold', fontSize: 15, lineHeight: 21, fontWeight: '600', color: 'foreground' },
+  body: { fontFamily: 'Montserrat_400Regular', fontSize: 14, lineHeight: 20, color: 'foreground' },
+  bodySmall: { fontFamily: 'Montserrat_400Regular', fontSize: 13, lineHeight: 18, color: 'foreground' },
+  caption: { fontFamily: 'Montserrat_400Regular', fontSize: 12, lineHeight: 16, color: 'mutedForeground' },
+  label: { fontFamily: 'Montserrat_500Medium', fontSize: 12, lineHeight: 16, fontWeight: '500', color: 'foreground' },
 } satisfies Record<string, TextVariantSpec>;
 
 /**

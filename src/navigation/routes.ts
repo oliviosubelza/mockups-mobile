@@ -1,4 +1,4 @@
-import { ClipboardCheck, Palette, Settings, Truck } from 'lucide-react-native';
+import { ClipboardCheck, Palette, Settings, Truck,Package } from 'lucide-react-native';
 
 import ChequeoScreen from '@/features/despachos/ChequeoScreen';
 import DespachosScreen from '@/features/despachos/screen';
@@ -6,6 +6,8 @@ import GalleryScreen from '@/features/gallery/screen';
 import SettingsScreen from '@/features/settings/screen';
 
 import type { RouteInterface } from './types';
+import { DeliveryScreen } from '@/features/entregas (delivery)/delivery-screen';
+import { DeliveryDetailScreen } from '@/features/entregas (delivery)/delivery-details-screen';
 
 /**
  * The whole app navigation as data. Add a route here (with `showInHome`) and it
@@ -28,9 +30,30 @@ export const routes: RouteInterface[] = [
       {
         id: 'despachos.chequeo',
         path: '/despachos/chequeo',
-        title: 'Chequeo a ciegas',
+        title: 'Revision a Ciegas',
         icon: ClipboardCheck,
         component: ChequeoScreen,
+      },
+    ],
+  },
+  {
+    id: 'entregas',
+    path: '/entregas',
+    title: 'Mis Entregas',
+    description: 'Entregas a realizar en ruta',
+    icon: Package,
+    component: DeliveryScreen,
+    showInHome: true,
+    showInMenuBottom: true,
+    badge: 4,
+    order: 0,
+    subRoutes: [
+      {
+        id: 'entregas.detalle',
+        path: '/entregas/detalle',
+        title: 'Detalle de Entrega',
+        icon: ClipboardCheck,
+        component: DeliveryDetailScreen,
       },
     ],
   },

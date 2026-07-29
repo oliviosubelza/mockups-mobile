@@ -13,6 +13,7 @@ export type Despacho = {
 export type ProductCheck = {
   id: string;
   codigo: string;
+  // isProductCold: boolean;
   nombre: string;
 };
 

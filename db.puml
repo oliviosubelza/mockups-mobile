@@ -1,0 +1,554 @@
+@startuml
+
+hide circle
+
+skinparam class {
+    BackgroundColor White
+    ArrowColor #2C3E50
+    BorderColor #34495E
+}
+skinparam note {
+    BackgroundColor #FEF9E7
+    BorderColor #F1C40F
+}
+
+title DB_LOGISTICS
+
+package "(Snapshots, Cache, Datos externos)" #FDEDEC {
+    entity "sales_order" as ext_sales <<MS Ventas - SAP>> {
+        * id : <<PK>>
+        --
+        Ordenes lista para despachar
+    }
+
+    entity "sales_order_item" as ext_sales_item <<MS Ventas - SAP>> {
+        * id : <<PK>>
+        --
+        sales_order_split_id : <<FK>>
+        product_id : Number
+        requested_qty : Decimal
+        confirmed_qty : Decimal
+    }
+
+    ext_sales "1" -- "1..*" ext_sales_item : tiene >
+
+    entity "product_snapshot" as snap_product <<SAP - Cache Local>> {
+        * product_id : Number
+        --
+        weight : Decimal
+        volume : Decimal
+    }
+
+    entity "delivery_points" as snap_delivery_point <<SAP - Cache Local>> {
+        * delivery_point_id : Number
+        --
+        owner_id : Number
+        owner_name : String
+        latitude : Decimal
+        longitude : Decimal
+        contact_name : String
+        contact_phone : String
+        address_text : String
+    }
+    entity "warehouse_snapshot" as snap_warehouse <<SAP - Almacen>> {
+        * warehouse_id : Number
+        --
+        zone_id : Number
+        status : String
+        last_sync_at : Timestamp
+    }
+}
+
+package "Proyecciones" #F8F9F9 {
+    entity "candidate_order" as candidate_order {
+        * id : <<PK>>
+        --
+        dispatch_delivery_point_id : <<FK>>
+        sales_order_id : Number
+        document_id : Number
+        distributor_id : Number
+        ' -delivery_window_start : Time
+        ' -delivery_window_end : Time
+        total_weight_kg : Decimal
+        total_volume_m3 : Decimal
+        -type_order: String
+        is_included: Boolean
+        ' priority : Integer
+        ' status : String
+        ' notes : Text
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+
+        - refund_order_id : Number
+        - transfer_id : Number
+    }
+}
+
+package "Despachos (Draft -> Approved)" #EAF2F8 {
+
+    entity "trucks" as truck_master <<Sincronizar con SAP>> {
+        * id : <<PK>>
+        --
+        distributor_id: <<FK>>
+        code: String
+        plate : String
+        capacity_weight : Decimal
+        capacity_volume : Decimal
+        status : String
+        truck_type : String
+        is_refrigerated : Boolean
+        ' is_refrigerated_available : Boolean
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "distributors" as distributor_master {
+        * id : <<PK>>
+        --
+        department_id : Number<<FK>>
+        name: String
+        latitude: Decimal,
+        longitude: Decimal,
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+        active_flag : Boolean
+    }
+
+    entity "sale_channel_restrictions" as sale_channel_restrictions  {
+        * id : <<PK>>
+        --
+        name: String
+        description: String
+        distributor_id : Number<<FK>>
+        sale_channel_id : Number
+        cut_off_time : Time
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "zones" as zone_master {
+        * id : <<PK>>
+        --
+        department_id : Number<<FK>>
+        city_id : Number<<FK>>
+        name: String
+        polygon_geojson : JsonB
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+        active_flag : Boolean
+    }
+
+    entity "plan_status" as planStatus {
+        * id : <<PK>>
+        --
+        name: String
+        description: String
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "dispatch_plans" as plan {
+        * id : <<PK>>
+        --
+
+        plan_status_id : <<FK>>
+        distributor_id : Number <<FK>>
+        ' city_id : Number
+        plan_date : Date
+        ' optimization_status : String
+        planned_order_count : Integer
+        planned_truck_count : Integer
+        -employee_id : Integer
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "planning_truck" as truck {
+        * id : <<PK>>
+        --
+        dispatch_plan_id : <<FK>>
+        truck_id : Number <<FK>>
+        assigned_weight_kg : Decimal
+        assigned_volume_m3 : Decimal
+        ' status : String <<DISPONIBLE, MANTENIMIENTO>>
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+
+        -is_included_in_routing: boolean <<si el camion esta incluido en una ruta>>
+    }
+
+    entity "dispatch_delivery_points" as plan_order {
+        * id : <<PK>>
+        --
+        dispatch_plan_id : <<FK>>
+        delivery_point_id : Number
+        sale_channel_id: Integer
+        zone_id: Integer<<FK | NULL>>
+        ' planned_sequence : Integer
+        priority : Integer
+        ' notes : Text
+        -owner_id : Number
+        -owner_name : String
+        -warehouse_destination_id : Number
+
+        -delivery_window_start : Time
+        -delivery_window_end : Time
+        -total_weight_kg : Decimal
+        -total_volume_m3 : Decimal
+        -total_neto : Decimal
+        <<UNIFICACION DE PUNTOS DE ENTREGAS>>
+        -forced_planning_truck_id: <<FK | NULL>>
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+}
+
+package "Rutas y Asignación" #E9F7EF {
+    entity "routes" as routes {
+        * id : <<PK>>
+        --
+        planning_truck_id : Number <<FK | NULL>>
+        dispatch_plan_id : Number <<FK | NULL>>
+        trip_id : Number <<FK | NULL>>
+        employee_id : Number <<FK>>
+        engine : String
+        executed_at : Timestamp
+        name : String
+        'CABECERA DE LA RUTA, SUMATORIA TOTAL DE LOS METROS, SEGUNDOS Y COSTOS
+        eta_total_distance_m : Decimal
+        eta_total_time_s : Decimal
+        score : Decimal
+        ' notes : Text
+        - total_cost: Decimal
+        - is_selected: boolean<<default false>>
+        - encode_polyline: String
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "route_delivery_points" as opt_order {
+        * id : <<PK>>
+        --
+        route_id : <<FK>>
+        dispatch_delivery_point_id : <<FK>>
+        sequence : Integer
+        ' eta : Timestamp
+        estimated_distance_m : Decimal<<meters>>
+        estimated_travel_s : Decimal<<seconds>>
+        ' checked_by : String
+        - is_active: Boolean
+        'CUANDO SE UNIFIQUE EN UN SOLO CAMION, SE INVALIDA LAS RUTAS CALCULADAS DE LOS DOS CAMIONES INVOLUCRADOS (is_active:FALSE) Y LOS NUEVOS DATOS DE GOOGLE SE GUARDAN COMO TRUE
+        - estimated_total_cost: Decimal<<routeTotalCost>>
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+}
+
+package "Carga en Camion (Ejecución Física)" #FEF9E7 {
+
+    entity "trips" as trip {
+        * id : <<PK>>
+        --
+        truck_id : Number <<FK>>
+        distributor_id : Number <<FK>>
+        driver_employee_id : Number
+        name_driver_employee : String
+        helper_employee_id : Number
+        name_helper_employee : String
+        status : String (PENDING, EN_RUTA, FINALIZADO)
+        departure_date : Timestamp
+        completed_date : Timestamp
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "transport_orders" as exec_order {
+        * id : <<PK>>
+        --
+        dispatch_plan_id : <<FK | Null>>
+        distributor_id: <<FK>>
+        trip_id : Number <<FK  | NULL>>
+        code : Number
+        route_id : Number <<FK>>
+        checked_by : String | NULL
+        assigned_weight_kg : Decimal
+        assigned_volume_m3 : Decimal
+        status : String (CREATED, ENROUTE, ARRIVED, etc.)
+        ' total_weight_kg : Decimal
+        ' total_volume_m3 : Decimal
+        ' notes : Text
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "transport_order_histories" as transp_ord_hist {
+        * id : <<PK>>
+        --
+        transport_order_id : <<FK>>
+        status : String (CREATED, ENROUTE, ARRIVED, etc.)
+        description : Text
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "transport_order_sales" as transport_order_sale {
+        * id : <<PK>>
+        --
+        transport_order_id : <<FK>>
+        sale_order_id : Number
+        document_id : Number
+        total_weight_kg : Decimal
+        total_volume_m3 : Decimal
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "transport_order_sale_items" as transport_order_sale_item {
+        * id : <<PK>>
+        --
+        transport_order_sale_id : <<FK>>
+        product_id : Number
+        quantity_min : Number
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "truck_inventories" as inventory {
+        * id : <<PK>>
+        --
+        truck_id : <<FK>>
+        transport_order_id : <<FK>>
+        product_id : Number
+        loaded_qty : Decimal
+        expected_qty : Decimal
+        variance_qty : Decimal
+        ' status : String
+        ' as_of_at : Timestamp
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+}
+
+package "Ultima Milla (Entregas)" #E8F8F5 {
+    entity "delivery_orders" as delivery {
+        * id : <<PK>>
+        --
+        transport_order_id : <<FK>>
+        dispatch_delivery_point_id : <<FK>>
+        delivery_point_id : Number
+        -delivery_window_start : Time
+        -delivery_window_end : Time
+        delivery_note_number : String
+        receiver_name : String
+        receiver_relationship : String
+        delivery_result_code : String
+        status : String
+        arrival_latitude : Decimal
+        arrival_longitude : Decimal
+        arrived_at : Timestamp
+        delivered_at : Timestamp
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+
+    }
+
+    entity "delivery_order_items" as delivery_item {
+        * id : <<PK>>
+        --
+        delivery_order_id : <<FK>>
+        product_id : Number
+        planned_qty : Decimal
+        loaded_qty : Decimal
+        delivered_qty : Decimal
+        returned_qty : Decimal
+        ' short_qty : Decimal
+        item_status : String
+        notes : Text
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "proof_of_delivery" as pod {
+        * id : <<PK>>
+        --
+        delivery_order_id : <<FK>>
+        receiver_name : String
+        receiver_document : String
+        signature_url : String
+        photo_url : String
+        gps_lat : Decimal
+        gps_lon : Decimal
+        pod_status : String
+        pod_result_code : String
+        device_id : Number
+        captured_at : Timestamp
+        uploaded_at : Timestamp
+        notes : Text
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "delivery_incidents" as incident {
+        * id : <<PK>>
+        --
+        delivery_order_id : <<FK>>
+        incident_code : String
+        incident_type : String
+        severity : String
+        description : Text
+        photo_url : String
+        requires_return : Boolean
+        resolution_status : String
+        created_by : Number
+        created_at : Timestamp
+        resolved_at : Timestamp
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "delivery_order_histories" as delivery_history {
+        * id : <<PK>>
+        --
+        delivery_order_id : <<FK>>
+        status : String (CREATED, ENROUTE, ARRIVED, etc.)
+        reason : Text
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+}
+
+distributor_master "1" -- "1..*"  sale_channel_restrictions: contiene restricciones >
+planStatus "1" -- "1..*" plan: tiene >
+distributor_master "1" -- "1..*" plan: tiene >
+plan "1" -- "0..*" truck : asigna >
+plan "1" -- "1..*" plan_order : contiene paradas >
+plan_order "1" -- "0..*" candidate_order : "agrega" >
+zone_master "1" -- "0..*" plan_order : "agrega" >
+
+snap_warehouse ..> plan : "valida almacén"
+snap_delivery_point ..> plan_order : "provee GPS"
+truck_master "1" .. "0..*" truck : "copia capacidad" >
+
+plan "1" -- "0..*" routes : ejecuta >
+routes "1" -- "0..*" opt_order : resultados >
+plan_order "1" .. "0..*" opt_order : "optimizado en" >
+truck "1" .. "0..*" opt_order : transportada por >
+
+truck_master "1" -- "0..*" trip : ejecuta >
+trip "1" -- "1..*" exec_order : agrupa >
+trip "1" -- "0..*" routes : puede tener ruta recalculada >
+
+plan "1" -- "0..*" exec_order : genera >
+exec_order "1" -- "1..*" transport_order_sale : requiere >
+exec_order "1" -- "1..*"  transp_ord_hist : registra >
+transport_order_sale "1" -- "1..*" transport_order_sale_item : contiene >
+exec_order "1" -- "0..*" inventory : establece stock >
+' ext_sales_item ..> checking_item : "detalle"
+
+exec_order "1" -- "1..*" delivery : "tiene múltiples paradas" >
+
+note right of delivery
+    **Viaje vs. Paradas:**
+    'dispatch_order' es la orden del plan. 'trip'
+    es el camión lleno saliendo del almacén. 'delivery_order'
+    son las 5, 10 o 20 paradas
+    individuales que el camión hará.
+end note
+
+delivery "1" -- "1..*" delivery_item : "descarga productos" >
+delivery "1" -- "0..1" pod : "genera comprobante" >
+delivery "1" -- "0..*" incident : "reporta problemas" >
+delivery "1" -- "0..*" delivery_history : "registra historial" >
+
+snap_delivery_point ..> delivery : "Provee dirección\ny teléfono"
+inventory ..> delivery_item : "Descuenta stock\nal entregar"
+
+@enduml

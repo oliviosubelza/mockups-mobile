@@ -1,0 +1,2156 @@
+import { useState } from "react";
+import {
+  ScrollView,
+  View,
+  TouchableOpacity,
+  TextInput,
+  Linking,
+  ActivityIndicator,
+} from "react-native";
+import {
+  MapPin,
+  Phone,
+  Clock,
+  Package,
+  CheckCircle2,
+  AlertTriangle,
+  Camera,
+  FileSignature,
+  Snowflake,
+  ArrowLeft,
+  Banknote,
+  Building,
+  QrCode,
+  FileText,
+  DollarSign,
+  Plus,
+  Trash2,
+  ShieldCheck,
+  RefreshCw,
+  Lock,
+} from "lucide-react-native";
+
+import { findRouteById, navigateTo } from "@/navigation/registry";
+import { Badge, Button, AppDialog, type DialogType } from "@/shared/ui";
+import { SuccessDialog } from "@/shared/ui/SuccessDialog";
+import { Text, useAppTheme } from "@/theme";
+import { getSelectedStop } from "./data/delivery-store";
+import type { EstadoEntrega } from "./types";
+
+type DeliveryItem = {
+  id: string;
+  codigo: string;
+  nombre: string;
+  plannedQty: number;
+  deliveredQty: number;
+  isCold: boolean;
+  unit: string;
+  unitPrice?: number;
+};
+
+type PaymentMethodType = "CASH" | "TRANSFER" | "QR" | "CHECK";
+
+type PaymentRecord = {
+  id: string;
+  method: PaymentMethodType;
+  amount: number;
+  reference?: string;
+  bank?: string;
+  hasPhoto?: boolean;
+  isVerified?: boolean;
+};
+
+const formatMoney = (val?: number | null): string => {
+  if (val === undefined || val === null || isNaN(val)) return "0.00";
+  return val.toFixed(2);
+};
+
+const MOCK_ITEMS: DeliveryItem[] = [
+  {
+    id: "1",
+    codigo: "7790001",
+    nombre: "Ketchup Girasol 900ml",
+    plannedQty: 12,
+    deliveredQty: 12,
+    isCold: false,
+    unit: "unid",
+    unitPrice: 100.0,
+  },
+  {
+    id: "2",
+    codigo: "7790003",
+    nombre: "Levadura Fleischmann 500g",
+    plannedQty: 10,
+    deliveredQty: 10,
+    isCold: true,
+    unit: "unid",
+    unitPrice: 120.0,
+  },
+  {
+    id: "3",
+    codigo: "7790005",
+    nombre: "Salsa Golf 500g",
+    plannedQty: 5,
+    deliveredQty: 5,
+    isCold: false,
+    unit: "unid",
+    unitPrice: 140.0,
+  },
+];
+
+export const DeliveryDetailScreen = () => {
+  const theme = useAppTheme();
+
+  // OBTENER LA PARADA SELECCIONADA DINÁMICAMENTE DE LA HOJA DE RUTA
+  const stop = getSelectedStop();
+
+  // VALIDACIÓN CLAVE: EL COBRO SOLO SE HABILITA PARA EL PUNTO DE ENTREGA DONDE SE ENCUENTRA EL CHOFER (ESTADO: ARRIVED)
+  const isPaymentEnabled = stop.status === "ARRIVED";
+
+  // Extraer monto parseado o valor por defecto
+  const parseNetTotal = (netStr?: string) => {
+    if (!netStr) return 3100.0;
+    const num = parseFloat(netStr.replace(/[^0-9.]/g, ""));
+    return isNaN(num) || num <= 0 ? 3100.0 : num;
+  };
+  const TOTAL_ORDER_AMOUNT = parseNetTotal(stop.netTotal);
+
+  // Tab Principal: 'productos' vs 'cobro'
+  const [activeTab, setActiveTab] = useState<"productos" | "cobro">(
+    "productos",
+  );
+
+  // Estado de Productos y POD
+  const [items, setItems] = useState<DeliveryItem[]>(MOCK_ITEMS);
+  const [receiverName, setReceiverName] = useState(
+    stop.contactName || "Ing. Fernando Roca",
+  );
+  const [receiverDoc, setReceiverDoc] = useState("4829102 SC");
+  const [hasPhoto, setHasPhoto] = useState(false);
+  const [hasSignature, setHasSignature] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  // Estado de Diálogo Personalizado (AppDialog)
+  const [dialogConfig, setDialogConfig] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: DialogType;
+    onConfirm?: () => void;
+  }>({
+    visible: false,
+    title: "",
+    message: "",
+    type: "info",
+  });
+
+  // Estado del Módulo de Cobro
+  const [selectedMethod, setSelectedMethod] =
+    useState<PaymentMethodType>("CASH");
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
+
+  // Formularios de Cobro
+  const [cashAmount, setCashAmount] = useState(TOTAL_ORDER_AMOUNT.toString());
+  const [cashReceiptNo, setCashReceiptNo] = useState("REC-00982");
+  const [cashPhoto, setCashPhoto] = useState(false);
+
+  const [transferAmount, setTransferAmount] = useState(
+    TOTAL_ORDER_AMOUNT.toString(),
+  );
+  const [transferBank, setTransferBank] = useState(
+    "Banco Mercantil Santa Cruz",
+  );
+  const [transferRef, setTransferRef] = useState("TRX-9948201");
+  const [transferPhoto, setTransferPhoto] = useState(false);
+
+  const [checkAmount, setCheckAmount] = useState(TOTAL_ORDER_AMOUNT.toString());
+  const [checkBank, setCheckBank] = useState("Banco Nacional de Bolivia (BNB)");
+  const [checkNo, setCheckNo] = useState("CHK-449012");
+  const [checkHolder, setCheckHolder] = useState(
+    stop.clientName || "Cliente Santa Cruz",
+  );
+  const [checkPhoto, setCheckPhoto] = useState(false);
+
+  // Estado de Pago por QR
+  const [qrAmount, setQrAmount] = useState(TOTAL_ORDER_AMOUNT.toString());
+  const [qrStatus, setQrStatus] = useState<
+    "PENDING" | "VALIDATING" | "APPROVED"
+  >("PENDING");
+
+  // CÁLCULOS DINÁMICOS DE SALDO PENDIENTE
+  const totalPaid = payments.reduce((acc, p) => acc + (p.amount || 0), 0);
+  const pendingBalance = Math.max(0, TOTAL_ORDER_AMOUNT - totalPaid);
+
+  const showDialog = (
+    title: string,
+    message: string,
+    type: DialogType = "info",
+    onConfirm?: () => void,
+  ) => {
+    setDialogConfig({
+      visible: true,
+      title,
+      message,
+      type,
+      onConfirm,
+    });
+  };
+
+  const backToList = () => {
+    const route = findRouteById("entregas");
+    if (route) navigateTo(route);
+  };
+
+  const handleCall = () => {
+    Linking.openURL(`tel:${stop.contactPhone}`);
+  };
+
+  const handleSimulatePhoto = () => {
+    setHasPhoto(true);
+    showDialog(
+      "Foto Capturada",
+      "Se adjunto el comprobante fotografico de entrega (POD).",
+      "success",
+    );
+  };
+
+  const handleSimulateSignature = () => {
+    setHasSignature(true);
+    showDialog(
+      "Firma Registrada",
+      "Firma digital de recepcion guardada correctamente.",
+      "success",
+    );
+  };
+
+  const handleSelectTab = (tab: "productos" | "cobro") => {
+    if (tab === "cobro" && !isPaymentEnabled) {
+      showDialog(
+        "Cobro Deshabilitado",
+        `El registro de cobro solo esta permitido para la parada en descarga donde se encuentra el chofer (Estado: En Descarga).\n\nEsta parada se encuentra actualmente en estado: ${getStatusLabel(stop.status)}.`,
+        "warning",
+      );
+      return;
+    }
+    setActiveTab(tab);
+  };
+
+  const getStatusLabel = (st?: EstadoEntrega) => {
+    switch (st) {
+      case "ARRIVED":
+        return "En Descarga";
+      case "DELIVERED":
+        return "Entregado";
+      case "INCIDENT":
+        return "Incidencia";
+      case "EN_ROUTE":
+        return "En Camino";
+      case "PENDING":
+      default:
+        return "Pendiente";
+    }
+  };
+
+  const getStatusTone = (st?: EstadoEntrega) => {
+    switch (st) {
+      case "ARRIVED":
+        return "primary";
+      case "DELIVERED":
+        return "success";
+      case "INCIDENT":
+        return "danger";
+      case "EN_ROUTE":
+      case "PENDING":
+      default:
+        return "neutral";
+    }
+  };
+
+  // BOTÓN PAGAR CON QR
+  const handlePayWithQr = () => {
+    const amt = parseFloat(qrAmount);
+    if (isNaN(amt) || amt <= 0) {
+      showDialog(
+        "Monto Invalido",
+        "Ingresa un monto valido a cobrar por QR.",
+        "danger",
+      );
+      return;
+    }
+    setQrStatus("VALIDATING");
+    setTimeout(() => {
+      const newPayment: PaymentRecord = {
+        id: Date.now().toString(),
+        method: "QR",
+        amount: amt,
+        reference: `QR-BCO-${Math.floor(100000 + Math.random() * 900000)}`,
+        isVerified: true,
+      };
+      const newPayments = [...payments, newPayment];
+      setPayments(newPayments);
+      const newPending = Math.max(
+        0,
+        TOTAL_ORDER_AMOUNT -
+          newPayments.reduce((a, p) => a + (p.amount || 0), 0),
+      );
+      setCashAmount(newPending.toString());
+      setTransferAmount(newPending.toString());
+      setCheckAmount(newPending.toString());
+      setQrAmount(newPending.toString());
+      setQrStatus("APPROVED");
+      showDialog(
+        "Pago por QR Confirmado",
+        `El banco ha verificado el pago de Bs. ${formatMoney(amt)} correctamente.`,
+        "success",
+      );
+    }, 2000);
+  };
+
+  // AGREGAR COBROS INDIVIDUALES / PARCIALES
+  const handleAddCashPayment = () => {
+    const amt = parseFloat(cashAmount);
+    if (isNaN(amt) || amt <= 0) {
+      showDialog(
+        "Monto Invalido",
+        "Ingresa un monto valido para el cobro en efectivo.",
+        "danger",
+      );
+      return;
+    }
+    const newPayment: PaymentRecord = {
+      id: Date.now().toString(),
+      method: "CASH",
+      amount: amt,
+      reference: cashReceiptNo || "Recibo Manual",
+      hasPhoto: cashPhoto,
+    };
+    const newPayments = [...payments, newPayment];
+    setPayments(newPayments);
+    const newPending = Math.max(
+      0,
+      TOTAL_ORDER_AMOUNT - newPayments.reduce((a, p) => a + (p.amount || 0), 0),
+    );
+    setCashAmount(newPending.toString());
+    setTransferAmount(newPending.toString());
+    setCheckAmount(newPending.toString());
+    setQrAmount(newPending.toString());
+    showDialog(
+      "Cobro Registrado",
+      `Se registraron Bs. ${formatMoney(amt)} en efectivo.`,
+      "success",
+    );
+  };
+
+  const handleAddTransferPayment = () => {
+    const amt = parseFloat(transferAmount);
+    if (isNaN(amt) || amt <= 0) {
+      showDialog(
+        "Monto Invalido",
+        "Ingresa un monto valido para la transferencia.",
+        "danger",
+      );
+      return;
+    }
+    if (!transferPhoto) {
+      showDialog(
+        "Comprobante Requerido",
+        "Por favor toma la foto del comprobante de transferencia.",
+        "warning",
+      );
+      return;
+    }
+    const newPayment: PaymentRecord = {
+      id: Date.now().toString(),
+      method: "TRANSFER",
+      amount: amt,
+      bank: transferBank,
+      reference: transferRef,
+      hasPhoto: true,
+    };
+    const newPayments = [...payments, newPayment];
+    setPayments(newPayments);
+    const newPending = Math.max(
+      0,
+      TOTAL_ORDER_AMOUNT - newPayments.reduce((a, p) => a + (p.amount || 0), 0),
+    );
+    setCashAmount(newPending.toString());
+    setTransferAmount(newPending.toString());
+    setCheckAmount(newPending.toString());
+    setQrAmount(newPending.toString());
+    showDialog(
+      "Transferencia Registrada",
+      `Se registraron Bs. ${formatMoney(amt)} por transferencia.`,
+      "success",
+    );
+  };
+
+  const handleAddCheckPayment = () => {
+    const amt = parseFloat(checkAmount);
+    if (isNaN(amt) || amt <= 0) {
+      showDialog(
+        "Monto Invalido",
+        "Ingresa un monto valido para el cheque.",
+        "danger",
+      );
+      return;
+    }
+    if (!checkPhoto) {
+      showDialog(
+        "Foto Requerida",
+        "Por favor captura la foto del cheque (frente y dorso).",
+        "warning",
+      );
+      return;
+    }
+    const newPayment: PaymentRecord = {
+      id: Date.now().toString(),
+      method: "CHECK",
+      amount: amt,
+      bank: checkBank,
+      reference: `Cheque #${checkNo}`,
+      hasPhoto: true,
+    };
+    const newPayments = [...payments, newPayment];
+    setPayments(newPayments);
+    const newPending = Math.max(
+      0,
+      TOTAL_ORDER_AMOUNT - newPayments.reduce((a, p) => a + (p.amount || 0), 0),
+    );
+    setCashAmount(newPending.toString());
+    setTransferAmount(newPending.toString());
+    setCheckAmount(newPending.toString());
+    setQrAmount(newPending.toString());
+    showDialog(
+      "Cheque Registrado",
+      `Se registro el cheque #${checkNo} por Bs. ${formatMoney(amt)}.`,
+      "success",
+    );
+  };
+
+  const handleRemovePayment = (id: string) => {
+    const newPayments = payments.filter((p) => p.id !== id);
+    setPayments(newPayments);
+    const newPending = Math.max(
+      0,
+      TOTAL_ORDER_AMOUNT - newPayments.reduce((a, p) => a + (p.amount || 0), 0),
+    );
+    setCashAmount(newPending.toString());
+    setTransferAmount(newPending.toString());
+    setCheckAmount(newPending.toString());
+    setQrAmount(newPending.toString());
+    if (newPayments.filter((p) => p.method === "QR").length === 0) {
+      setQrStatus("PENDING");
+    }
+  };
+
+  const handleConfirmFinalDelivery = () => {
+    if (!hasPhoto && !hasSignature) {
+      showDialog(
+        "POD Requerido",
+        "Registra la foto o firma de recepcion en el tab de Productos.",
+        "warning",
+        () => {
+          setActiveTab("productos");
+        },
+      );
+      return;
+    }
+    if (pendingBalance > 0) {
+      showDialog(
+        "Saldo Pendiente",
+        `Aun hay un saldo pendiente de Bs. ${formatMoney(pendingBalance)}. Registra el cobro completo en el tab de Cobro.`,
+        "warning",
+        () => {
+          setActiveTab("cobro");
+        },
+      );
+      return;
+    }
+    setShowSuccess(true);
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.colors.mainBackground }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}
+      >
+        {/* 1. TARJETA PRINCIPAL DINÁMICA DEL CLIENTE SELECCIONADO Y RESUMEN DE COBRO */}
+        <View
+          style={{
+            backgroundColor: theme.colors.cardBackground,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            padding: 16,
+            gap: 12,
+            elevation: 2,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+            }}
+          >
+            <View style={{ gap: 2, flex: 1 }}>
+              <Text
+                variant="caption"
+                style={{ color: theme.colors.mutedForeground }}
+              >
+                PARADA #{stop.sequence} • {stop.deliveryPointId}
+              </Text>
+              <Text
+                variant="title"
+                style={{ color: theme.colors.foreground, fontSize: 19 }}
+              >
+                {stop.clientName}
+              </Text>
+            </View>
+            <Badge
+              label={getStatusLabel(stop.status)}
+              tone={getStatusTone(stop.status)}
+              emphasis="soft"
+              size="md"
+            />
+          </View>
+
+          <View style={{ gap: 6, marginTop: 2 }}>
+            <View
+              style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}
+            >
+              <MapPin
+                size={16}
+                color={theme.colors.mutedForeground}
+                style={{ marginTop: 2 }}
+              />
+              <Text
+                variant="bodySmall"
+                style={{ color: theme.colors.foreground, flex: 1 }}
+              >
+                {stop.address}
+              </Text>
+            </View>
+
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginTop: 4,
+              }}
+            >
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+              >
+                <Clock size={14} color={theme.colors.mutedForeground} />
+                <Text
+                  variant="caption"
+                  style={{ color: theme.colors.mutedForeground }}
+                >
+                  Ventana:{" "}
+                  <Text variant="label" style={{ fontSize: 12 }}>
+                    {stop.deliveryWindow}
+                  </Text>
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={handleCall}
+                style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+              >
+                <Phone size={14} color={theme.colors.primary} />
+                <Text
+                  variant="label"
+                  style={{ color: theme.colors.primary, fontSize: 12 }}
+                >
+                  {stop.contactPhone}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* RESUMEN FINANCIERO DINÁMICO DE COBRO */}
+          <View
+            style={{
+              backgroundColor: theme.colors.secondary,
+              padding: 12,
+              borderRadius: 12,
+              gap: 8,
+              marginTop: 4,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <View>
+                <Text
+                  variant="caption"
+                  style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
+                >
+                  Total a Cobrar
+                </Text>
+                <Text
+                  variant="header"
+                  style={{ fontSize: 18, color: theme.colors.foreground }}
+                >
+                  Bs. {formatMoney(TOTAL_ORDER_AMOUNT)}
+                </Text>
+              </View>
+
+              <Badge
+                label={
+                  pendingBalance === 0
+                    ? "Cobrado 100%"
+                    : `Pendiente: Bs. ${formatMoney(pendingBalance)}`
+                }
+                tone={pendingBalance === 0 ? "success" : "danger"}
+                emphasis="soft"
+                size="md"
+              />
+            </View>
+
+            {/* BARRA VISUAL DE DESGLOSE DE COBRO */}
+            <View style={{ gap: 4 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <Text
+                  variant="caption"
+                  style={{ fontSize: 11, color: theme.colors.mutedForeground }}
+                >
+                  Cobrado:{" "}
+                  <Text
+                    variant="label"
+                    style={{ fontSize: 11, color: theme.colors.success }}
+                  >
+                    Bs. {formatMoney(totalPaid)}
+                  </Text>
+                </Text>
+                <Text
+                  variant="caption"
+                  style={{ fontSize: 11, color: theme.colors.mutedForeground }}
+                >
+                  {Math.min(
+                    100,
+                    Math.round((totalPaid / TOTAL_ORDER_AMOUNT) * 100),
+                  )}
+                  %
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  height: 6,
+                  backgroundColor: theme.colors.cardBackground,
+                  borderRadius: 3,
+                  overflow: "hidden",
+                }}
+              >
+                <View
+                  style={{
+                    width: `${Math.min(100, (totalPaid / TOTAL_ORDER_AMOUNT) * 100)}%`,
+                    height: "100%",
+                    backgroundColor:
+                      pendingBalance === 0 ? "#22c55e" : theme.colors.primary,
+                    borderRadius: 3,
+                  }}
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* BANNER DE ALERTA SI LA PARADA TIENE UNA INCIDENCIA REGISTRADA */}
+        {stop.status === "INCIDENT" && (
+          <View
+            style={{
+              backgroundColor: "#fef2f2", // Fondo rojo/rosado muy suave
+              borderRadius: 14,
+              borderWidth: 1.5,
+              borderColor: "#fca5a5",
+              padding: 14,
+              gap: 8,
+              elevation: 1,
+            }}
+          >
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+            >
+              <View
+                style={{
+                  backgroundColor: "#fee2e2",
+                  padding: 6,
+                  borderRadius: 8,
+                }}
+              >
+                <AlertTriangle size={20} color="#dc2626" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  variant="label"
+                  style={{ color: "#991b1b", fontSize: 14, fontWeight: "700" }}
+                >
+                  Incidencia en el Punto de Entrega
+                </Text>
+                <Text
+                  variant="caption"
+                  style={{ color: "#7f1d1d", fontSize: 12 }}
+                >
+                  Registrado a las 10:15 hs • Reportado por Chofer
+                </Text>
+              </View>
+            </View>
+
+            <View
+              style={{
+                backgroundColor: "#ffffff",
+                padding: 10,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: "#fecaca",
+              }}
+            >
+              <Text variant="bodySmall" style={{ color: "#450a0a" }}>
+                <Text variant="label" style={{ color: "#991b1b" }}>
+                  Motivo:{" "}
+                </Text>
+                {/* {stop.incidentReason || ""} */}
+                  Rechazo parcial por empaque secundario dañado durante el trayecto.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* 2. DUAL-TAB CONTROL: [PRODUCTOS & POD] vs [REGISTRO DE COBRO (Solo Habilitado en ARRIVED)] */}
+        <View
+          style={{
+            flexDirection: "row",
+            backgroundColor: theme.colors.secondary,
+            borderRadius: 12,
+            padding: 3,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => handleSelectTab("productos")}
+            activeOpacity={0.8}
+            style={{
+              flex: 1,
+              paddingVertical: 10,
+              borderRadius: 9,
+              backgroundColor:
+                activeTab === "productos"
+                  ? theme.colors.cardBackground
+                  : "transparent",
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "row",
+              gap: 6,
+              elevation: activeTab === "productos" ? 1 : 0,
+            }}
+          >
+            <Package
+              size={16}
+              color={
+                activeTab === "productos"
+                  ? theme.colors.primary
+                  : theme.colors.mutedForeground
+              }
+            />
+            <Text
+              variant="label"
+              style={{
+                fontSize: 13,
+                color:
+                  activeTab === "productos"
+                    ? theme.colors.primary
+                    : theme.colors.mutedForeground,
+                fontWeight: activeTab === "productos" ? "700" : "500",
+              }}
+            >
+              Productos & POD
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => handleSelectTab("cobro")}
+            activeOpacity={0.8}
+            style={{
+              flex: 1,
+              paddingVertical: 10,
+              borderRadius: 9,
+              backgroundColor:
+                activeTab === "cobro"
+                  ? theme.colors.cardBackground
+                  : "transparent",
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "row",
+              gap: 6,
+              opacity: isPaymentEnabled ? 1 : 0.5,
+              elevation: activeTab === "cobro" ? 1 : 0,
+            }}
+          >
+            {isPaymentEnabled ? (
+              <DollarSign
+                size={16}
+                color={
+                  activeTab === "cobro"
+                    ? theme.colors.primary
+                    : theme.colors.mutedForeground
+                }
+              />
+            ) : (
+              <Lock size={14} color={theme.colors.mutedForeground} />
+            )}
+            <Text
+              variant="label"
+              style={{
+                fontSize: 13,
+                color: isPaymentEnabled
+                  ? activeTab === "cobro"
+                    ? theme.colors.primary
+                    : theme.colors.mutedForeground
+                  : theme.colors.mutedForeground,
+                fontWeight: activeTab === "cobro" ? "700" : "500",
+              }}
+            >
+              Cobro en Sitio
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* TAB 1: PRODUCTOS A DESCARGAR Y PROOF OF DELIVERY (POD) */}
+        {activeTab === "productos" && (
+          <View style={{ gap: 16 }}>
+            {/* LISTA DE PRODUCTOS */}
+            <View style={{ gap: 10 }}>
+              <Text variant="title" style={{ fontSize: 16 }}>
+                Productos a Descargar ({items.length} items)
+              </Text>
+
+              <View
+                style={{
+                  backgroundColor: theme.colors.cardBackground,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  overflow: "hidden",
+                }}
+              >
+                {items.map((item, index) => {
+                  const isLast = index === items.length - 1;
+                  return (
+                    <View
+                      key={item.id}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        paddingVertical: 12,
+                        paddingHorizontal: 14,
+                        borderBottomWidth: isLast ? 0 : 1,
+                        borderBottomColor: theme.colors.border,
+                      }}
+                    >
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 6,
+                          }}
+                        >
+                          <Text
+                            variant="label"
+                            style={{
+                              fontWeight: "700",
+                              color: theme.colors.foreground,
+                            }}
+                          >
+                            {item.codigo}
+                          </Text>
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 4,
+                              flexShrink: 1,
+                            }}
+                          >
+                            <Text
+                              variant="bodySmall"
+                              style={{ color: theme.colors.foreground }}
+                              numberOfLines={1}
+                            >
+                              {item.nombre}
+                            </Text>
+                            {item.isCold && (
+                              <Snowflake
+                                size={13}
+                                color={theme.colors.primary}
+                              />
+                            )}
+                          </View>
+                        </View>
+                        <Text
+                          variant="caption"
+                          style={{ color: theme.colors.mutedForeground }}
+                        >
+                          Precio:{" "}
+                          <Text variant="label" style={{ fontSize: 11 }}>
+                            Bs. {formatMoney(item.unitPrice)} c/u
+                          </Text>
+                        </Text>
+                      </View>
+
+                      <View
+                        style={{
+                          backgroundColor: theme.colors.successSoft,
+                          paddingHorizontal: 10,
+                          paddingVertical: 4,
+                          borderRadius: 8,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: "700",
+                            color: theme.colors.success,
+                          }}
+                        >
+                          {item.deliveredQty} {item.unit || "unid"}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* COMPROBANTE POD */}
+            <View
+              style={{
+                backgroundColor: theme.colors.cardBackground,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                padding: 16,
+                gap: 12,
+              }}
+            >
+              <Text variant="title" style={{ fontSize: 16 }}>
+                Comprobante de Recepcion (POD)
+              </Text>
+
+              <View style={{ gap: 10 }}>
+                <View>
+                  <Text
+                    variant="label"
+                    style={{ marginBottom: 4, fontSize: 13 }}
+                  >
+                    Nombre del Receptor
+                  </Text>
+                  <TextInput
+                    value={receiverName}
+                    onChangeText={setReceiverName}
+                    style={{
+                      backgroundColor: theme.colors.secondary,
+                      borderWidth: 1,
+                      borderColor: theme.colors.border,
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      fontSize: 14,
+                      color: theme.colors.foreground,
+                      fontFamily: "Montserrat_500Medium",
+                    }}
+                  />
+                </View>
+
+                <View>
+                  <Text
+                    variant="label"
+                    style={{ marginBottom: 4, fontSize: 13 }}
+                  >
+                    C.I. / Documento
+                  </Text>
+                  <TextInput
+                    value={receiverDoc}
+                    onChangeText={setReceiverDoc}
+                    style={{
+                      backgroundColor: theme.colors.secondary,
+                      borderWidth: 1,
+                      borderColor: theme.colors.border,
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      fontSize: 14,
+                      color: theme.colors.foreground,
+                      fontFamily: "Montserrat_500Medium",
+                    }}
+                  />
+                </View>
+              </View>
+
+              {stop.status == "ARRIVED" && (
+                <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+                  <TouchableOpacity
+                    onPress={handleSimulatePhoto}
+                    style={{
+                      flex: 1,
+                      backgroundColor: hasPhoto
+                        ? theme.colors.successSoft
+                        : theme.colors.secondary,
+                      borderWidth: 1,
+                      borderColor: hasPhoto
+                        ? theme.colors.success
+                        : theme.colors.border,
+                      borderRadius: 10,
+                      paddingVertical: 12,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Camera
+                      size={20}
+                      color={
+                        hasPhoto
+                          ? theme.colors.success
+                          : theme.colors.mutedForeground
+                      }
+                    />
+                    <Text
+                      variant="label"
+                      style={{
+                        fontSize: 12,
+                        color: hasPhoto
+                          ? theme.colors.success
+                          : theme.colors.foreground,
+                      }}
+                    >
+                      {hasPhoto ? "Foto Adjunta" : "Tomar Foto POD"}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={handleSimulateSignature}
+                    style={{
+                      flex: 1,
+                      backgroundColor: hasSignature
+                        ? theme.colors.successSoft
+                        : theme.colors.secondary,
+                      borderWidth: 1,
+                      borderColor: hasSignature
+                        ? theme.colors.success
+                        : theme.colors.border,
+                      borderRadius: 10,
+                      paddingVertical: 12,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <FileSignature
+                      size={20}
+                      color={
+                        hasSignature
+                          ? theme.colors.success
+                          : theme.colors.mutedForeground
+                      }
+                    />
+                    <Text
+                      variant="label"
+                      style={{
+                        fontSize: 12,
+                        color: hasSignature
+                          ? theme.colors.success
+                          : theme.colors.foreground,
+                      }}
+                    >
+                      {hasSignature ? "Firma Registrada" : "Firma Digital"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            {/* BOTÓN PARA PASAR AL COBRO */}
+            {stop.status == "ARRIVED" && (
+              <Button
+                label="Continuar al Registro de Cobro"
+                variant="primary"
+                size="md"
+                fullWidth
+                onPress={() => handleSelectTab("cobro")}
+              />
+            )}
+          </View>
+        )}
+
+        {/* TAB 2: MÓDULO COMPLETO DE REGISTRO DE COBRO (Habilitado en ARRIVED) */}
+        {activeTab === "cobro" && (
+          <View style={{ gap: 16 }}>
+            {/* TARJETA DE SELECTOR DE MÉTODOS DE COBRO */}
+            <View
+              style={{
+                backgroundColor: theme.colors.cardBackground,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                padding: 16,
+                gap: 14,
+              }}
+            >
+              <Text variant="title" style={{ fontSize: 16 }}>
+                Seleccionar Metodo de Pago
+              </Text>
+
+              {/* GRID DE LOS 4 MÉTODOS DE COBRO */}
+              <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                <TouchableOpacity
+                  onPress={() => setSelectedMethod("CASH")}
+                  activeOpacity={0.8}
+                  style={{
+                    flex: 1,
+                    minWidth: "45%",
+                    backgroundColor:
+                      selectedMethod === "CASH"
+                        ? theme.colors.primarySoft
+                        : theme.colors.secondary,
+                    borderWidth: 1.5,
+                    borderColor:
+                      selectedMethod === "CASH"
+                        ? theme.colors.primary
+                        : theme.colors.border,
+                    borderRadius: 12,
+                    padding: 12,
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <Banknote
+                    size={22}
+                    color={
+                      selectedMethod === "CASH"
+                        ? theme.colors.primary
+                        : theme.colors.mutedForeground
+                    }
+                  />
+                  <Text
+                    variant="label"
+                    style={{
+                      fontSize: 12,
+                      color:
+                        selectedMethod === "CASH"
+                          ? theme.colors.primary
+                          : theme.colors.foreground,
+                      fontWeight: selectedMethod === "CASH" ? "700" : "500",
+                    }}
+                  >
+                    1. Efectivo
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setSelectedMethod("TRANSFER")}
+                  activeOpacity={0.8}
+                  style={{
+                    flex: 1,
+                    minWidth: "45%",
+                    backgroundColor:
+                      selectedMethod === "TRANSFER"
+                        ? theme.colors.primarySoft
+                        : theme.colors.secondary,
+                    borderWidth: 1.5,
+                    borderColor:
+                      selectedMethod === "TRANSFER"
+                        ? theme.colors.primary
+                        : theme.colors.border,
+                    borderRadius: 12,
+                    padding: 12,
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <Building
+                    size={22}
+                    color={
+                      selectedMethod === "TRANSFER"
+                        ? theme.colors.primary
+                        : theme.colors.mutedForeground
+                    }
+                  />
+                  <Text
+                    variant="label"
+                    style={{
+                      fontSize: 12,
+                      color:
+                        selectedMethod === "TRANSFER"
+                          ? theme.colors.primary
+                          : theme.colors.foreground,
+                      fontWeight: selectedMethod === "TRANSFER" ? "700" : "500",
+                    }}
+                  >
+                    2. Transferencia
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setSelectedMethod("QR")}
+                  activeOpacity={0.8}
+                  style={{
+                    flex: 1,
+                    minWidth: "45%",
+                    backgroundColor:
+                      selectedMethod === "QR"
+                        ? theme.colors.primarySoft
+                        : theme.colors.secondary,
+                    borderWidth: 1.5,
+                    borderColor:
+                      selectedMethod === "QR"
+                        ? theme.colors.primary
+                        : theme.colors.border,
+                    borderRadius: 12,
+                    padding: 12,
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <QrCode
+                    size={22}
+                    color={
+                      selectedMethod === "QR"
+                        ? theme.colors.primary
+                        : theme.colors.mutedForeground
+                    }
+                  />
+                  <Text
+                    variant="label"
+                    style={{
+                      fontSize: 12,
+                      color:
+                        selectedMethod === "QR"
+                          ? theme.colors.primary
+                          : theme.colors.foreground,
+                      fontWeight: selectedMethod === "QR" ? "700" : "500",
+                    }}
+                  >
+                    3. Pago QR (Banco)
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setSelectedMethod("CHECK")}
+                  activeOpacity={0.8}
+                  style={{
+                    flex: 1,
+                    minWidth: "45%",
+                    backgroundColor:
+                      selectedMethod === "CHECK"
+                        ? theme.colors.primarySoft
+                        : theme.colors.secondary,
+                    borderWidth: 1.5,
+                    borderColor:
+                      selectedMethod === "CHECK"
+                        ? theme.colors.primary
+                        : theme.colors.border,
+                    borderRadius: 12,
+                    padding: 12,
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <FileText
+                    size={22}
+                    color={
+                      selectedMethod === "CHECK"
+                        ? theme.colors.primary
+                        : theme.colors.mutedForeground
+                    }
+                  />
+                  <Text
+                    variant="label"
+                    style={{
+                      fontSize: 12,
+                      color:
+                        selectedMethod === "CHECK"
+                          ? theme.colors.primary
+                          : theme.colors.foreground,
+                      fontWeight: selectedMethod === "CHECK" ? "700" : "500",
+                    }}
+                  >
+                    4. Cheque
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* FORMULARIO ESPECÍFICO SEGÚN EL MÉTODO SELECCIONADO */}
+              <View
+                style={{
+                  marginTop: 6,
+                  paddingTop: 12,
+                  borderTopWidth: 1,
+                  borderTopColor: theme.colors.border,
+                  gap: 12,
+                }}
+              >
+                {/* 1. EFECTIVO */}
+                {selectedMethod === "CASH" && (
+                  <View style={{ gap: 10 }}>
+                    <View>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: 4,
+                        }}
+                      >
+                        <Text variant="label" style={{ fontSize: 13 }}>
+                          Monto en Efectivo Recibido (Bs.)
+                        </Text>
+                        <View style={{ flexDirection: "row", gap: 4 }}>
+                          <TouchableOpacity
+                            onPress={() =>
+                              setCashAmount((TOTAL_ORDER_AMOUNT / 2).toString())
+                            }
+                            style={{
+                              backgroundColor: theme.colors.secondary,
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                              borderRadius: 4,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: "700",
+                                color: theme.colors.primary,
+                              }}
+                            >
+                              50%
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() =>
+                              setCashAmount(pendingBalance.toString())
+                            }
+                            style={{
+                              backgroundColor: theme.colors.secondary,
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                              borderRadius: 4,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: "700",
+                                color: theme.colors.primary,
+                              }}
+                            >
+                              Saldo Pend.
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                      <TextInput
+                        value={cashAmount}
+                        onChangeText={setCashAmount}
+                        keyboardType="numeric"
+                        style={{
+                          backgroundColor: theme.colors.secondary,
+                          borderWidth: 1,
+                          borderColor: theme.colors.border,
+                          borderRadius: 8,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          fontSize: 15,
+                          fontWeight: "700",
+                          color: theme.colors.foreground,
+                        }}
+                      />
+                    </View>
+
+                    <View>
+                      <Text
+                        variant="label"
+                        style={{ marginBottom: 4, fontSize: 13 }}
+                      >
+                        Nro. de Recibo / Nota Manual
+                      </Text>
+                      <TextInput
+                        value={cashReceiptNo}
+                        onChangeText={setCashReceiptNo}
+                        style={{
+                          backgroundColor: theme.colors.secondary,
+                          borderWidth: 1,
+                          borderColor: theme.colors.border,
+                          borderRadius: 8,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          fontSize: 14,
+                          color: theme.colors.foreground,
+                        }}
+                      />
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        setCashPhoto(true);
+                        showDialog(
+                          "Foto Adjunta",
+                          "Se tomo foto del arqueo en efectivo.",
+                          "success",
+                        );
+                      }}
+                      style={{
+                        backgroundColor: cashPhoto
+                          ? theme.colors.successSoft
+                          : theme.colors.secondary,
+                        borderWidth: 1,
+                        borderColor: cashPhoto
+                          ? theme.colors.success
+                          : theme.colors.border,
+                        borderRadius: 8,
+                        paddingVertical: 10,
+                        alignItems: "center",
+                        flexDirection: "row",
+                        justifyContent: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <Camera
+                        size={16}
+                        color={
+                          cashPhoto
+                            ? theme.colors.success
+                            : theme.colors.mutedForeground
+                        }
+                      />
+                      <Text
+                        variant="label"
+                        style={{
+                          fontSize: 12,
+                          color: cashPhoto
+                            ? theme.colors.success
+                            : theme.colors.foreground,
+                        }}
+                      >
+                        {cashPhoto
+                          ? "Foto Billetes Adjunta"
+                          : "Tomar Foto de Billetes (Opcional)"}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <Button
+                      label="Agregar Pago en Efectivo"
+                      variant="primary"
+                      size="sm"
+                      icon={Plus}
+                      fullWidth
+                      onPress={handleAddCashPayment}
+                    />
+                  </View>
+                )}
+
+                {/* 2. TRANSFERENCIA BANCARIA */}
+                {selectedMethod === "TRANSFER" && (
+                  <View style={{ gap: 10 }}>
+                    <View>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: 4,
+                        }}
+                      >
+                        <Text variant="label" style={{ fontSize: 13 }}>
+                          Monto Transferido (Bs.)
+                        </Text>
+                        <View style={{ flexDirection: "row", gap: 4 }}>
+                          <TouchableOpacity
+                            onPress={() =>
+                              setTransferAmount(
+                                (TOTAL_ORDER_AMOUNT / 2).toString(),
+                              )
+                            }
+                            style={{
+                              backgroundColor: theme.colors.secondary,
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                              borderRadius: 4,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: "700",
+                                color: theme.colors.primary,
+                              }}
+                            >
+                              50%
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() =>
+                              setTransferAmount(pendingBalance.toString())
+                            }
+                            style={{
+                              backgroundColor: theme.colors.secondary,
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                              borderRadius: 4,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: "700",
+                                color: theme.colors.primary,
+                              }}
+                            >
+                              Saldo Pend.
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                      <TextInput
+                        value={transferAmount}
+                        onChangeText={setTransferAmount}
+                        keyboardType="numeric"
+                        style={{
+                          backgroundColor: theme.colors.secondary,
+                          borderWidth: 1,
+                          borderColor: theme.colors.border,
+                          borderRadius: 8,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          fontSize: 15,
+                          fontWeight: "700",
+                          color: theme.colors.foreground,
+                        }}
+                      />
+                    </View>
+
+                    <View>
+                      <Text
+                        variant="label"
+                        style={{ marginBottom: 4, fontSize: 13 }}
+                      >
+                        Banco Origen
+                      </Text>
+                      <TextInput
+                        value={transferBank}
+                        onChangeText={setTransferBank}
+                        style={{
+                          backgroundColor: theme.colors.secondary,
+                          borderWidth: 1,
+                          borderColor: theme.colors.border,
+                          borderRadius: 8,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          fontSize: 14,
+                          color: theme.colors.foreground,
+                        }}
+                      />
+                    </View>
+
+                    <View>
+                      <Text
+                        variant="label"
+                        style={{ marginBottom: 4, fontSize: 13 }}
+                      >
+                        Nro. de Transaccion / Referencia
+                      </Text>
+                      <TextInput
+                        value={transferRef}
+                        onChangeText={setTransferRef}
+                        style={{
+                          backgroundColor: theme.colors.secondary,
+                          borderWidth: 1,
+                          borderColor: theme.colors.border,
+                          borderRadius: 8,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          fontSize: 14,
+                          color: theme.colors.foreground,
+                        }}
+                      />
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        setTransferPhoto(true);
+                        showDialog(
+                          "Comprobante Adjunto",
+                          "Foto del comprobante bancario guardada.",
+                          "success",
+                        );
+                      }}
+                      style={{
+                        backgroundColor: transferPhoto
+                          ? theme.colors.successSoft
+                          : theme.colors.secondary,
+                        borderWidth: 1,
+                        borderColor: transferPhoto
+                          ? theme.colors.success
+                          : theme.colors.border,
+                        borderRadius: 8,
+                        paddingVertical: 10,
+                        alignItems: "center",
+                        flexDirection: "row",
+                        justifyContent: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <Camera
+                        size={16}
+                        color={
+                          transferPhoto
+                            ? theme.colors.success
+                            : theme.colors.mutedForeground
+                        }
+                      />
+                      <Text
+                        variant="label"
+                        style={{
+                          fontSize: 12,
+                          color: transferPhoto
+                            ? theme.colors.success
+                            : theme.colors.foreground,
+                        }}
+                      >
+                        {transferPhoto
+                          ? "Foto Comprobante Adjunta"
+                          : "Tomar Foto Comprobante (Requerido)"}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <Button
+                      label="Agregar Transferencia"
+                      variant="primary"
+                      size="sm"
+                      icon={Plus}
+                      fullWidth
+                      onPress={handleAddTransferPayment}
+                    />
+                  </View>
+                )}
+
+                {/* 3. PAGO POR QR (MONTO EDITABLE + BOTÓN PAGAR CON ANIMACIÓN BANCARIA) */}
+                {selectedMethod === "QR" && (
+                  <View
+                    style={{
+                      alignItems: "center",
+                      gap: 12,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <View style={{ alignSelf: "stretch", gap: 6 }}>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Text variant="label" style={{ fontSize: 13 }}>
+                          Monto a Cobrar por QR (Bs.)
+                        </Text>
+                        <View style={{ flexDirection: "row", gap: 4 }}>
+                          <TouchableOpacity
+                            onPress={() => {
+                              setQrAmount((TOTAL_ORDER_AMOUNT / 2).toString());
+                              setQrStatus("PENDING");
+                            }}
+                            style={{
+                              backgroundColor: theme.colors.secondary,
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                              borderRadius: 4,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: "700",
+                                color: theme.colors.primary,
+                              }}
+                            >
+                              50%
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => {
+                              setQrAmount(pendingBalance.toString());
+                              setQrStatus("PENDING");
+                            }}
+                            style={{
+                              backgroundColor: theme.colors.secondary,
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                              borderRadius: 4,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: "700",
+                                color: theme.colors.primary,
+                              }}
+                            >
+                              Saldo Pend.
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                      <TextInput
+                        value={qrAmount}
+                        onChangeText={(val) => {
+                          setQrAmount(val);
+                          setQrStatus("PENDING");
+                        }}
+                        keyboardType="numeric"
+                        style={{
+                          backgroundColor: theme.colors.secondary,
+                          borderWidth: 1,
+                          borderColor: theme.colors.border,
+                          borderRadius: 8,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          fontSize: 15,
+                          fontWeight: "700",
+                          color: theme.colors.foreground,
+                        }}
+                      />
+                    </View>
+
+                    <View
+                      style={{
+                        backgroundColor: "#ffffff",
+                        padding: 16,
+                        borderRadius: 16,
+                        borderWidth: 2,
+                        borderColor: theme.colors.primary,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        elevation: 4,
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 140,
+                          height: 140,
+                          backgroundColor: "#0f172a",
+                          borderRadius: 8,
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <QrCode size={100} color="#ffffff" />
+                      </View>
+                    </View>
+
+                    {/* BOTÓN PAGAR CON QR Y ANIMACIÓN EN TIEMPO REAL BANCARIO */}
+                    {qrStatus === "APPROVED" ? (
+                      <View
+                        style={{
+                          backgroundColor: theme.colors.successSoft,
+                          padding: 12,
+                          borderRadius: 10,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                          alignSelf: "stretch",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <ShieldCheck size={20} color={theme.colors.success} />
+                        <Text
+                          variant="label"
+                          style={{ color: theme.colors.success, fontSize: 13 }}
+                        >
+                          Pago Confirmado por el Banco
+                        </Text>
+                      </View>
+                    ) : (
+                      <Button
+                        label={
+                          qrStatus === "VALIDATING"
+                            ? "Validando transferencia con el banco..."
+                            : "Pagar con QR"
+                        }
+                        variant="primary"
+                        size="md"
+                        fullWidth
+                        icon={RefreshCw}
+                        loading={qrStatus === "VALIDATING"}
+                        onPress={handlePayWithQr}
+                      />
+                    )}
+                  </View>
+                )}
+
+                {/* 4. CHEQUE */}
+                {selectedMethod === "CHECK" && (
+                  <View style={{ gap: 10 }}>
+                    <View>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: 4,
+                        }}
+                      >
+                        <Text variant="label" style={{ fontSize: 13 }}>
+                          Monto del Cheque (Bs.)
+                        </Text>
+                        <View style={{ flexDirection: "row", gap: 4 }}>
+                          <TouchableOpacity
+                            onPress={() =>
+                              setCheckAmount(
+                                (TOTAL_ORDER_AMOUNT / 2).toString(),
+                              )
+                            }
+                            style={{
+                              backgroundColor: theme.colors.secondary,
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                              borderRadius: 4,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: "700",
+                                color: theme.colors.primary,
+                              }}
+                            >
+                              50%
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() =>
+                              setCheckAmount(pendingBalance.toString())
+                            }
+                            style={{
+                              backgroundColor: theme.colors.secondary,
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                              borderRadius: 4,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: "700",
+                                color: theme.colors.primary,
+                              }}
+                            >
+                              Saldo Pend.
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                      <TextInput
+                        value={checkAmount}
+                        onChangeText={setCheckAmount}
+                        keyboardType="numeric"
+                        style={{
+                          backgroundColor: theme.colors.secondary,
+                          borderWidth: 1,
+                          borderColor: theme.colors.border,
+                          borderRadius: 8,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          fontSize: 15,
+                          fontWeight: "700",
+                          color: theme.colors.foreground,
+                        }}
+                      />
+                    </View>
+
+                    <View>
+                      <Text
+                        variant="label"
+                        style={{ marginBottom: 4, fontSize: 13 }}
+                      >
+                        Banco Emisor
+                      </Text>
+                      <TextInput
+                        value={checkBank}
+                        onChangeText={setCheckBank}
+                        style={{
+                          backgroundColor: theme.colors.secondary,
+                          borderWidth: 1,
+                          borderColor: theme.colors.border,
+                          borderRadius: 8,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          fontSize: 14,
+                          color: theme.colors.foreground,
+                        }}
+                      />
+                    </View>
+
+                    <View style={{ flexDirection: "row", gap: 10 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          variant="label"
+                          style={{ marginBottom: 4, fontSize: 13 }}
+                        >
+                          Nro. de Cheque
+                        </Text>
+                        <TextInput
+                          value={checkNo}
+                          onChangeText={setCheckNo}
+                          style={{
+                            backgroundColor: theme.colors.secondary,
+                            borderWidth: 1,
+                            borderColor: theme.colors.border,
+                            borderRadius: 8,
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            fontSize: 14,
+                            color: theme.colors.foreground,
+                          }}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          variant="label"
+                          style={{ marginBottom: 4, fontSize: 13 }}
+                        >
+                          Titular / Razon Social
+                        </Text>
+                        <TextInput
+                          value={checkHolder}
+                          onChangeText={setCheckHolder}
+                          style={{
+                            backgroundColor: theme.colors.secondary,
+                            borderWidth: 1,
+                            borderColor: theme.colors.border,
+                            borderRadius: 8,
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            fontSize: 14,
+                            color: theme.colors.foreground,
+                          }}
+                        />
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        setCheckPhoto(true);
+                        showDialog(
+                          "Foto Cheque Adjunta",
+                          "Captura de frente y dorso guardada.",
+                          "success",
+                        );
+                      }}
+                      style={{
+                        backgroundColor: checkPhoto
+                          ? theme.colors.successSoft
+                          : theme.colors.secondary,
+                        borderWidth: 1,
+                        borderColor: checkPhoto
+                          ? theme.colors.success
+                          : theme.colors.border,
+                        borderRadius: 8,
+                        paddingVertical: 10,
+                        alignItems: "center",
+                        flexDirection: "row",
+                        justifyContent: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <Camera
+                        size={16}
+                        color={
+                          checkPhoto
+                            ? theme.colors.success
+                            : theme.colors.mutedForeground
+                        }
+                      />
+                      <Text
+                        variant="label"
+                        style={{
+                          fontSize: 12,
+                          color: checkPhoto
+                            ? theme.colors.success
+                            : theme.colors.foreground,
+                        }}
+                      >
+                        {checkPhoto
+                          ? "Foto Cheque Adjunta"
+                          : "Tomar Foto Cheque (Requerido)"}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <Button
+                      label="Agregar Cobro con Cheque"
+                      variant="primary"
+                      size="sm"
+                      icon={Plus}
+                      fullWidth
+                      onPress={handleAddCheckPayment}
+                    />
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* HISTORIAL DINÁMICO DE COBROS REGISTRADOS */}
+            <View style={{ gap: 10 }}>
+              <Text variant="title" style={{ fontSize: 16 }}>
+                Pagos Registrados ({payments.length})
+              </Text>
+
+              {payments.length === 0 ? (
+                <View
+                  style={{
+                    backgroundColor: theme.colors.cardBackground,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    padding: 20,
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <DollarSign size={24} color={theme.colors.mutedForeground} />
+                  <Text
+                    variant="bodySmall"
+                    style={{ color: theme.colors.mutedForeground }}
+                  >
+                    Aun no has registrado ningun pago para este pedido.
+                  </Text>
+                </View>
+              ) : (
+                <View
+                  style={{
+                    backgroundColor: theme.colors.cardBackground,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    overflow: "hidden",
+                  }}
+                >
+                  {payments.map((p, idx) => (
+                    <View
+                      key={p.id}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: 12,
+                        borderBottomWidth: idx === payments.length - 1 ? 0 : 1,
+                        borderBottomColor: theme.colors.border,
+                      }}
+                    >
+                      <View style={{ gap: 2 }}>
+                        <Text
+                          variant="label"
+                          style={{ fontSize: 14, fontWeight: "700" }}
+                        >
+                          {p.method === "CASH"
+                            ? "Efectivo"
+                            : p.method === "TRANSFER"
+                              ? `Transferencia (${p.bank})`
+                              : p.method === "QR"
+                                ? "Pago QR Banco"
+                                : `Cheque (${p.bank})`}
+                        </Text>
+                        <Text
+                          variant="caption"
+                          style={{
+                            color: theme.colors.mutedForeground,
+                            fontSize: 11,
+                          }}
+                        >
+                          Ref: {p.reference || "N/A"}{" "}
+                          {p.hasPhoto ? "• Foto" : ""}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 10,
+                        }}
+                      >
+                        <Text
+                          variant="label"
+                          style={{
+                            fontSize: 15,
+                            fontWeight: "800",
+                            color: theme.colors.primary,
+                          }}
+                        >
+                          Bs. {formatMoney(p.amount)}
+                        </Text>
+
+                        <TouchableOpacity
+                          onPress={() => handleRemovePayment(p.id)}
+                        >
+                          <Trash2 size={16} color={theme.colors.danger} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {/* BOTÓN PRINCIPAL FINALIZAR COBRO */}
+            {stop.status == "ARRIVED" && (
+              <Button
+                label="Finalizar Cobro y Confirmar Entrega"
+                variant="primary"
+                size="md"
+                fullWidth
+                icon={CheckCircle2}
+                onPress={handleConfirmFinalDelivery}
+              />
+            )}
+          </View>
+        )}
+      </ScrollView>
+
+      {/* DIÁLOGO PERSONALIZADO DE NOTIFICACIÓN AppDialog */}
+      <AppDialog
+        visible={dialogConfig.visible}
+        title={dialogConfig.title}
+        message={dialogConfig.message}
+        type={dialogConfig.type}
+        onConfirm={dialogConfig.onConfirm}
+        onClose={() => setDialogConfig((prev) => ({ ...prev, visible: false }))}
+      />
+
+      {/* DIÁLOGO DE ÉXITO FINAL */}
+      <SuccessDialog
+        visible={showSuccess}
+        onClose={backToList}
+        title="¡Cobro y Entrega Exitosos!"
+        message={`Se registro el cobro completo de Bs. ${formatMoney(TOTAL_ORDER_AMOUNT)} (${payments.length} pago(s) registrado(s)) y el comprobante POD de ${receiverName}.`}
+      />
+    </View>
+  );
+};

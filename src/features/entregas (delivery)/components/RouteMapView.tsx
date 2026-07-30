@@ -10,6 +10,7 @@ import {
   PanResponder,
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import Svg, { Defs, LinearGradient as SvgGradient, Stop, Rect } from 'react-native-svg';
 import {
   Building2,
   ArrowRight,
@@ -33,6 +34,7 @@ import {
   AlertTriangle,
   Store,
   ChevronsUp,
+  Locate,
 } from 'lucide-react-native';
 
 import { Button, Badge } from '@/shared/ui';
@@ -80,10 +82,7 @@ export function RouteMapView({
   const mapRef = useRef<MapView>(null);
   const [currentRegion, setCurrentRegion] = useState<Region>(SANTA_CRUZ_INITIAL_REGION);
 
-  // ESTADO DE NIVELES DEL BOTTOM SHEET: 'collapsed' (70px) | 'medium' (240px) | 'expanded' (450px)
-  const [sheetState, setSheetState] = useState<SheetState>('medium');
-
-  // SELECCIÓN AUTOMÁTICA POR DEFECTO
+  // SELECCIÓN AUTOMÁTICA DE PARADA POR DEFECTO
   const defaultActive =
     stops.find((s) => s.status === 'ARRIVED') ||
     stops.find((s) => s.status === 'EN_ROUTE') ||
@@ -92,38 +91,72 @@ export function RouteMapView({
 
   const [selectedStop, setSelectedStop] = useState<DeliveryStop>(defaultActive);
 
-  // CAMBIO FLUIDO ENTRE NIVELES DEL BOTTOM SHEET
-  const cycleSheetState = (direction?: 'up' | 'down') => {
-    setSheetState((prev) => {
-      if (direction === 'up') {
-        if (prev === 'collapsed') return 'medium';
-        if (prev === 'medium') return 'expanded';
-        return 'expanded';
-      }
-      if (direction === 'down') {
-        if (prev === 'expanded') return 'medium';
-        if (prev === 'medium') return 'collapsed';
-        return 'collapsed';
-      }
-      if (prev === 'collapsed') return 'medium';
-      if (prev === 'medium') return 'expanded';
-      return 'collapsed';
-    });
+  // ALTURA ANIMADA EN TIEMPO REAL CON EL DEDO DEL CHOFER
+  const currentHeightRef = useRef<number>(290); // 290px por defecto (medium)
+  const sheetHeight = useRef(new Animated.Value(290)).current;
+  const [sheetState, setSheetState] = useState<SheetState>('medium');
+
+  const animateToHeight = (targetHeight: number) => {
+    currentHeightRef.current = targetHeight;
+    if (targetHeight <= 120) {
+      setSheetState('collapsed');
+    } else if (targetHeight >= 380) {
+      setSheetState('expanded');
+    } else {
+      setSheetState('medium');
+    }
+
+    Animated.spring(sheetHeight, {
+      toValue: targetHeight,
+      useNativeDriver: false,
+      friction: 7,
+      tension: 65,
+    }).start();
   };
 
-  // PAN RESPONDER FLUIDO PARA ARRASTRAR ARRIBA Y ABAJO
+  const cycleSheetState = (direction?: 'up' | 'down') => {
+    const current = currentHeightRef.current;
+    if (direction === 'up') {
+      if (current < 200) animateToHeight(290);
+      else animateToHeight(480);
+    } else if (direction === 'down') {
+      if (current > 380) animateToHeight(290);
+      else animateToHeight(80);
+    } else {
+      if (current < 200) animateToHeight(290);
+      else if (current < 380) animateToHeight(480);
+      else animateToHeight(80);
+    }
+  };
+
+  // PAN RESPONDER CON SEGUIMIENTO CONTINUO EN TIEMPO REAL AL DEDO
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dy) > 8;
+      onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dy) > 2,
+      onPanResponderGrant: () => {
+        sheetHeight.stopAnimation();
+      },
+      onPanResponderMove: (_, gestureState) => {
+        // En cada movimiento del dedo (dy), la altura cambia en tiempo real a 60fps
+        let newHeight = currentHeightRef.current - gestureState.dy;
+        if (newHeight < 75) newHeight = 75;
+        if (newHeight > 520) newHeight = 520;
+        sheetHeight.setValue(newHeight);
       },
       onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy < -20) {
-          cycleSheetState('up');
-        } else if (gestureState.dy > 20) {
-          cycleSheetState('down');
+        const finalDragHeight = currentHeightRef.current - gestureState.dy;
+        let target = 290;
+
+        if (gestureState.vy < -0.4 || finalDragHeight > 360) {
+          target = 480; // Snap a totalmente expandido
+        } else if (gestureState.vy > 0.4 || finalDragHeight < 160) {
+          target = 80; // Snap a colapsado
+        } else {
+          target = 290; // Snap a medio
         }
+
+        animateToHeight(target);
       },
     }),
   ).current;
@@ -141,8 +174,8 @@ export function RouteMapView({
 
   const handleSelectStop = (stop: DeliveryStop) => {
     setSelectedStop(stop);
-    if (sheetState === 'collapsed') {
-      setSheetState('medium');
+    if (currentHeightRef.current < 200) {
+      animateToHeight(290);
     }
     const coords = SANTA_CRUZ_STOPS_COORDINATES[stop.sequence];
     if (coords && mapRef.current) {
@@ -176,11 +209,32 @@ export function RouteMapView({
     };
     setCurrentRegion(nextRegion);
     mapRef.current?.animateToRegion(nextRegion, 300);
-  };
-
-  const handleOrientNorth = () => {
+  };  const handleOrientNorth = () => {
     setCurrentRegion(SANTA_CRUZ_INITIAL_REGION);
     mapRef.current?.animateToRegion(SANTA_CRUZ_INITIAL_REGION, 400);
+  };
+
+  const handleMyLocation = () => {
+    const driverStop =
+      stops.find((s) => s.status === 'ARRIVED') ||
+      stops.find((s) => s.status === 'EN_ROUTE') ||
+      stops[0];
+
+    if (driverStop) {
+      handleSelectStop(driverStop);
+      const coords = SANTA_CRUZ_STOPS_COORDINATES[driverStop.sequence];
+      if (coords && mapRef.current) {
+        mapRef.current.animateToRegion(
+          {
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            latitudeDelta: 0.012,
+            longitudeDelta: 0.012,
+          },
+          400,
+        );
+      }
+    }
   };
 
   const isWeb = Platform.OS === 'web';
@@ -341,7 +395,30 @@ export function RouteMapView({
         )}
       </View>
 
-      {/* 2. CONTROLES SUPERIORES FLOTANTES */}
+      {/* 2. GRADIENTE DEGRADADO SUAVE DESDE ARRIBA HACIA ABAJO (ADAPTATIVO MODO CLARO / OSCURO) */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 160,
+          zIndex: 15,
+        }}
+      >
+        <Svg height="100%" width="100%">
+          <Defs>
+            <SvgGradient id="topGradient" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={isDark ? '#18181b' : '#ffffff'} stopOpacity={isDark ? 0.92 : 0.95} />
+              <Stop offset="0.55" stopColor={isDark ? '#18181b' : '#ffffff'} stopOpacity={isDark ? 0.55 : 0.65} />
+              <Stop offset="1" stopColor={isDark ? '#18181b' : '#ffffff'} stopOpacity="0.0" />
+            </SvgGradient>
+          </Defs>
+          <Rect x="0" y="0" width="100%" height="100%" fill="url(#topGradient)" />
+        </Svg>
+      </View>
+
       <View
         style={{
           position: 'absolute',
@@ -367,11 +444,6 @@ export function RouteMapView({
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            {onBack && (
-              <TouchableOpacity onPress={onBack} activeOpacity={0.7} style={{ padding: 2 }}>
-                <ArrowLeft size={20} color={theme.colors.foreground} />
-              </TouchableOpacity>
-            )}
             <View>
               <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 10 }}>
                 HOJA DE RUTA
@@ -493,17 +565,18 @@ export function RouteMapView({
         </ScrollView>
       </View>
 
-      {/* 3. BOTONES DE ZOOM Y COMPÁS */}
+      {/* 3. BOTONES DE CONTROL DE MAPA: COMPÁS, MI UBICACIÓN Y ZOOM +, - */}
       <View
         style={{
           position: 'absolute',
-          top: sheetState === 'expanded' ? 120 : 120,
+          top: 140,
           right: 12,
           gap: 8,
           zIndex: 30,
         }}
       >
-        <TouchableOpacity
+        {/* BOTÓN COMPÁS */}
+        {/* <TouchableOpacity
           onPress={handleOrientNorth}
           activeOpacity={0.8}
           style={{
@@ -518,9 +591,29 @@ export function RouteMapView({
             elevation: 5,
           }}
         >
-          <Compass size={20} color={theme.colors.primary} />
+          <Compass size={20} color={theme.colors.foreground} />
+        </TouchableOpacity> */}
+
+        {/* 4TO BOTÓN: MI UBICACIÓN (CHOFER) */}
+        <TouchableOpacity
+          onPress={handleMyLocation}
+          activeOpacity={0.8}
+          style={{
+            backgroundColor: theme.colors.cardBackground,
+            width: 38,
+            height: 38,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: theme.colors.primary,
+            alignItems: 'center',
+            justifyContent: 'center',
+            elevation: 5,
+          }}
+        >
+          <Locate size={20} color={theme.colors.primary} />
         </TouchableOpacity>
 
+        {/* BOTONES DE ZOOM +, - */}
         <View
           style={{
             backgroundColor: theme.colors.cardBackground,
@@ -561,14 +654,15 @@ export function RouteMapView({
         </View>
       </View>
 
-      {/* 4. DRAGGABLE BOTTOM SHEET MULTI-NIVEL PEGADO ABAJO (DESPLIEGUE HASTA ALTO MÁXIMO DEL ~70% DE LA PANTALLA) */}
-      <View
+      {/* 4. DRAGGABLE BOTTOM SHEET EN TIEMPO REAL PEGADO ABAJO DE LA PANTALLA */}
+      <Animated.View
         style={{
           position: 'absolute',
           bottom: 0,
           left: 0,
           right: 0,
-          maxHeight: sheetState === 'expanded' ? '75%' : sheetState === 'medium' ? 290 : 80,
+          height: sheetHeight,
+          overflow: 'hidden',
           backgroundColor: theme.colors.cardBackground,
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
@@ -930,7 +1024,7 @@ export function RouteMapView({
             </View>
           </ScrollView>
         )}
-      </View>
+      </Animated.View>
     </View>
   );
 }

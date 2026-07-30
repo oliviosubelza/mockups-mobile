@@ -82,6 +82,7 @@ export const AppDialog = ({
       animationType="fade"
       transparent={true}
       visible={visible}
+      statusBarTranslucent={true}
       onRequestClose={onClose}
     >
       {/* Fondo Semi-Transparente */}

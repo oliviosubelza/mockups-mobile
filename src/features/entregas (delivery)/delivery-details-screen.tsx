@@ -6,6 +6,7 @@ import {
   TextInput,
   Linking,
   ActivityIndicator,
+  Modal,
 } from "react-native";
 import {
   MapPin,
@@ -25,9 +26,13 @@ import {
   DollarSign,
   Plus,
   Trash2,
-  ShieldCheck,
+  Store,
+  X,
+  CheckSquare,
+  Square,
   RefreshCw,
   Lock,
+  ShieldCheck,
 } from "lucide-react-native";
 
 import { findRouteById, navigateTo } from "@/navigation/registry";
@@ -122,6 +127,25 @@ export const DeliveryDetailScreen = () => {
 
   // Estado de Productos y POD
   const [items, setItems] = useState<DeliveryItem[]>(MOCK_ITEMS);
+  const [checkedItemIds, setCheckedItemIds] = useState<string[]>(
+    MOCK_ITEMS.map((item) => item.id)
+  );
+
+  const isAllChecked = items.length > 0 && checkedItemIds.length === items.length;
+
+  const toggleCheckAll = () => {
+    if (isAllChecked) {
+      setCheckedItemIds([]);
+    } else {
+      setCheckedItemIds(items.map((item) => item.id));
+    }
+  };
+
+  const toggleCheckItem = (id: string) => {
+    setCheckedItemIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
   const [receiverName, setReceiverName] = useState(
     stop.contactName || "Ing. Fernando Roca",
   );
@@ -129,6 +153,36 @@ export const DeliveryDetailScreen = () => {
   const [hasPhoto, setHasPhoto] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+
+  // Estado del Módulo de Registro de Incidencias
+  const [isIncidentModalOpen, setIsIncidentModalOpen] = useState(false);
+  const [incidentCategory, setIncidentCategory] = useState<string>("LOCAL_CERRADO");
+  const [incidentNotes, setIncidentNotes] = useState("");
+  const [incidentPhoto, setIncidentPhoto] = useState(false);
+  const [incidentItemName, setIncidentItemName] = useState<string>("Toda la Entrega");
+
+  const incidentCategoriesMap: Record<string, string> = {
+    LOCAL_CERRADO: "Local Cerrado / Cliente Ausente",
+    PRODUCTO_DANADO: "Mercadería Dañada / Rota",
+    FALTANTE: "Faltante de Producto",
+    PROBLEMA_COBRO: "Rechazo de Pago / Problema de Cobro",
+    RECHAZO_TOTAL: "Rechazo Total del Pedido",
+    OTRO: "Otro Motivo",
+  };
+
+  const handleSaveIncident = () => {
+    stop.status = "INCIDENT";
+    setIsIncidentModalOpen(false);
+    showDialog(
+      "Incidencia Registrada",
+      `Se registro la incidencia (${incidentCategoriesMap[incidentCategory] ?? "Incidencia"}) para ${incidentItemName} exitosamente y se notifico a supervision.`,
+      "warning",
+      () => {
+        const route = findRouteById("entregas.ruta");
+        if (route) navigateTo(route);
+      }
+    );
+  };
 
   // Estado de Diálogo Personalizado (AppDialog)
   const [dialogConfig, setDialogConfig] = useState<{
@@ -569,6 +623,36 @@ export const DeliveryDetailScreen = () => {
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* BOTÓN DE ACCIÓN RÁPIDA: REPORTAR INCIDENCIA */}
+            <TouchableOpacity
+              onPress={() => {
+                setIncidentItemName("Toda la Entrega");
+                setIsIncidentModalOpen(true);
+              }}
+              activeOpacity={0.8}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: theme.colors.dangerSoft,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: theme.colors.danger + "40",
+                paddingVertical: 8,
+                paddingHorizontal: 12,
+                gap: 6,
+                marginTop: 4,
+              }}
+            >
+              <AlertTriangle size={15} color={theme.colors.danger} />
+              <Text
+                variant="label"
+                style={{ fontSize: 12, color: theme.colors.danger, fontWeight: "700" }}
+              >
+                Reportar Incidencia en esta Entrega
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* RESUMEN FINANCIERO DINÁMICO DE COBRO */}
@@ -834,11 +918,58 @@ export const DeliveryDetailScreen = () => {
         {/* TAB 1: PRODUCTOS A DESCARGAR Y PROOF OF DELIVERY (POD) */}
         {activeTab === "productos" && (
           <View style={{ gap: 16 }}>
-            {/* LISTA DE PRODUCTOS */}
+            {/* LISTA DE PRODUCTOS CON CHECKBOX DE VERIFICACIÓN */}
             <View style={{ gap: 10 }}>
-              <Text variant="title" style={{ fontSize: 16 }}>
-                Productos a Descargar ({items.length} items)
-              </Text>
+              {/* ENCABEZADO CON TITULO LIMPIO Y BOTÓN DE MARCAR TODOS */}
+              <View style={{ gap: 4 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text variant="title" style={{ fontSize: 16, color: theme.colors.foreground }}>
+                    Productos a Descargar
+                  </Text>
+
+                  <TouchableOpacity
+                    onPress={toggleCheckAll}
+                    activeOpacity={0.7}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      backgroundColor: isAllChecked ? theme.colors.primarySoft : theme.colors.secondary,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: isAllChecked ? theme.colors.primary : theme.colors.border,
+                    }}
+                  >
+                    {isAllChecked ? (
+                      <CheckSquare size={15} color={theme.colors.primary} />
+                    ) : (
+                      <Square size={15} color={theme.colors.mutedForeground} />
+                    )}
+                    <Text
+                      variant="caption"
+                      style={{
+                        fontWeight: "700",
+                        color: isAllChecked ? theme.colors.primary : theme.colors.foreground,
+                        fontSize: 12,
+                      }}
+                    >
+                      {isAllChecked ? "Todos verificados" : "Marcar Todos"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 12 }}>
+                  Progreso: <Text variant="label" style={{ fontSize: 12, color: theme.colors.primary, fontWeight: "700" }}>{checkedItemIds.length} de {items.length} verificados</Text>
+                </Text>
+              </View>
 
               <View
                 style={{
@@ -851,6 +982,8 @@ export const DeliveryDetailScreen = () => {
               >
                 {items.map((item, index) => {
                   const isLast = index === items.length - 1;
+                  const isChecked = checkedItemIds.includes(item.id);
+
                   return (
                     <View
                       key={item.id}
@@ -858,75 +991,85 @@ export const DeliveryDetailScreen = () => {
                         flexDirection: "row",
                         alignItems: "center",
                         paddingVertical: 12,
-                        paddingHorizontal: 14,
+                        paddingHorizontal: 12,
                         borderBottomWidth: isLast ? 0 : 1,
                         borderBottomColor: theme.colors.border,
+                        backgroundColor: isChecked ? "transparent" : theme.colors.secondary + "40",
+                        gap: 10,
                       }}
                     >
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            gap: 6,
-                          }}
-                        >
+                      {/* CHECKBOX A LA IZQUIERDA */}
+                      <TouchableOpacity
+                        onPress={() => toggleCheckItem(item.id)}
+                        activeOpacity={0.7}
+                        style={{ paddingVertical: 4 }}
+                      >
+                        {isChecked ? (
+                          <CheckSquare size={22} color={theme.colors.primary} />
+                        ) : (
+                          <Square size={22} color={theme.colors.mutedForeground} />
+                        )}
+                      </TouchableOpacity>
+
+                      {/* DETALLE DEL PRODUCTO (FLEX 1 CON TRUNCADO CONTROLADO) */}
+                      <View style={{ flex: 1, gap: 3, overflow: "hidden" }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
                           <Text
                             variant="label"
                             style={{
                               fontWeight: "700",
-                              color: theme.colors.foreground,
+                              fontSize: 12,
+                              color: isChecked ? theme.colors.foreground : theme.colors.mutedForeground,
                             }}
                           >
                             {item.codigo}
                           </Text>
-                          <View
+                          <Text style={{ fontSize: 12, color: theme.colors.mutedForeground }}>•</Text>
+                          <Text
+                            variant="bodySmall"
                             style={{
-                              flexDirection: "row",
-                              alignItems: "center",
-                              gap: 4,
-                              flexShrink: 1,
+                              flex: 1,
+                              fontSize: 13,
+                              fontWeight: "500",
+                              color: isChecked ? theme.colors.foreground : theme.colors.mutedForeground,
                             }}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
                           >
-                            <Text
-                              variant="bodySmall"
-                              style={{ color: theme.colors.foreground }}
-                              numberOfLines={1}
-                            >
-                              {item.nombre}
-                            </Text>
-                            {item.isCold && (
-                              <Snowflake
-                                size={13}
-                                color={theme.colors.primary}
-                              />
-                            )}
-                          </View>
+                            {item.nombre}
+                          </Text>
+                          {item.isCold && (
+                            <View style={{ flexShrink: 0, marginLeft: 2 }}>
+                              <Snowflake size={14} color={theme.colors.primary} />
+                            </View>
+                          )}
                         </View>
+
                         <Text
                           variant="caption"
-                          style={{ color: theme.colors.mutedForeground }}
+                          style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
                         >
-                          Precio:{" "}
-                          <Text variant="label" style={{ fontSize: 11 }}>
-                            Bs. {formatMoney(item.unitPrice)} c/u
-                          </Text>
+                          Precio: <Text variant="label" style={{ fontSize: 11 }}>Bs. {formatMoney(item.unitPrice)} c/u</Text>
                         </Text>
                       </View>
 
+                      {/* BADGE DE CANTIDAD ENTREGADA (ANCHO FIJO A LA DERECHA SIN TRASLAPE) */}
                       <View
                         style={{
-                          backgroundColor: theme.colors.successSoft,
+                          flexShrink: 0,
+                          backgroundColor: isChecked ? theme.colors.successSoft : theme.colors.secondary,
                           paddingHorizontal: 10,
-                          paddingVertical: 4,
+                          paddingVertical: 5,
                           borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: isChecked ? theme.colors.success + "40" : theme.colors.border,
                         }}
                       >
                         <Text
                           style={{
                             fontSize: 12,
                             fontWeight: "700",
-                            color: theme.colors.success,
+                            color: isChecked ? theme.colors.success : theme.colors.mutedForeground,
                           }}
                         >
                           {item.deliveredQty} {item.unit || "unid"}
@@ -2151,6 +2294,212 @@ export const DeliveryDetailScreen = () => {
         title="¡Cobro y Entrega Exitosos!"
         message={`Se registro el cobro completo de Bs. ${formatMoney(TOTAL_ORDER_AMOUNT)} (${payments.length} pago(s) registrado(s)) y el comprobante POD de ${receiverName}.`}
       />
+
+      {/* DIÁLOGO CENTRADO DE REGISTRO DE INCIDENCIAS */}
+      <Modal
+        visible={isIncidentModalOpen}
+        transparent={true}
+        animationType="fade"
+        statusBarTranslucent={true}
+        onRequestClose={() => setIsIncidentModalOpen(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0, 0, 0, 0.65)",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 20,
+            zIndex: 1000,
+          }}
+        >
+          <View
+            style={{
+              width: "100%",
+              maxWidth: 440,
+              backgroundColor: theme.colors.cardBackground,
+              borderRadius: 24,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+              padding: 22,
+              gap: 14,
+              elevation: 12,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.3,
+              shadowRadius: 10,
+            }}
+          >
+            {/* ENCABEZADO DEL DIÁLOGO */}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 21,
+                    backgroundColor: theme.colors.dangerSoft,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <AlertTriangle size={22} color={theme.colors.danger} />
+                </View>
+                <View>
+                  <Text variant="title" style={{ fontSize: 18, color: theme.colors.foreground, fontWeight: "700" }}>
+                    Registrar Incidencia
+                  </Text>
+                  <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 12 }}>
+                    Afecta a: {incidentItemName}
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity onPress={() => setIsIncidentModalOpen(false)} style={{ padding: 4 }}>
+                <X size={20} color={theme.colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+
+            <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 12 }}>
+              Selecciona el tipo de inconveniente registrado durante la entrega:
+            </Text>
+
+            {/* SELECTOR DE CATEGORÍAS */}
+            <View style={{ gap: 8 }}>
+              {Object.entries(incidentCategoriesMap).map(([key, label]) => {
+                const isSelected = incidentCategory === key;
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    activeOpacity={0.8}
+                    onPress={() => setIncidentCategory(key)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      backgroundColor: isSelected ? theme.colors.dangerSoft : theme.colors.secondary,
+                      borderWidth: isSelected ? 1.5 : 1,
+                      borderColor: isSelected ? theme.colors.danger : theme.colors.border,
+                      borderRadius: 12,
+                      padding: 10,
+                      paddingHorizontal: 12,
+                      gap: 10,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 9,
+                        borderWidth: 2,
+                        borderColor: isSelected ? theme.colors.danger : theme.colors.mutedForeground,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {isSelected && (
+                        <View
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: 5,
+                            backgroundColor: theme.colors.danger,
+                          }}
+                        />
+                      )}
+                    </View>
+                    <Text
+                      variant="label"
+                      style={{
+                        fontSize: 13,
+                        color: isSelected ? theme.colors.danger : theme.colors.foreground,
+                        fontWeight: isSelected ? "700" : "500",
+                      }}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* OBSERVACIONES */}
+            <View style={{ gap: 4 }}>
+              <Text variant="caption" style={{ color: theme.colors.foreground, fontWeight: "600" }}>
+                Detalles u Observaciones:
+              </Text>
+              <TextInput
+                value={incidentNotes}
+                onChangeText={setIncidentNotes}
+                placeholder="Escribe aquí los detalles de la incidencia..."
+                placeholderTextColor={theme.colors.mutedForeground}
+                multiline
+                numberOfLines={3}
+                style={{
+                  backgroundColor: theme.colors.secondary,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  padding: 10,
+                  color: theme.colors.foreground,
+                  fontSize: 13,
+                  textAlignVertical: "top",
+                  minHeight: 70,
+                }}
+              />
+            </View>
+
+            {/* FOTO EVIDENCIA */}
+            <TouchableOpacity
+              onPress={() => setIncidentPhoto(true)}
+              activeOpacity={0.8}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: incidentPhoto ? theme.colors.successSoft : theme.colors.secondary,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: incidentPhoto ? theme.colors.success : theme.colors.border,
+                padding: 10,
+                gap: 8,
+              }}
+            >
+              <Camera size={18} color={incidentPhoto ? theme.colors.success : theme.colors.primary} />
+              <Text
+                variant="label"
+                style={{
+                  fontSize: 13,
+                  color: incidentPhoto ? theme.colors.success : theme.colors.primary,
+                  fontWeight: "600",
+                }}
+              >
+                {incidentPhoto ? "✓ Evidencia Fotográfica Adjuntada" : "Capturar Evidencia Fotográfica"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* ACCIONES DEL DIÁLOGO */}
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+              <View style={{ flex: 1 }}>
+                <Button
+                  label="Cancelar"
+                  variant="outline"
+                  fullWidth
+                  onPress={() => setIsIncidentModalOpen(false)}
+                />
+              </View>
+              <View style={{ flex: 1.5 }}>
+                <Button
+                  label="Guardar Incidencia"
+                  icon={AlertTriangle}
+                  variant="danger"
+                  fullWidth
+                  onPress={handleSaveIncident}
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };

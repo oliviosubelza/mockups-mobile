@@ -272,23 +272,6 @@ export function DeliveryRouteScreen() {
       style={{ flex: 1, backgroundColor: theme.colors.mainBackground }}
       contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}
     >
-      {/* BOTÓN VOLVER */}
-      <TouchableOpacity
-        onPress={() => router.back()}
-        activeOpacity={0.7}
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 8,
-          alignSelf: 'flex-start',
-        }}
-      >
-        <ArrowLeft size={20} color={theme.colors.foreground} />
-        <Text variant="label" style={{ fontWeight: '600', color: theme.colors.foreground }}>
-          Volver a Mis Entregas
-        </Text>
-      </TouchableOpacity>
-
       {/* HEADER DE RUTA */}
       <View
         style={{
@@ -297,7 +280,7 @@ export function DeliveryRouteScreen() {
           borderWidth: 1,
           borderColor: theme.colors.border,
           padding: 14,
-          gap: viewMode === 'mapa' ? 0 : 10,
+          gap: 10,
           elevation: 2,
         }}
       >
@@ -311,7 +294,7 @@ export function DeliveryRouteScreen() {
                 {trip.transportOrderCode}
               </Text>
               <Badge
-                label={viewMode === 'mapa' ? `${stats.delivered}/${stats.total} (${stats.progressPercent}%)` : 'EN RUTA'}
+                label="EN RUTA"
                 tone="primary"
                 emphasis="soft"
                 size="sm"
@@ -336,22 +319,23 @@ export function DeliveryRouteScreen() {
                 paddingHorizontal: 12,
                 paddingVertical: 6,
                 borderRadius: 7,
-                backgroundColor: viewMode === 'lista' ? theme.colors.cardBackground : 'transparent',
+                backgroundColor: theme.colors.cardBackground,
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 5,
+                elevation: 1,
               }}
             >
               <ListIcon
                 size={15}
-                color={viewMode === 'lista' ? theme.colors.primary : theme.colors.mutedForeground}
+                color={theme.colors.primary}
               />
               <Text
                 variant="label"
                 style={{
                   fontSize: 12,
-                  color: viewMode === 'lista' ? theme.colors.primary : theme.colors.mutedForeground,
-                  fontWeight: viewMode === 'lista' ? '700' : '500',
+                  color: theme.colors.primary,
+                  fontWeight: '700',
                 }}
               >
                 Lista
@@ -365,7 +349,7 @@ export function DeliveryRouteScreen() {
                 paddingHorizontal: 12,
                 paddingVertical: 6,
                 borderRadius: 7,
-                backgroundColor: viewMode === 'mapa' ? theme.colors.cardBackground : 'transparent',
+                backgroundColor: 'transparent',
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 5,
@@ -373,14 +357,14 @@ export function DeliveryRouteScreen() {
             >
               <MapIcon
                 size={15}
-                color={viewMode === 'mapa' ? theme.colors.primary : theme.colors.mutedForeground}
+                color={theme.colors.mutedForeground}
               />
               <Text
                 variant="label"
                 style={{
                   fontSize: 12,
-                  color: viewMode === 'mapa' ? theme.colors.primary : theme.colors.mutedForeground,
-                  fontWeight: viewMode === 'mapa' ? '700' : '500',
+                  color: theme.colors.mutedForeground,
+                  fontWeight: '500',
                 }}
               >
                 Mapa
@@ -389,68 +373,60 @@ export function DeliveryRouteScreen() {
           </View>
         </View>
 
-        {viewMode === 'lista' && (
-          <>
-            <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginTop: 2 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Truck size={14} color={theme.colors.mutedForeground} />
-                <Text variant="label" style={{ fontSize: 13, color: theme.colors.foreground }}>
-                  {trip.truckCode} ({trip.truckPlate})
-                </Text>
-              </View>
+        <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginTop: 2 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <Truck size={14} color={theme.colors.mutedForeground} />
+            <Text variant="label" style={{ fontSize: 13, color: theme.colors.foreground }}>
+              {trip.truckCode} ({trip.truckPlate})
+            </Text>
+          </View>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <User size={14} color={theme.colors.mutedForeground} />
-                <Text variant="label" style={{ fontSize: 13, color: theme.colors.foreground }}>
-                  {trip.driverName}
-                </Text>
-              </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <User size={14} color={theme.colors.mutedForeground} />
+            <Text variant="label" style={{ fontSize: 13, color: theme.colors.foreground }}>
+              {trip.driverName}
+            </Text>
+          </View>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Weight size={14} color={theme.colors.mutedForeground} />
-                <Text variant="caption" style={{ fontSize: 12, color: theme.colors.mutedForeground }}>
-                  {trip.assignedWeightKg} kg • {trip.assignedVolumeM3} m³
-                </Text>
-              </View>
-            </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <Weight size={14} color={theme.colors.mutedForeground} />
+            <Text variant="caption" style={{ fontSize: 12, color: theme.colors.mutedForeground }}>
+              {trip.assignedWeightKg} kg • {trip.assignedVolumeM3} m³
+            </Text>
+          </View>
+        </View>
 
-            <View style={{ gap: 6, marginTop: 2 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text variant="caption" style={{ color: theme.colors.mutedForeground }}>
-                  Progreso de la Ruta: <Text variant="label" style={{ color: theme.colors.foreground }}>{stats.delivered} de {stats.total} Paradas</Text>
-                </Text>
-                <Text variant="label" style={{ color: theme.colors.primary, fontWeight: '700' }}>
-                  {stats.progressPercent}%
-                </Text>
-              </View>
-              <View
-                style={{
-                  height: 7,
-                  backgroundColor: theme.colors.secondary,
-                  borderRadius: 4,
-                  overflow: 'hidden',
-                }}
-              >
-                <View
-                  style={{
-                    width: `${stats.progressPercent}%`,
-                    height: '100%',
-                    backgroundColor: theme.colors.primary,
-                    borderRadius: 4,
-                  }}
-                />
-              </View>
-            </View>
-          </>
-        )}
+        <View style={{ gap: 6, marginTop: 2 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text variant="caption" style={{ color: theme.colors.mutedForeground }}>
+              Progreso de la Ruta: <Text variant="label" style={{ color: theme.colors.foreground }}>{stats.delivered} de {stats.total} Paradas</Text>
+            </Text>
+            <Text variant="label" style={{ color: theme.colors.primary, fontWeight: '700' }}>
+              {stats.progressPercent}%
+            </Text>
+          </View>
+          <View
+            style={{
+              height: 7,
+              backgroundColor: theme.colors.secondary,
+              borderRadius: 4,
+              overflow: 'hidden',
+            }}
+          >
+            <View
+              style={{
+                width: `${stats.progressPercent}%`,
+                height: '100%',
+                backgroundColor: theme.colors.primary,
+                borderRadius: 4,
+              }}
+            />
+          </View>
+        </View>
       </View>
 
-      {/* MODO MAPA VS MODO LISTA */}
-      {viewMode === 'mapa' ? (
-        <RouteMapView stops={stops} onSelectStopDetail={handleOpenDetail} />
-      ) : (
-        <>
-          {activeStop && (
+      {/* VISTA EN MODO LISTA */}
+      {activeStop && (
             <View
               style={{
                 backgroundColor: theme.colors.cardBackground,
@@ -476,7 +452,7 @@ export function DeliveryRouteScreen() {
                 </View>
               </View>
 
-              <View style={{ gap: 4, backgroundColor: theme.colors.secondary, padding: 8, borderRadius: 8 }}>
+              <View style={{ gap: 6, backgroundColor: theme.colors.secondary, padding: 8, borderRadius: 8 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                   <MapPin size={13} color={theme.colors.primary} />
                   <Text variant="caption" style={{ color: theme.colors.foreground, fontSize: 11, flex: 1 }} numberOfLines={1}>
@@ -484,18 +460,18 @@ export function DeliveryRouteScreen() {
                   </Text>
                 </View>
 
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Clock size={12} color={theme.colors.mutedForeground} />
+                <View style={{ gap: 3, marginTop: 2 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <Weight size={12} color={theme.colors.mutedForeground} />
                     <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
-                      {activeStop.deliveryWindow}
+                      Carga: <Text variant="label" style={{ fontSize: 11 }}>{activeStop.packagesCount}</Text>
                     </Text>
                   </View>
 
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Weight size={12} color={theme.colors.mutedForeground} />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <Clock size={12} color={theme.colors.mutedForeground} />
                     <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
-                      Carga: {activeStop.packagesCount}
+                      Ventana horaria: <Text variant="label" style={{ fontSize: 11 }}>{activeStop.deliveryWindow}</Text>
                     </Text>
                   </View>
                 </View>
@@ -624,13 +600,20 @@ export function DeliveryRouteScreen() {
                           {stop.address}
                         </Text>
 
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 2 }}>
-                          <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>
-                            Carga: <Text variant="label" style={{ fontSize: 11 }}>{stop.packagesCount}</Text>
-                          </Text>
-                          <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>
-                            Ventana: <Text variant="label" style={{ fontSize: 11 }}>{stop.deliveryWindow}</Text>
-                          </Text>
+                        <View style={{ gap: 2, marginTop: 2 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Weight size={11} color={theme.colors.mutedForeground} />
+                            <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>
+                              Carga: <Text variant="label" style={{ fontSize: 11 }}>{stop.packagesCount}</Text>
+                            </Text>
+                          </View>
+
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Clock size={11} color={theme.colors.mutedForeground} />
+                            <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>
+                              Ventana horaria: <Text variant="label" style={{ fontSize: 11 }}>{stop.deliveryWindow}</Text>
+                            </Text>
+                          </View>
                         </View>
                       </View>
 
@@ -643,8 +626,6 @@ export function DeliveryRouteScreen() {
               </View>
             )}
           </View>
-        </>
-      )}
 
       <AppDialog
         visible={dialogConfig.visible}

@@ -130,11 +130,17 @@ export default function DespachosScreen() {
         <ListSkeleton />
       ) : (
         <View style={{ gap: 12 }}>
+          <Text
+            variant="title"
+            style={{ fontSize: 20, fontWeight: "100", color: theme.colors.foreground }}
+          >
+            Órdenes de Transporte
+          </Text>
           {/* COMPONENTE REUTILIZABLE DE BÚSQUEDA */}
           <SearchField
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Buscar ID SAP o Cliente..."
+            placeholder="Buscar por OT, ID o Cliente..."
           />
 
           {/* COMPONENTE REUTILIZABLE DE CHIPS DE FILTRO */}
@@ -153,8 +159,8 @@ export default function DespachosScreen() {
           >
             <Text variant="caption">
               {hasActiveFilters
-                ? `Mostrando ${despachosFiltrados.length} de ${despachos.length} despachos`
-                : `${despachos.length} despachos en total`}
+                ? `Mostrando ${despachosFiltrados.length} de ${despachos.length} órdenes`
+                : `${despachos.length} órdenes en total`}
             </Text>
             {hasActiveFilters && (
               <TouchableOpacity
@@ -173,7 +179,7 @@ export default function DespachosScreen() {
             )}
           </Box>
 
-          {/* LISTA DE TARJETAS UTILIZANDO COMPONENTE REUTILIZABLE DespachoCard */}
+          {/* LISTA COMPACTA EN TIPO LIST TILE */}
           {despachosFiltrados.length === 0 ? (
             <View
               style={{
@@ -192,14 +198,16 @@ export default function DespachosScreen() {
               </Text>
             </View>
           ) : (
-            despachosFiltrados.map((despacho, index) => (
-              <DespachoCard
-                key={despacho.id}
-                despacho={despacho}
-                sequence={index + 1}
-                onPress={() => openChequeo(despacho)}
-              />
-            ))
+            <View style={{ gap: 8 }}>
+              {despachosFiltrados.map((despacho, index) => (
+                <DespachoCard
+                  key={despacho.id}
+                  despacho={despacho}
+                  sequence={index + 1}
+                  onPress={() => openChequeo(despacho)}
+                />
+              ))}
+            </View>
           )}
         </View>
       )}

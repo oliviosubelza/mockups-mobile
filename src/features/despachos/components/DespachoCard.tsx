@@ -34,112 +34,108 @@ export function DespachoCard({
         flexDirection: "row",
         alignItems: "center",
         backgroundColor: theme.colors.cardBackground,
-        padding: 10,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
         borderRadius: 12,
-        marginBottom: 8,
         borderWidth: 1,
         borderColor: theme.colors.border,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 2,
       }}
     >
-      {/* LEADING: Secuencia */}
+      {/* LEADING: Secuencia badge */}
       <View
         style={{
           backgroundColor: theme.colors.secondary,
-          width: 40,
-          height: 40,
-          borderRadius: 20,
+          width: 34,
+          height: 34,
+          borderRadius: 17,
           alignItems: "center",
           justifyContent: "center",
-          marginRight: 12,
+          marginRight: 10,
         }}
       >
         <Text
           variant="label"
           style={{
-            fontWeight: "bold",
+            fontWeight: "700",
             color: theme.colors.foreground,
-            fontSize: 16,
+            fontSize: 14,
           }}
         >
           {sequence}
         </Text>
       </View>
 
-      {/* BODY: Información principal */}
-      <View style={{ flex: 1, gap: 4 }}>
+      {/* BODY: Información compacta */}
+      <View style={{ flex: 1, justifyContent: "center" }}>
+        {/* Fila 1: Código OT + Badge de Estado */}
         <View
           style={{
             flexDirection: "row",
             justifyContent: "space-between",
             alignItems: "center",
+            marginBottom: 2,
           }}
         >
           <Text
             variant="label"
             style={{
-              fontSize: 18,
+              fontSize: 15,
               fontWeight: "700",
               color: theme.colors.foreground,
             }}
           >
-            {despacho.codigo}
+            OT-{despacho.codigo}
           </Text>
-          <Badge label={meta.label} tone={meta.tone} emphasis="soft" />
+          <Badge label={meta.label} tone={meta.tone} emphasis="soft" size="sm" />
         </View>
 
-        {/* Detalles de envío */}
-        <View style={{ gap: 2, marginTop: 2 }}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <MapPin color={theme.colors.mutedForeground} size={14} style={{ marginRight: 4 }} />
-            <Text
-              variant="label"
-              style={{ color: theme.colors.mutedForeground, fontSize: 14 }}
-              numberOfLines={1}
-            >
-              {despacho.cliente} - {despacho.id}
+        {/* Fila 2: Cliente & ID SAP */}
+        <Text
+          variant="label"
+          style={{
+            color: theme.colors.mutedForeground,
+            fontSize: 13,
+            marginBottom: 4,
+          }}
+          numberOfLines={1}
+        >
+          {despacho.cliente} • ID: {despacho.id}
+        </Text>
+
+        {/* Fila 3: Metadatos en línea ultra compacta */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+            <ListOrdered color={theme.colors.mutedForeground} size={12} />
+            <Text variant="label" style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>
+              {paradas}
             </Text>
           </View>
 
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-              marginTop: 2,
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <ListOrdered color={theme.colors.mutedForeground} size={14} style={{ marginRight: 4 }} />
-              <Text variant="label" style={{ color: theme.colors.mutedForeground, fontSize: 13 }}>
-                {paradas}
-              </Text>
-            </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+            <Clock color={theme.colors.mutedForeground} size={12} />
+            <Text variant="label" style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>
+              {timeWindow}
+            </Text>
+          </View>
 
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Clock color={theme.colors.mutedForeground} size={14} style={{ marginRight: 4 }} />
-              <Text variant="label" style={{ color: theme.colors.mutedForeground, fontSize: 13 }}>
-                {timeWindow}
-              </Text>
-            </View>
-
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Weight color={theme.colors.mutedForeground} size={14} style={{ marginRight: 4 }} />
-              <Text variant="label" style={{ color: theme.colors.mutedForeground, fontSize: 13 }}>
-                {weight}
-              </Text>
-            </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+            <Weight color={theme.colors.mutedForeground} size={12} />
+            <Text variant="label" style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>
+              {weight}
+            </Text>
           </View>
         </View>
       </View>
 
-      {/* TRAILING: Action Arrow */}
+      {/* TRAILING: Chevron Right */}
       <View style={{ marginLeft: 8 }}>
-        <ChevronRight color={theme.colors.mutedForeground} size={24} />
+        <ChevronRight color={theme.colors.mutedForeground} size={20} />
       </View>
     </TouchableOpacity>
   );

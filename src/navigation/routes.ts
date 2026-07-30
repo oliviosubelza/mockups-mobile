@@ -7,6 +7,8 @@ import SettingsScreen from '@/features/settings/screen';
 
 import type { RouteInterface } from './types';
 import { DeliveryScreen } from '@/features/entregas (delivery)/delivery-screen';
+import { DeliveryRouteScreen } from '@/features/entregas (delivery)/DeliveryRouteScreen';
+import { RegistrarVisitaScreen } from '@/features/entregas (delivery)/RegistrarVisitaScreen';
 import { DeliveryDetailScreen } from '@/features/entregas (delivery)/delivery-details-screen';
 
 /**
@@ -18,8 +20,8 @@ export const routes: RouteInterface[] = [
   {
     id: 'despachos',
     path: '/despachos',
-    title: 'Mis Despachos',
-    description: 'Despachos asignados a tu cuenta',
+    title: 'Revision a ciegas',
+    description: 'Ordenes de transporte asignados a tu cuenta',
     icon: Truck,
     component: DespachosScreen,
     showInHome: true,
@@ -30,7 +32,7 @@ export const routes: RouteInterface[] = [
       {
         id: 'despachos.chequeo',
         path: '/despachos/chequeo',
-        title: 'Revision a Ciegas',
+        title: 'Revision por Orden',
         icon: ClipboardCheck,
         component: ChequeoScreen,
       },
@@ -48,6 +50,20 @@ export const routes: RouteInterface[] = [
     badge: 4,
     order: 0,
     subRoutes: [
+      {
+        id: 'entregas.ruta',
+        path: '/entregas/ruta',
+        title: 'Hoja de Ruta',
+        icon: Truck,
+        component: DeliveryRouteScreen,
+      },
+      {
+        id: 'entregas.registrarVisita',
+        path: '/entregas/registrar-visita',
+        title: 'Registrar Visita',
+        icon: ClipboardCheck,
+        component: RegistrarVisitaScreen,
+      },
       {
         id: 'entregas.detalle',
         path: '/entregas/detalle',

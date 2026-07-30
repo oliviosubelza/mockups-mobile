@@ -10,6 +10,8 @@ const SEED: Despacho[] = [
   { id: '2046', codigo: '1000457', cliente: 'Comercial del Sur', estado: 'pendiente' },
   { id: '2044', codigo: '1000458', cliente: 'Mayorista Central', estado: 'cargado' },
   { id: '2043', codigo: '1000459', cliente: 'Almacenes Norte', estado: 'aprobado' },
+  { id: '2042', codigo: '98421', cliente: 'Hipermaxi Equipetrol Norte', estado: 'aprobado' },
+  { id: '2041', codigo: '98422', cliente: 'IC Norte - Cristo Redentor', estado: 'aprobado' },
 ];
 
 type DespachosState = {
@@ -21,6 +23,7 @@ type DespachosState = {
   removeCheck: (despachoId: string, checkId: string) => void;
   /** Mockup "send to verify": marks the dispatch as loaded. */
   guardar: (despachoId: string) => void;
+  anular: (despachoId: string) => void;
 };
 
 export const useDespachos = create<DespachosState>((set) => ({
@@ -59,6 +62,11 @@ export const useDespachos = create<DespachosState>((set) => ({
           ? { ...d, estado: 'cargado' }
           : d,
       ),
+    })),
+
+  anular: (despachoId) =>
+    set((state) => ({
+      despachos: state.despachos.filter((d) => d.id !== despachoId),
     })),
 }));
 

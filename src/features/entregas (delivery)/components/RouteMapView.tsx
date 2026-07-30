@@ -35,6 +35,7 @@ import {
   Store,
   ChevronsUp,
   Locate,
+  ClipboardList,
 } from 'lucide-react-native';
 
 import { Button, Badge } from '@/shared/ui';
@@ -51,6 +52,7 @@ import type { DeliveryStop } from '../types';
 type Props = {
   stops: DeliveryStop[];
   onSelectStopDetail: (stop: DeliveryStop) => void;
+  onRegistrarVisita?: (stop: DeliveryStop) => void;
   tripCode?: string;
   statsLabel?: string;
   onSwitchToLista?: () => void;
@@ -72,6 +74,7 @@ const WEB_PIN_PERCENTAGES: Record<number, { left: number; top: number }> = {
 export function RouteMapView({
   stops,
   onSelectStopDetail,
+  onRegistrarVisita,
   tripCode = 'OT-98421',
   statsLabel = '2/6 (33%)',
   onSwitchToLista,
@@ -1005,14 +1008,30 @@ export function RouteMapView({
             </View>
 
             {/* BOTONES DE ACCIÓN PRINCIPALES */}
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-              <Button
-                label="Llamar al Cliente"
-                icon={Phone}
-                variant="outline"
-                fullWidth
-                onPress={() => handleCall(selectedStop.contactPhone)}
-              />
+            <View style={{ gap: 8, marginTop: 4 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Button
+                    label="Llamar"
+                    icon={Phone}
+                    variant="outline"
+                    fullWidth
+                    onPress={() => handleCall(selectedStop.contactPhone)}
+                  />
+                </View>
+
+                {onRegistrarVisita && (
+                  <View style={{ flex: 1.2 }}>
+                    <Button
+                      label="Registrar Visita"
+                      icon={ClipboardList}
+                      variant="secondary"
+                      fullWidth
+                      onPress={() => onRegistrarVisita(selectedStop)}
+                    />
+                  </View>
+                )}
+              </View>
 
               <Button
                 label="Ver Detalle de Parada"

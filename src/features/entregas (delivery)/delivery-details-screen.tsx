@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   ScrollView,
   View,
@@ -33,6 +33,8 @@ import {
   RefreshCw,
   Lock,
   ShieldCheck,
+  ClipboardList,
+  Navigation,
 } from "lucide-react-native";
 
 import { findRouteById, navigateTo } from "@/navigation/registry";
@@ -40,6 +42,7 @@ import { Badge, Button, AppDialog, type DialogType } from "@/shared/ui";
 import { SuccessDialog } from "@/shared/ui/SuccessDialog";
 import { Text, useAppTheme } from "@/theme";
 import { getSelectedStop } from "./data/delivery-store";
+import { SANTA_CRUZ_STOPS_COORDINATES } from "./data/santa-cruz-route";
 import type { EstadoEntrega } from "./types";
 
 type DeliveryItem = {
@@ -73,33 +76,33 @@ const formatMoney = (val?: number | null): string => {
 const MOCK_ITEMS: DeliveryItem[] = [
   {
     id: "1",
-    codigo: "7790001",
-    nombre: "Ketchup Girasol 900ml",
-    plannedQty: 12,
-    deliveredQty: 12,
-    isCold: false,
-    unit: "unid",
-    unitPrice: 100.0,
+    codigo: "7790010",
+    nombre: "Queso Gouda Bloque 5kg",
+    plannedQty: 8,
+    deliveredQty: 8,
+    isCold: true,
+    unit: "cajas",
+    unitPrice: 280.0,
   },
   {
     id: "2",
-    codigo: "7790003",
-    nombre: "Levadura Fleischmann 500g",
-    plannedQty: 10,
-    deliveredQty: 10,
+    codigo: "7790025",
+    nombre: "Mantequilla Cremosa Con Sal 500g",
+    plannedQty: 15,
+    deliveredQty: 15,
     isCold: true,
-    unit: "unid",
-    unitPrice: 120.0,
+    unit: "packs",
+    unitPrice: 110.0,
   },
   {
     id: "3",
-    codigo: "7790005",
-    nombre: "Salsa Golf 500g",
-    plannedQty: 5,
-    deliveredQty: 5,
+    codigo: "7790040",
+    nombre: "Ketchup Girasol Institucional 5kg",
+    plannedQty: 12,
+    deliveredQty: 12,
     isCold: false,
-    unit: "unid",
-    unitPrice: 140.0,
+    unit: "baldes",
+    unitPrice: 95.0,
   },
 ];
 
@@ -109,26 +112,29 @@ export const DeliveryDetailScreen = () => {
   // OBTENER LA PARADA SELECCIONADA DINÁMICAMENTE DE LA HOJA DE RUTA
   const stop = getSelectedStop();
 
-  // VALIDACIÓN CLAVE: EL COBRO SOLO SE HABILITA PARA EL PUNTO DE ENTREGA DONDE SE ENCUENTRA EL CHOFER (ESTADO: ARRIVED)
-  const isPaymentEnabled = stop.status === "ARRIVED";
+  // ESTADO LOCAL DE LA PARADA (SOPORTA TRANSIÓN 'EN_ROUTE' / 'PENDING' -> 'ARRIVED')
+  const [currentStatus, setCurrentStatus] = useState<EstadoEntrega>(stop.status);
 
-  // Extraer monto parseado o valor por defecto
-  const parseNetTotal = (netStr?: string) => {
-    if (!netStr) return 3100.0;
-    const num = parseFloat(netStr.replace(/[^0-9.]/g, ""));
-    return isNaN(num) || num <= 0 ? 3100.0 : num;
-  };
-  const TOTAL_ORDER_AMOUNT = parseNetTotal(stop.netTotal);
+  // VALIDACIÓN CLAVE: EL COBRO Y DESCARGA SE HABILITA AL INICIAR LA ENTREGA (ESTADO: ARRIVED O DELIVERED)
+  const isPaymentEnabled = currentStatus === "ARRIVED" || currentStatus === "DELIVERED";
+
+  // Estado de Productos y POD
+  const [items, setItems] = useState<DeliveryItem[]>(MOCK_ITEMS);
+  const [checkedItemIds, setCheckedItemIds] = useState<string[]>([]);
+
+  // CÁLCULO DINÁMICO DEL TOTAL A COBRAR EN BASE A LOS PRODUCTOS MARCADOS (TICKEADOS) POR EL CHOFER
+  const TOTAL_ORDER_AMOUNT = useMemo(() => {
+    return items
+      .filter((item) => checkedItemIds.includes(item.id))
+      .reduce(
+        (acc, item) => acc + (item.deliveredQty || 0) * (item.unitPrice || 0),
+        0
+      );
+  }, [items, checkedItemIds]);
 
   // Tab Principal: 'productos' vs 'cobro'
   const [activeTab, setActiveTab] = useState<"productos" | "cobro">(
     "productos",
-  );
-
-  // Estado de Productos y POD
-  const [items, setItems] = useState<DeliveryItem[]>(MOCK_ITEMS);
-  const [checkedItemIds, setCheckedItemIds] = useState<string[]>(
-    MOCK_ITEMS.map((item) => item.id)
   );
 
   const isAllChecked = items.length > 0 && checkedItemIds.length === items.length;
@@ -251,12 +257,41 @@ export const DeliveryDetailScreen = () => {
   };
 
   const backToList = () => {
-    const route = findRouteById("entregas");
+    const route = findRouteById("entregas.ruta");
     if (route) navigateTo(route);
   };
 
   const handleCall = () => {
     Linking.openURL(`tel:${stop.contactPhone}`);
+  };
+
+  const handleGoRegistrarVisita = () => {
+    const route = findRouteById("entregas.registrarVisita");
+    if (route) navigateTo(route);
+  };
+
+  const handleOpenGoogleMaps = () => {
+    // Ubicación actual del chofer (GPS)
+    const driverLat = -17.805;
+    const driverLng = -63.201;
+
+    // Ubicación de la parada destino elegida
+    const destCoords = SANTA_CRUZ_STOPS_COORDINATES[stop.sequence] || {
+      latitude: -17.768,
+      longitude: -63.195,
+    };
+
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${driverLat},${driverLng}&destination=${destCoords.latitude},${destCoords.longitude}&travelmode=driving`;
+    Linking.openURL(url);
+  };
+
+  const handleStartDelivery = () => {
+    setCurrentStatus("ARRIVED");
+    showDialog(
+      "🚚 Entrega Iniciada",
+      `Has marcado llegada a la parada de ${stop.clientName}. Ya puedes verificar los productos a descargar y procesar el cobro.`,
+      "success"
+    );
   };
 
   const handleSimulatePhoto = () => {
@@ -624,35 +659,54 @@ export const DeliveryDetailScreen = () => {
               </TouchableOpacity>
             </View>
 
-            {/* BOTÓN DE ACCIÓN RÁPIDA: REPORTAR INCIDENCIA */}
-            <TouchableOpacity
-              onPress={() => {
-                setIncidentItemName("Toda la Entrega");
-                setIsIncidentModalOpen(true);
-              }}
-              activeOpacity={0.8}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: theme.colors.dangerSoft,
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: theme.colors.danger + "40",
-                paddingVertical: 8,
-                paddingHorizontal: 12,
-                gap: 6,
-                marginTop: 4,
-              }}
-            >
-              <AlertTriangle size={15} color={theme.colors.danger} />
-              <Text
-                variant="label"
-                style={{ fontSize: 12, color: theme.colors.danger, fontWeight: "700" }}
-              >
-                Reportar Incidencia en esta Entrega
-              </Text>
-            </TouchableOpacity>
+            {/* BOTONES DE ACCIÓN RÁPIDA: INICIAR ENTREGA, CÓMO LLEGAR, REGISTRAR VISITA & INCIDENCIA */}
+            <View style={{ gap: 8, marginTop: 4 }}>
+              {currentStatus !== "ARRIVED" && currentStatus !== "DELIVERED" && (
+                <Button
+                  label="Iniciar Entrega (Marcar Llegada)"
+                  icon={CheckCircle2}
+                  variant="primary"
+                  size="md"
+                  fullWidth
+                  onPress={handleStartDelivery}
+                />
+              )}
+
+              <Button
+                label="Cómo Llegar (Abrir en Google Maps)"
+                icon={Navigation}
+                variant="outline"
+                size="sm"
+                fullWidth
+                onPress={handleOpenGoogleMaps}
+              />
+
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Button
+                    label="Registrar Visita"
+                    icon={ClipboardList}
+                    variant="secondary"
+                    size="sm"
+                    fullWidth
+                    onPress={handleGoRegistrarVisita}
+                  />
+                </View>
+                <View style={{ flex: 1.2 }}>
+                  <Button
+                    label="Reportar Incidencia"
+                    icon={AlertTriangle}
+                    variant="danger"
+                    size="sm"
+                    fullWidth
+                    onPress={() => {
+                      setIncidentItemName("Toda la Entrega");
+                      setIsIncidentModalOpen(true);
+                    }}
+                  />
+                </View>
+              </View>
+            </View>
           </View>
 
           {/* RESUMEN FINANCIERO DINÁMICO DE COBRO */}
@@ -689,11 +743,19 @@ export const DeliveryDetailScreen = () => {
 
               <Badge
                 label={
-                  pendingBalance === 0
+                  TOTAL_ORDER_AMOUNT === 0
+                    ? "Selecciona productos"
+                    : pendingBalance === 0
                     ? "Cobrado 100%"
                     : `Pendiente: Bs. ${formatMoney(pendingBalance)}`
                 }
-                tone={pendingBalance === 0 ? "success" : "danger"}
+                tone={
+                  TOTAL_ORDER_AMOUNT === 0
+                    ? "warning"
+                    : pendingBalance === 0
+                    ? "success"
+                    : "danger"
+                }
                 emphasis="soft"
                 size="md"
               />
@@ -724,28 +786,26 @@ export const DeliveryDetailScreen = () => {
                   variant="caption"
                   style={{ fontSize: 11, color: theme.colors.mutedForeground }}
                 >
-                  {Math.min(
-                    100,
-                    Math.round((totalPaid / TOTAL_ORDER_AMOUNT) * 100),
-                  )}
-                  %
+                  {TOTAL_ORDER_AMOUNT > 0
+                    ? Math.min(100, Math.max(0, Math.round((totalPaid / TOTAL_ORDER_AMOUNT) * 100)))
+                    : 0}%
                 </Text>
               </View>
 
               <View
                 style={{
                   height: 6,
-                  backgroundColor: theme.colors.cardBackground,
+                  backgroundColor: theme.colors.secondary,
                   borderRadius: 3,
                   overflow: "hidden",
                 }}
               >
                 <View
                   style={{
-                    width: `${Math.min(100, (totalPaid / TOTAL_ORDER_AMOUNT) * 100)}%`,
+                    width: `${TOTAL_ORDER_AMOUNT > 0 ? Math.min(100, Math.max(0, (totalPaid / TOTAL_ORDER_AMOUNT) * 100)) : 0}%`,
                     height: "100%",
                     backgroundColor:
-                      pendingBalance === 0 ? "#22c55e" : theme.colors.primary,
+                      TOTAL_ORDER_AMOUNT > 0 && pendingBalance === 0 ? "#22c55e" : theme.colors.primary,
                     borderRadius: 3,
                   }}
                 />
@@ -1049,7 +1109,7 @@ export const DeliveryDetailScreen = () => {
                           variant="caption"
                           style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
                         >
-                          Precio: <Text variant="label" style={{ fontSize: 11 }}>Bs. {formatMoney(item.unitPrice)} c/u</Text>
+                          Bs. {formatMoney(item.unitPrice)} c/u • <Text variant="label" style={{ fontSize: 11, fontWeight: "700", color: theme.colors.foreground }}>Subtotal: Bs. {formatMoney((item.deliveredQty || 0) * (item.unitPrice || 0))}</Text>
                         </Text>
                       </View>
 
@@ -2262,11 +2322,11 @@ export const DeliveryDetailScreen = () => {
               )}
             </View>
 
-            {/* BOTÓN PRINCIPAL FINALIZAR COBRO */}
-            {stop.status == "ARRIVED" && (
+            {/* BOTÓN PRINCIPAL FINALIZAR ENTREGA */}
+            {stop.status !== "DELIVERED" && (
               <Button
-                label="Finalizar Cobro y Confirmar Entrega"
-                variant="primary"
+                label="Finalizar Entrega"
+                variant="success"
                 size="md"
                 fullWidth
                 icon={CheckCircle2}
@@ -2291,8 +2351,8 @@ export const DeliveryDetailScreen = () => {
       <SuccessDialog
         visible={showSuccess}
         onClose={backToList}
-        title="¡Cobro y Entrega Exitosos!"
-        message={`Se registro el cobro completo de Bs. ${formatMoney(TOTAL_ORDER_AMOUNT)} (${payments.length} pago(s) registrado(s)) y el comprobante POD de ${receiverName}.`}
+        title="¡Entrega Finalizada Exitosamente!"
+        message={`Se ha registrado la entrega y el cobro completo de la Parada #${stop.sequence}: ${stop.clientName}.`}
       />
 
       {/* DIÁLOGO CENTRADO DE REGISTRO DE INCIDENCIAS */}

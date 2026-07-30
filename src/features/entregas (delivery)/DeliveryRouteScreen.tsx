@@ -16,6 +16,7 @@ import {
   List as ListIcon,
   Store,
   ArrowLeft,
+  ClipboardList,
 } from 'lucide-react-native';
 
 import { router } from 'expo-router';
@@ -49,13 +50,13 @@ const INITIAL_STOPS: DeliveryStop[] = [
     contactName: 'Lic. Roberto Gómez (Almacén Alimentos)',
     contactPhone: '+591 71234567',
     deliveryWindow: '08:00 - 09:30 hs',
-    status: 'DELIVERED',
+    status: 'EN_ROUTE',
     isCold: true,
     packagesCount: '180.5 kg • 0.6 m³',
     weightKg: 180.5,
     volumeM3: 0.6,
     totalUnits: 96,
-    netTotal: 'Bs. 2,450.00',
+    netTotal: 'Bs. 5,030.00',
     notes: 'Recibe en rampa de frío con sello.',
     latitude: -17.768,
     longitude: -63.195,
@@ -69,13 +70,13 @@ const INITIAL_STOPS: DeliveryStop[] = [
     contactName: 'Marcos Vargas (Recepción Abarrotes)',
     contactPhone: '+591 72345678',
     deliveryWindow: '09:30 - 11:00 hs',
-    status: 'DELIVERED',
+    status: 'PENDING',
     isCold: false,
     packagesCount: '340.0 kg • 1.1 m³',
     weightKg: 340.0,
     volumeM3: 1.1,
     totalUnits: 180,
-    netTotal: 'Bs. 5,120.00',
+    netTotal: 'Bs. 3,450.00',
     notes: 'Descarga por rampa trasera de proveedores.',
     latitude: -17.752,
     longitude: -63.181,
@@ -89,14 +90,14 @@ const INITIAL_STOPS: DeliveryStop[] = [
     contactName: 'Ing. Fernando Roca',
     contactPhone: '+591 73456789',
     deliveryWindow: '11:00 - 12:30 hs',
-    status: 'INCIDENT',
+    status: 'PENDING',
     isCold: true,
     packagesCount: '520.0 kg • 1.8 m³',
     weightKg: 520.0,
     volumeM3: 1.8,
     totalUnits: 264,
-    netTotal: 'Bs. 8,900.00',
-    notes: 'Incidencia reportada en parada anterior.',
+    netTotal: 'Bs. 9,800.00',
+    notes: 'Revisar temperatura de bultos al entregar.',
     latitude: -17.792,
     longitude: -63.184,
   },
@@ -109,14 +110,14 @@ const INITIAL_STOPS: DeliveryStop[] = [
     contactName: 'Lucía Fernández',
     contactPhone: '+591 74567890',
     deliveryWindow: '13:00 - 14:30 hs',
-    status: 'ARRIVED',
+    status: 'PENDING',
     isCold: false,
     packagesCount: '210.0 kg • 0.7 m³',
     weightKg: 210.0,
     volumeM3: 0.7,
     totalUnits: 120,
-    netTotal: 'Bs. 3,100.00',
-    notes: 'Chofer en destino listo para descarga de carga.',
+    netTotal: 'Bs. 2,150.00',
+    notes: 'Ingreso por portón lateral de carga.',
     latitude: -17.805,
     longitude: -63.201,
   },
@@ -135,7 +136,7 @@ const INITIAL_STOPS: DeliveryStop[] = [
     weightKg: 95.0,
     volumeM3: 0.3,
     totalUnits: 60,
-    netTotal: 'Bs. 1,850.00',
+    netTotal: 'Bs. 1,680.00',
     notes: 'Ingreso por parqueo de clientes.',
     latitude: -17.741,
     longitude: -63.17,
@@ -155,7 +156,7 @@ const INITIAL_STOPS: DeliveryStop[] = [
     weightKg: 310.0,
     volumeM3: 0.9,
     totalUnits: 168,
-    netTotal: 'Bs. 4,200.00',
+    netTotal: 'Bs. 7,320.00',
     notes: 'Recepción hasta las 17:30 imprevistos.',
     latitude: -17.789,
     longitude: -63.138,
@@ -193,7 +194,13 @@ export function DeliveryRouteScreen() {
   }, [stops]);
 
   const activeStop = useMemo(() => {
-    return stops.find((s) => s.status === 'ARRIVED' || s.status === 'EN_ROUTE') || stops.find((s) => s.status === 'PENDING');
+    return (
+      stops.find((s) => s.status === 'ARRIVED') ||
+      stops.find((s) => s.status === 'EN_ROUTE') ||
+      stops.find((s) => s.status === 'PENDING') ||
+      stops.find((s) => s.status === 'INCIDENT') ||
+      stops[0]
+    );
   }, [stops]);
 
   const filterOptions: FilterChipOption<'todos' | EstadoEntrega>[] = useMemo(
@@ -207,9 +214,10 @@ export function DeliveryRouteScreen() {
     [stats],
   );
 
+  // FILTRADO Y ORDENADO: La parada activa (la que toca) SIEMPRE VA AL PRINCIPIO
   const paradasFiltradas = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    return stops.filter((stop) => {
+    const filtered = stops.filter((stop) => {
       const matchesSearch =
         !query ||
         stop.clientName.toLowerCase().includes(query) ||
@@ -221,7 +229,16 @@ export function DeliveryRouteScreen() {
 
       return matchesSearch && matchesStatus;
     });
-  }, [stops, searchQuery, selectedStatus]);
+
+    if (!activeStop) return filtered;
+
+    // PIN DE LA PARADA ACTIVA AL INICIO DE LA LISTA
+    return [...filtered].sort((a, b) => {
+      if (a.id === activeStop.id) return -1;
+      if (b.id === activeStop.id) return 1;
+      return a.sequence - b.sequence;
+    });
+  }, [stops, searchQuery, selectedStatus, activeStop]);
 
   const handleCall = (phone: string) => {
     Linking.openURL(`tel:${phone}`);
@@ -233,14 +250,68 @@ export function DeliveryRouteScreen() {
     if (route) navigateTo(route);
   };
 
-  const markArrived = (stopId: string) => {
+  const handleRegistrarVisita = (stop: DeliveryStop) => {
+    setSelectedStop(stop);
+    const route = findRouteById('entregas.registrarVisita');
+    if (route) navigateTo(route);
+  };
+
+  // 1. INICIAR VIAJE (EN_ROUTE)
+  const handleStartEnRoute = (stopId: string) => {
     setStops((current) =>
       current.map((s) => (s.id === stopId ? { ...s, status: 'EN_ROUTE' as EstadoEntrega } : s)),
     );
+    const target = stops.find((s) => s.id === stopId);
     setDialogConfig({
       visible: true,
-      title: 'Estado Actualizado',
-      message: 'La parada ha sido marcada en camino exitosamente.',
+      title: '🚚 Parada En Camino',
+      message: `Te estás desplazando hacia la Parada #${target?.sequence || ''}: ${target?.clientName || ''}.`,
+      type: 'info',
+    });
+  };
+
+  // 2. MARCAR LLEGADA EN SITIO (ARRIVED)
+  const handleMarkArrived = (stopId: string) => {
+    setStops((current) =>
+      current.map((s) => (s.id === stopId ? { ...s, status: 'ARRIVED' as EstadoEntrega } : s)),
+    );
+    const target = stops.find((s) => s.id === stopId);
+    setDialogConfig({
+      visible: true,
+      title: '🏬 Llegada Confirmada',
+      message: `Has llegado al destino de ${target?.clientName || ''}. Listo para descarga y cobro.`,
+      type: 'info',
+    });
+  };
+
+  // 3. FINALIZAR ENTREGA (DELIVERED) Y AVANZAR AUTOMÁTICAMENTE A LA SIGUIENTE PARADA
+  const handleMarkDelivered = (stopId: string) => {
+    let nextStopSeq: number | null = null;
+    let nextStopName: string = '';
+
+    setStops((current) => {
+      const currentStop = current.find((s) => s.id === stopId);
+      const nextSeq = currentStop ? currentStop.sequence + 1 : null;
+
+      return current.map((s) => {
+        if (s.id === stopId) {
+          return { ...s, status: 'DELIVERED' as EstadoEntrega };
+        }
+        if (nextSeq && s.sequence === nextSeq && s.status === 'PENDING') {
+          nextStopSeq = s.sequence;
+          nextStopName = s.clientName;
+          return { ...s, status: 'EN_ROUTE' as EstadoEntrega };
+        }
+        return s;
+      });
+    });
+
+    setDialogConfig({
+      visible: true,
+      title: '✅ Entrega Completada',
+      message: nextStopSeq
+        ? `¡Parada completada! Avanzando automáticamente a la Parada #${nextStopSeq}: ${nextStopName}.`
+        : '¡Felicidades! Has completado todas las paradas de la hoja de ruta.',
       type: 'info',
     });
   };
@@ -251,6 +322,7 @@ export function DeliveryRouteScreen() {
         <RouteMapView
           stops={stops}
           onSelectStopDetail={handleOpenDetail}
+          onRegistrarVisita={handleRegistrarVisita}
           tripCode={trip.transportOrderCode}
           statsLabel={`${stats.delivered}/${stats.total} (${stats.progressPercent}%)`}
           onSwitchToLista={() => setViewMode('lista')}
@@ -477,28 +549,29 @@ export function DeliveryRouteScreen() {
                 </View>
               </View>
 
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <Button
-                  label="Llamar"
-                  icon={Phone}
-                  variant="outline"
-                  size="sm"
-                  onPress={() => handleCall(activeStop.contactPhone)}
-                />
+              {/* ÚNICAMENTE LAS 2 OPCIONES: LLAMAR AL CLIENTE Y VER DETALLE DE LA ENTREGA */}
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                <View style={{ flex: 1 }}>
+                  <Button
+                    label="Llamar al cliente"
+                    icon={Phone}
+                    variant="outline"
+                    size="sm"
+                    fullWidth
+                    onPress={() => handleCall(activeStop.contactPhone)}
+                  />
+                </View>
 
-                <Button
-                  label={activeStop.status === 'EN_ROUTE' || activeStop.status === 'ARRIVED' ? 'Ver Detalle de Parada' : 'En Camino'}
-                  variant="primary"
-                  size="sm"
-                  endIcon={ArrowRight}
-                  onPress={() => {
-                    if (activeStop.status !== 'EN_ROUTE' && activeStop.status !== 'ARRIVED') {
-                      markArrived(activeStop.id);
-                    } else {
-                      handleOpenDetail(activeStop);
-                    }
-                  }}
-                />
+                <View style={{ flex: 1.2 }}>
+                  <Button
+                    label="Ver detalle de la entrega"
+                    variant="primary"
+                    size="sm"
+                    fullWidth
+                    endIcon={ArrowRight}
+                    onPress={() => handleOpenDetail(activeStop)}
+                  />
+                </View>
               </View>
             </View>
           )}
@@ -534,6 +607,7 @@ export function DeliveryRouteScreen() {
               <View style={{ backgroundColor: theme.colors.cardBackground, borderRadius: 14, borderWidth: 1, borderColor: theme.colors.border, overflow: 'hidden' }}>
                 {paradasFiltradas.map((stop, index) => {
                   const isLast = index === paradasFiltradas.length - 1;
+                  const isActive = activeStop?.id === stop.id;
 
                   let statusBg = theme.colors.secondary;
                   let statusIcon = <Clock size={16} color={theme.colors.mutedForeground} />;
@@ -593,6 +667,7 @@ export function DeliveryRouteScreen() {
                           >
                             {stop.clientName}
                           </Text>
+                          {isActive && <Badge label="Siguiente Parada" tone="primary" emphasis="soft" size="sm" />}
                           {stop.isCold && <Snowflake size={12} color={theme.colors.primary} />}
                         </View>
 
@@ -617,7 +692,8 @@ export function DeliveryRouteScreen() {
                         </View>
                       </View>
 
-                      <View style={{ marginLeft: 6 }}>
+                      {/* TRAILING: ÚNICAMENTE LA FLECHA DERECHA */}
+                      <View style={{ marginLeft: 8 }}>
                         <ChevronRight size={20} color={theme.colors.mutedForeground} />
                       </View>
                     </TouchableOpacity>

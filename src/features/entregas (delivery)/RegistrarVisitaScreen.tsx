@@ -24,12 +24,13 @@ export function RegistrarVisitaScreen() {
           alignItems: 'center',
           gap: 8,
           alignSelf: 'flex-start',
+          paddingVertical: 4,
         }}
       >
-        {/* <ArrowLeft size={20} color={theme.colors.foreground} />
+        <ArrowLeft size={20} color={theme.colors.foreground} />
         <Text variant="label" style={{ fontWeight: '600', color: theme.colors.foreground }}>
-          Volver a Mis Entregas
-        </Text> */}
+          Volver a la Hoja de Ruta
+        </Text>
       </TouchableOpacity>
 
       {/* TARJETA DE TÍTULO PRINCIPAL */}

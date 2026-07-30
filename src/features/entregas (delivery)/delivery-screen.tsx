@@ -62,33 +62,10 @@ export function DeliveryScreen() {
     setIsOptionsModalOpen(true);
   };
 
-  // OPCIÓN 1: INICIAR
-  const handleOption1Iniciar = () => {
+  const handleIniciarRuta = () => {
     setIsOptionsModalOpen(false);
     const route = findRouteById('entregas.ruta');
     if (route) navigateTo(route);
-  };
-
-  // OPCIÓN 2: REGISTRAR VISITA
-  const handleOption2RegistrarVisita = () => {
-    setIsOptionsModalOpen(false);
-    const route = findRouteById('entregas.registrarVisita');
-    if (route) navigateTo(route);
-  };
-
-  // OPCIÓN 3: ANULAR ORDEN DE TRANSPORTE
-  const handleOption3Anular = () => {
-    if (!selectedOrder) return;
-    const codigoAnulado = selectedOrder.codigo;
-    anularDespacho(selectedOrder.id);
-    setIsOptionsModalOpen(false);
-    setSelectedOrder(null);
-
-    setToastConfig({
-      visible: true,
-      title: 'Orden Anulada',
-      message: `La orden de transporte OT-${codigoAnulado} fue anulada exitosamente.`,
-    });
   };
 
   return (
@@ -262,17 +239,18 @@ export function DeliveryScreen() {
         </View>
       )}
 
-      {/* DIÁLOGO / MODAL DE 3 OPCIONES AL SELECCIONAR UNA ORDEN DE TRANSPORTE */}
+      {/* DIÁLOGO / MODAL CON ÚNICA OPCIÓN: INICIAR RUTA */}
       <Modal
         visible={isOptionsModalOpen}
         transparent
+        statusBarTranslucent
         animationType="fade"
         onRequestClose={() => setIsOptionsModalOpen(false)}
       >
         <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
+            backgroundColor: 'rgba(0,0,0,0.6)',
             justifyContent: 'center',
             alignItems: 'center',
             padding: 20,
@@ -283,16 +261,16 @@ export function DeliveryScreen() {
               width: '100%',
               maxWidth: 400,
               backgroundColor: theme.colors.cardBackground,
-              borderRadius: 20,
+              borderRadius: 22,
               borderWidth: 1,
               borderColor: theme.colors.border,
               padding: 20,
               gap: 16,
               shadowColor: '#000',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.15,
-              shadowRadius: 10,
-              elevation: 5,
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.2,
+              shadowRadius: 12,
+              elevation: 8,
             }}
           >
             {/* ENCABEZADO DEL DIÁLOGO */}
@@ -300,15 +278,15 @@ export function DeliveryScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <View
                   style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
                     backgroundColor: theme.colors.primarySoft,
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <Truck size={20} color={theme.colors.primary} />
+                  <Truck size={22} color={theme.colors.primary} />
                 </View>
                 <View>
                   <Text variant="label" style={{ fontSize: 16, fontWeight: '700', color: theme.colors.foreground }}>
@@ -320,98 +298,41 @@ export function DeliveryScreen() {
                 </View>
               </View>
 
-              <TouchableOpacity onPress={() => setIsOptionsModalOpen(false)} style={{ padding: 4 }}>
+              <TouchableOpacity onPress={() => setIsOptionsModalOpen(false)} style={{ padding: 6 }}>
                 <X size={20} color={theme.colors.mutedForeground} />
               </TouchableOpacity>
             </View>
 
-            <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 13 }}>
-              Selecciona una acción para continuar con esta orden de transporte:
+            <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 13, lineHeight: 18 }}>
+              Presiona la opción para iniciar el recorrido de esta orden de transporte:
             </Text>
 
-            {/* OPCIONES DEL DIÁLOGO */}
-            <View style={{ gap: 10 }}>
-              {/* OPCIÓN 1: INICIAR */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={handleOption1Iniciar}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  backgroundColor: theme.colors.primarySoft,
-                  padding: 14,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: theme.colors.primary,
-                  gap: 12,
-                }}
-              >
-                <PlayCircle size={24} color={theme.colors.primary} />
-                <View style={{ flex: 1 }}>
-                  <Text variant="label" style={{ fontSize: 15, fontWeight: '700', color: theme.colors.primary }}>
-                    1. Iniciar Ruta
-                  </Text>
-                  <Text variant="caption" style={{ fontSize: 12, color: theme.colors.mutedForeground }}>
-                    Ver el detalle de la orden de transporte y hoja de ruta.
-                  </Text>
-                </View>
-                <ChevronRight size={18} color={theme.colors.primary} />
-              </TouchableOpacity>
-
-              {/* OPCIÓN 2: REGISTRAR VISITA */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={handleOption2RegistrarVisita}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  backgroundColor: theme.colors.secondary,
-                  padding: 14,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  gap: 12,
-                }}
-              >
-                <MapPin size={24} color={theme.colors.foreground} />
-                <View style={{ flex: 1 }}>
-                  <Text variant="label" style={{ fontSize: 15, fontWeight: '700', color: theme.colors.foreground }}>
-                    2. Registrar visita
-                  </Text>
-                  <Text variant="caption" style={{ fontSize: 12, color: theme.colors.mutedForeground }}>
-                    Registrar visita presencial o verificación en destino.
-                  </Text>
-                </View>
-                <ChevronRight size={18} color={theme.colors.mutedForeground} />
-              </TouchableOpacity>
-
-              {/* OPCIÓN 3: ANULAR ORDEN DE TRANSPORTE */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={handleOption3Anular}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  backgroundColor: theme.colors.dangerSoft,
-                  padding: 14,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: theme.colors.danger,
-                  gap: 12,
-                }}
-              >
-                <XCircle size={24} color={theme.colors.danger} />
-                <View style={{ flex: 1 }}>
-                  <Text variant="label" style={{ fontSize: 15, fontWeight: '700', color: theme.colors.danger }}>
-                    3. Anular orden de transporte
-                  </Text>
-                  <Text variant="caption" style={{ fontSize: 12, color: theme.colors.danger }}>
-                    Cancelar la orden de transporte seleccionada.
-                  </Text>
-                </View>
-                <ChevronRight size={18} color={theme.colors.danger} />
-              </TouchableOpacity>
-            </View>
+            {/* ÚNICA OPCIÓN DEL DIÁLOGO: INICIAR RUTA */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handleIniciarRuta}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: theme.colors.primarySoft,
+                padding: 16,
+                borderRadius: 16,
+                borderWidth: 1.5,
+                borderColor: theme.colors.primary,
+                gap: 12,
+              }}
+            >
+              <PlayCircle size={26} color={theme.colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text variant="label" style={{ fontSize: 16, fontWeight: '700', color: theme.colors.primary }}>
+                  Iniciar Ruta
+                </Text>
+                <Text variant="caption" style={{ fontSize: 12, color: theme.colors.mutedForeground, marginTop: 2 }}>
+                  Ver el mapa en tiempo real, paradas y hoja de ruta oficial.
+                </Text>
+              </View>
+              <ChevronRight size={20} color={theme.colors.primary} />
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

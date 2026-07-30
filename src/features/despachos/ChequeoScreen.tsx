@@ -692,6 +692,7 @@ export default function ChequeoScreen({ despachoId }: Props) {
                               alignItems: "center",
                               justifyContent: "center",
                               marginRight: 10,
+                              flexShrink: 0,
                             }}
                           >
                             {esMatch ? (
@@ -701,25 +702,27 @@ export default function ChequeoScreen({ despachoId }: Props) {
                             )}
                           </View>
 
-                          {/* BODY: Título y Subtítulos */}
-                          <View style={{ flex: 1, gap: 2 }}>
+                          {/* BODY: Título y Subtítulos con desborde controlado */}
+                          <View style={{ flex: 1, gap: 3, overflow: "hidden", marginRight: 8 }}>
                             <View
                               style={{
                                 flexDirection: "row",
                                 alignItems: "center",
-                                gap: 6,
+                                gap: 5,
                               }}
                             >
                               <Text
                                 variant="label"
                                 style={{
-                                  fontSize: 13,
+                                  fontSize: 12,
                                   color: theme.colors.foreground,
                                   fontWeight: "700",
+                                  flexShrink: 0,
                                 }}
                               >
                                 {item.codigo}
                               </Text>
+                              <Text style={{ fontSize: 11, color: theme.colors.mutedForeground, flexShrink: 0 }}>•</Text>
                               <Text
                                 variant="bodySmall"
                                 style={{
@@ -729,16 +732,23 @@ export default function ChequeoScreen({ despachoId }: Props) {
                                   fontWeight: "500",
                                 }}
                                 numberOfLines={1}
+                                ellipsizeMode="tail"
                               >
                                 {nombreReal}
                               </Text>
+                              {isCold && (
+                                <View style={{ flexShrink: 0, marginLeft: 2 }}>
+                                  <Snowflake size={13} color={theme.colors.primary} />
+                                </View>
+                              )}
                             </View>
 
                             <View
                               style={{
                                 flexDirection: "row",
                                 alignItems: "center",
-                                gap: 10,
+                                gap: 8,
+                                flexWrap: "wrap",
                               }}
                             >
                               <Text
@@ -755,25 +765,16 @@ export default function ChequeoScreen({ despachoId }: Props) {
                               </Text>
 
                               {isCold && (
-                                <View
+                                <Text
+                                  variant="caption"
                                   style={{
-                                    flexDirection: "row",
-                                    alignItems: "center",
-                                    gap: 3,
+                                    color: theme.colors.primary,
+                                    fontSize: 11,
+                                    fontWeight: "600",
                                   }}
                                 >
-                                  <Text
-                                    variant="caption"
-                                    style={{
-                                      color: theme.colors.primary,
-                                      fontSize: 11,
-                                      fontWeight: "600",
-                                    }}
-                                  >
-                                    Tipo de Producto: Frío
-                                  </Text>
-                                  <Snowflake size={11} color={theme.colors.primary} />
-                                </View>
+                                  • Frío ❄️
+                                </Text>
                               )}
                             </View>
 
@@ -786,6 +787,8 @@ export default function ChequeoScreen({ despachoId }: Props) {
                                   fontSize: 11,
                                   marginTop: 1,
                                 }}
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
                               >
                                 {isCold
                                   ? `Diferencia: ${textoDiferencia} (Esperado: ${esperado})`
@@ -794,13 +797,18 @@ export default function ChequeoScreen({ despachoId }: Props) {
                             )}
                           </View>
 
-                          {/* TRAILING: Botón de eliminar manual */}
+                          {/* TRAILING: Botón de eliminar manual FIJO */}
                           <Pressable
                             onPress={() => removeCheck(activeId, item.id)}
                             hitSlop={10}
-                            style={{ padding: 4, marginLeft: 4 }}
+                            style={{
+                              flexShrink: 0,
+                              padding: 6,
+                              borderRadius: 8,
+                              backgroundColor: theme.colors.secondary,
+                            }}
                           >
-                            <Trash2 size={18} color={theme.colors.mutedForeground} />
+                            <Trash2 size={16} color={theme.colors.mutedForeground} />
                           </Pressable>
                         </View>
                       </SwipeableItem>

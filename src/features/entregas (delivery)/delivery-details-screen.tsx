@@ -35,13 +35,16 @@ import {
   ShieldCheck,
   ClipboardList,
   Navigation,
+  Truck,
+  ChevronDown,
+  Check,
 } from "lucide-react-native";
 
-import { findRouteById, navigateTo } from "@/navigation/registry";
+import { findRouteById, navigateTo, goBackOrNavigate } from "@/navigation/registry";
 import { Badge, Button, AppDialog, type DialogType } from "@/shared/ui";
 import { SuccessDialog } from "@/shared/ui/SuccessDialog";
 import { Text, useAppTheme } from "@/theme";
-import { getSelectedStop } from "./data/delivery-store";
+import { getSelectedStop, updateStopStatus } from "./data/delivery-store";
 import { SANTA_CRUZ_STOPS_COORDINATES } from "./data/santa-cruz-route";
 import type { EstadoEntrega } from "./types";
 
@@ -163,6 +166,7 @@ export const DeliveryDetailScreen = () => {
   // Estado del Módulo de Registro de Incidencias
   const [isIncidentModalOpen, setIsIncidentModalOpen] = useState(false);
   const [incidentCategory, setIncidentCategory] = useState<string>("LOCAL_CERRADO");
+  const [isCategorySelectOpen, setIsCategorySelectOpen] = useState(false);
   const [incidentNotes, setIncidentNotes] = useState("");
   const [incidentPhoto, setIncidentPhoto] = useState(false);
   const [incidentItemName, setIncidentItemName] = useState<string>("Toda la Entrega");
@@ -184,8 +188,7 @@ export const DeliveryDetailScreen = () => {
       `Se registro la incidencia (${incidentCategoriesMap[incidentCategory] ?? "Incidencia"}) para ${incidentItemName} exitosamente y se notifico a supervision.`,
       "warning",
       () => {
-        const route = findRouteById("entregas.ruta");
-        if (route) navigateTo(route);
+        goBackOrNavigate("entregas.ruta");
       }
     );
   };
@@ -257,8 +260,7 @@ export const DeliveryDetailScreen = () => {
   };
 
   const backToList = () => {
-    const route = findRouteById("entregas.ruta");
-    if (route) navigateTo(route);
+    goBackOrNavigate("entregas.ruta");
   };
 
   const handleCall = () => {
@@ -285,11 +287,22 @@ export const DeliveryDetailScreen = () => {
     Linking.openURL(url);
   };
 
-  const handleStartDelivery = () => {
-    setCurrentStatus("ARRIVED");
+  const handleStartEnRoute = () => {
+    setCurrentStatus("EN_ROUTE");
+    stop.status = "EN_ROUTE";
     showDialog(
-      "🚚 Entrega Iniciada",
-      `Has marcado llegada a la parada de ${stop.clientName}. Ya puedes verificar los productos a descargar y procesar el cobro.`,
+      "En Camino",
+      `Has iniciado el trayecto hacia ${stop.clientName}. El estado de la entrega cambio a "En Camino".`,
+      "info"
+    );
+  };
+
+  const handleMarkArrived = () => {
+    setCurrentStatus("ARRIVED");
+    stop.status = "ARRIVED";
+    showDialog(
+      "Llegada Marcada",
+      `Has marcado llegada a la parada de ${stop.clientName}. Estado: "En Descarga". Ya puedes verificar los productos a descargar y procesar el cobro.`,
       "success"
     );
   };
@@ -411,7 +424,7 @@ export const DeliveryDetailScreen = () => {
       method: "CASH",
       amount: amt,
       reference: cashReceiptNo || "Recibo Manual",
-      hasPhoto: cashPhoto,
+      hasPhoto: false,
     };
     const newPayments = [...payments, newPayment];
     setPayments(newPayments);
@@ -555,6 +568,9 @@ export const DeliveryDetailScreen = () => {
       );
       return;
     }
+    stop.status = "DELIVERED";
+    setCurrentStatus("DELIVERED");
+    updateStopStatus(stop.id, "DELIVERED");
     setShowSuccess(true);
   };
 
@@ -564,6 +580,315 @@ export const DeliveryDetailScreen = () => {
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}
       >
+        {/* 0. INDICADOR VISUAL DE PASOS DE LA ENTREGA */}
+        <View
+          style={{
+            backgroundColor: theme.colors.cardBackground,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            padding: 12,
+            gap: 10,
+            elevation: 1,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Text
+              variant="label"
+              style={{ fontSize: 12, fontWeight: "700", color: theme.colors.foreground }}
+            >
+              PROGRESO DE LA ENTREGA
+            </Text>
+            <Text
+              variant="caption"
+              style={{ fontSize: 11, color: theme.colors.primary, fontWeight: "700" }}
+            >
+              {currentStatus === "PENDING"
+                ? "Paso 1 de 5"
+                : currentStatus === "EN_ROUTE"
+                ? "Paso 2 de 5"
+                : currentStatus === "ARRIVED" && activeTab === "productos"
+                ? "Paso 3 de 5"
+                : currentStatus === "ARRIVED" && activeTab === "cobro"
+                ? "Paso 4 de 5"
+                : currentStatus === "DELIVERED"
+                ? "Paso 5 de 5"
+                : "En Curso"}
+            </Text>
+          </View>
+
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingHorizontal: 4,
+            }}
+          >
+            {/* Paso 1: En Camino */}
+            <View style={{ alignItems: "center", flex: 1 }}>
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor:
+                    currentStatus === "EN_ROUTE"
+                      ? theme.colors.primary
+                      : currentStatus === "ARRIVED" || currentStatus === "DELIVERED"
+                      ? theme.colors.success
+                      : theme.colors.secondary,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Truck
+                  size={14}
+                  color={
+                    currentStatus === "PENDING"
+                      ? theme.colors.mutedForeground
+                      : "#ffffff"
+                  }
+                />
+              </View>
+              <Text
+                variant="caption"
+                style={{
+                  fontSize: 10,
+                  marginTop: 4,
+                  fontWeight: currentStatus === "EN_ROUTE" ? "700" : "400",
+                  color:
+                    currentStatus === "EN_ROUTE"
+                      ? theme.colors.primary
+                      : theme.colors.mutedForeground,
+                }}
+              >
+                1. En Camino
+              </Text>
+            </View>
+
+            <View
+              style={{
+                height: 2,
+                flex: 0.4,
+                backgroundColor:
+                  currentStatus === "EN_ROUTE" ||
+                  currentStatus === "ARRIVED" ||
+                  currentStatus === "DELIVERED"
+                    ? theme.colors.primary
+                    : theme.colors.border,
+              }}
+            />
+
+            {/* Paso 2: Llegada */}
+            <View style={{ alignItems: "center", flex: 1 }}>
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor:
+                    currentStatus === "ARRIVED"
+                      ? theme.colors.primary
+                      : currentStatus === "DELIVERED"
+                      ? theme.colors.success
+                      : theme.colors.secondary,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <MapPin
+                  size={14}
+                  color={
+                    currentStatus === "PENDING" || currentStatus === "EN_ROUTE"
+                      ? theme.colors.mutedForeground
+                      : "#ffffff"
+                  }
+                />
+              </View>
+              <Text
+                variant="caption"
+                style={{
+                  fontSize: 10,
+                  marginTop: 4,
+                  fontWeight: currentStatus === "ARRIVED" ? "700" : "400",
+                  color:
+                    currentStatus === "ARRIVED"
+                      ? theme.colors.primary
+                      : theme.colors.mutedForeground,
+                }}
+              >
+                2. Llegada
+              </Text>
+            </View>
+
+            <View
+              style={{
+                height: 2,
+                flex: 0.4,
+                backgroundColor:
+                  currentStatus === "ARRIVED" || currentStatus === "DELIVERED"
+                    ? theme.colors.primary
+                    : theme.colors.border,
+              }}
+            />
+
+            {/* Paso 3: Productos */}
+            <View style={{ alignItems: "center", flex: 1 }}>
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor:
+                    currentStatus === "DELIVERED"
+                      ? theme.colors.success
+                      : currentStatus === "ARRIVED" && activeTab === "productos"
+                      ? theme.colors.primary
+                      : theme.colors.secondary,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Package
+                  size={14}
+                  color={
+                    currentStatus === "DELIVERED" ||
+                    (currentStatus === "ARRIVED" && activeTab === "productos")
+                      ? "#ffffff"
+                      : theme.colors.mutedForeground
+                  }
+                />
+              </View>
+              <Text
+                variant="caption"
+                style={{
+                  fontSize: 10,
+                  marginTop: 4,
+                  fontWeight:
+                    activeTab === "productos" && currentStatus === "ARRIVED"
+                      ? "700"
+                      : "400",
+                  color: theme.colors.mutedForeground,
+                }}
+              >
+                3. Productos
+              </Text>
+            </View>
+
+            <View
+              style={{
+                height: 2,
+                flex: 0.4,
+                backgroundColor:
+                  currentStatus === "DELIVERED"
+                    ? theme.colors.success
+                    : theme.colors.border,
+              }}
+            />
+
+            {/* Paso 4: Cobro */}
+            <View style={{ alignItems: "center", flex: 1 }}>
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor:
+                    currentStatus === "DELIVERED"
+                      ? theme.colors.success
+                      : currentStatus === "ARRIVED" && activeTab === "cobro"
+                      ? theme.colors.primary
+                      : theme.colors.secondary,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Banknote
+                  size={14}
+                  color={
+                    currentStatus === "DELIVERED" ||
+                    (currentStatus === "ARRIVED" && activeTab === "cobro")
+                      ? "#ffffff"
+                      : theme.colors.mutedForeground
+                  }
+                />
+              </View>
+              <Text
+                variant="caption"
+                style={{
+                  fontSize: 10,
+                  marginTop: 4,
+                  fontWeight:
+                    activeTab === "cobro" && currentStatus === "ARRIVED"
+                      ? "700"
+                      : "400",
+                  color: theme.colors.mutedForeground,
+                }}
+              >
+                4. Cobro
+              </Text>
+            </View>
+
+            <View
+              style={{
+                height: 2,
+                flex: 0.4,
+                backgroundColor:
+                  currentStatus === "DELIVERED"
+                    ? theme.colors.success
+                    : theme.colors.border,
+              }}
+            />
+
+            {/* Paso 5: Entregado */}
+            <View style={{ alignItems: "center", flex: 1 }}>
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor:
+                    currentStatus === "DELIVERED"
+                      ? theme.colors.success
+                      : theme.colors.secondary,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <CheckCircle2
+                  size={14}
+                  color={
+                    currentStatus === "DELIVERED"
+                      ? "#ffffff"
+                      : theme.colors.mutedForeground
+                  }
+                />
+              </View>
+              <Text
+                variant="caption"
+                style={{
+                  fontSize: 10,
+                  marginTop: 4,
+                  fontWeight: currentStatus === "DELIVERED" ? "700" : "400",
+                  color:
+                    currentStatus === "DELIVERED"
+                      ? theme.colors.success
+                      : theme.colors.mutedForeground,
+                }}
+              >
+                5. Entregado
+              </Text>
+            </View>
+          </View>
+        </View>
+
         {/* 1. TARJETA PRINCIPAL DINÁMICA DEL CLIENTE SELECCIONADO Y RESUMEN DE COBRO */}
         <View
           style={{
@@ -598,8 +923,8 @@ export const DeliveryDetailScreen = () => {
               </Text>
             </View>
             <Badge
-              label={getStatusLabel(stop.status)}
-              tone={getStatusTone(stop.status)}
+              label={getStatusLabel(currentStatus)}
+              tone={getStatusTone(currentStatus)}
               emphasis="soft"
               size="md"
             />
@@ -659,23 +984,72 @@ export const DeliveryDetailScreen = () => {
               </TouchableOpacity>
             </View>
 
-            {/* BOTONES DE ACCIÓN RÁPIDA: INICIAR ENTREGA, CÓMO LLEGAR, REGISTRAR VISITA & INCIDENCIA */}
+            {/* BOTONES DE ACCIÓN */}
             <View style={{ gap: 8, marginTop: 4 }}>
-              {currentStatus !== "ARRIVED" && currentStatus !== "DELIVERED" && (
+              {currentStatus === "PENDING" && (
                 <Button
-                  label="Iniciar Entrega (Marcar Llegada)"
-                  icon={CheckCircle2}
+                  label="Estoy en camino"
+                  icon={Truck}
                   variant="primary"
                   size="md"
                   fullWidth
-                  onPress={handleStartDelivery}
+                  onPress={handleStartEnRoute}
                 />
               )}
 
+              {currentStatus === "EN_ROUTE" && (
+                <View style={{ gap: 8 }}>
+                  <View
+                    style={{
+                      backgroundColor: theme.colors.primarySoft,
+                      padding: 10,
+                      borderRadius: 10,
+                      gap: 2,
+                    }}
+                  >
+                    <Text
+                      variant="label"
+                      style={{ color: theme.colors.primary, fontSize: 12 }}
+                    >
+                      En camino hacia la ubicación del cliente
+                    </Text>
+                  </View>
+                  <Button
+                    label="Marcar llegada"
+                    icon={CheckCircle2}
+                    variant="primary"
+                    size="md"
+                    fullWidth
+                    onPress={handleMarkArrived}
+                  />
+                </View>
+              )}
+
+              {currentStatus === "ARRIVED" && (
+                <View
+                  style={{
+                    backgroundColor: "#e0f2fe",
+                    padding: 10,
+                    borderRadius: 10,
+                    gap: 2,
+                  }}
+                >
+                  <Text variant="label" style={{ color: "#0284c7", fontSize: 12 }}>
+                    Estado: En Descarga / Atención en Sitio
+                  </Text>
+                  <Text
+                    variant="caption"
+                    style={{ color: theme.colors.foreground, fontSize: 11 }}
+                  >
+                    Verifica los productos a descargar, registra el cobro y adjunta la firma o foto de entrega.
+                  </Text>
+                </View>
+              )}
+
               <Button
-                label="Cómo Llegar (Abrir en Google Maps)"
+                label="Cómo llegar"
                 icon={Navigation}
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 fullWidth
                 onPress={handleOpenGoogleMaps}
@@ -1610,54 +1984,6 @@ export const DeliveryDetailScreen = () => {
                       />
                     </View>
 
-                    <TouchableOpacity
-                      onPress={() => {
-                        setCashPhoto(true);
-                        showDialog(
-                          "Foto Adjunta",
-                          "Se tomo foto del arqueo en efectivo.",
-                          "success",
-                        );
-                      }}
-                      style={{
-                        backgroundColor: cashPhoto
-                          ? theme.colors.successSoft
-                          : theme.colors.secondary,
-                        borderWidth: 1,
-                        borderColor: cashPhoto
-                          ? theme.colors.success
-                          : theme.colors.border,
-                        borderRadius: 8,
-                        paddingVertical: 10,
-                        alignItems: "center",
-                        flexDirection: "row",
-                        justifyContent: "center",
-                        gap: 6,
-                      }}
-                    >
-                      <Camera
-                        size={16}
-                        color={
-                          cashPhoto
-                            ? theme.colors.success
-                            : theme.colors.mutedForeground
-                        }
-                      />
-                      <Text
-                        variant="label"
-                        style={{
-                          fontSize: 12,
-                          color: cashPhoto
-                            ? theme.colors.success
-                            : theme.colors.foreground,
-                        }}
-                      >
-                        {cashPhoto
-                          ? "Foto Billetes Adjunta"
-                          : "Tomar Foto de Billetes (Opcional)"}
-                      </Text>
-                    </TouchableOpacity>
-
                     <Button
                       label="Agregar Pago en Efectivo"
                       variant="primary"
@@ -2420,66 +2746,108 @@ export const DeliveryDetailScreen = () => {
               </TouchableOpacity>
             </View>
 
-            <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 12 }}>
-              Selecciona el tipo de inconveniente registrado durante la entrega:
-            </Text>
+            {/* SELECT DE TIPO DE INCONVENIENTE */}
+            <View style={{ gap: 6, zIndex: 100, position: "relative" }}>
+              <Text variant="caption" style={{ color: theme.colors.foreground, fontWeight: "600" }}>
+                Tipo de inconveniente:
+              </Text>
 
-            {/* SELECTOR DE CATEGORÍAS */}
-            <View style={{ gap: 8 }}>
-              {Object.entries(incidentCategoriesMap).map(([key, label]) => {
-                const isSelected = incidentCategory === key;
-                return (
-                  <TouchableOpacity
-                    key={key}
-                    activeOpacity={0.8}
-                    onPress={() => setIncidentCategory(key)}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      backgroundColor: isSelected ? theme.colors.dangerSoft : theme.colors.secondary,
-                      borderWidth: isSelected ? 1.5 : 1,
-                      borderColor: isSelected ? theme.colors.danger : theme.colors.border,
-                      borderRadius: 12,
-                      padding: 10,
-                      paddingHorizontal: 12,
-                      gap: 10,
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: 9,
-                        borderWidth: 2,
-                        borderColor: isSelected ? theme.colors.danger : theme.colors.mutedForeground,
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      {isSelected && (
-                        <View
-                          style={{
-                            width: 10,
-                            height: 10,
-                            borderRadius: 5,
-                            backgroundColor: theme.colors.danger,
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setIsCategorySelectOpen(!isCategorySelectOpen)}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  backgroundColor: theme.colors.secondary,
+                  borderRadius: 12,
+                  borderWidth: 1.5,
+                  borderColor: isCategorySelectOpen ? theme.colors.primary : theme.colors.border,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                }}
+              >
+                <Text
+                  variant="label"
+                  style={{
+                    fontSize: 14,
+                    color: incidentCategory ? theme.colors.foreground : theme.colors.mutedForeground,
+                    fontWeight: "600",
+                  }}
+                >
+                  {incidentCategoriesMap[incidentCategory] || "Selecciona un inconveniente..."}
+                </Text>
+                <ChevronDown
+                  size={18}
+                  color={theme.colors.mutedForeground}
+                  style={{
+                    transform: [{ rotate: isCategorySelectOpen ? "180deg" : "0deg" }],
+                  }}
+                />
+              </TouchableOpacity>
+
+              {/* OPCIONES FLOTANTES DEL SELECT (ABSOLUTE POSITIONING) */}
+              {isCategorySelectOpen && (
+                <View
+                  style={{
+                    position: "absolute",
+                    top: 70,
+                    left: 0,
+                    right: 0,
+                    zIndex: 9999,
+                    backgroundColor: theme.colors.cardBackground,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    overflow: "hidden",
+                    elevation: 10,
+                    shadowColor: "#000",
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.25,
+                    shadowRadius: 8,
+                    maxHeight: 220,
+                  }}
+                >
+                  <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled={true}>
+                    {Object.entries(incidentCategoriesMap).map(([key, label], idx, arr) => {
+                      const isSelected = incidentCategory === key;
+                      const isLast = idx === arr.length - 1;
+                      return (
+                        <TouchableOpacity
+                          key={key}
+                          activeOpacity={0.7}
+                          onPress={() => {
+                            setIncidentCategory(key);
+                            setIsCategorySelectOpen(false);
                           }}
-                        />
-                      )}
-                    </View>
-                    <Text
-                      variant="label"
-                      style={{
-                        fontSize: 13,
-                        color: isSelected ? theme.colors.danger : theme.colors.foreground,
-                        fontWeight: isSelected ? "700" : "500",
-                      }}
-                    >
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            paddingVertical: 12,
+                            paddingHorizontal: 14,
+                            backgroundColor: isSelected ? theme.colors.primarySoft : "transparent",
+                            borderBottomWidth: isLast ? 0 : 1,
+                            borderBottomColor: theme.colors.border,
+                          }}
+                        >
+                          <Text
+                            variant="bodySmall"
+                            style={{
+                              fontSize: 13,
+                              fontWeight: isSelected ? "700" : "500",
+                              color: isSelected ? theme.colors.primary : theme.colors.foreground,
+                            }}
+                          >
+                            {label}
+                          </Text>
+                          {isSelected && <Check size={16} color={theme.colors.primary} />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
             </View>
 
             {/* OBSERVACIONES */}
@@ -2533,7 +2901,7 @@ export const DeliveryDetailScreen = () => {
                   fontWeight: "600",
                 }}
               >
-                {incidentPhoto ? "✓ Evidencia Fotográfica Adjuntada" : "Capturar Evidencia Fotográfica"}
+                {incidentPhoto ? "Evidencia Fotográfica Adjuntada" : "Capturar Evidencia Fotográfica"}
               </Text>
             </TouchableOpacity>
 

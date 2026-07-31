@@ -72,3 +72,18 @@ export function navigateTo(route: RouteInterface): void {
   const slug = normalizePath(route.path).split('/').filter(Boolean);
   router.push({ pathname: '/[...slug]', params: { slug } });
 }
+
+export function replaceTo(route: RouteInterface): void {
+  if (!isActive(route)) return;
+  const slug = normalizePath(route.path).split('/').filter(Boolean);
+  router.replace({ pathname: '/[...slug]', params: { slug } });
+}
+
+export function goBackOrNavigate(fallbackRouteId: string): void {
+  if (router.canGoBack()) {
+    router.back();
+  } else {
+    const route = findRouteById(fallbackRouteId);
+    if (route) replaceTo(route);
+  }
+}

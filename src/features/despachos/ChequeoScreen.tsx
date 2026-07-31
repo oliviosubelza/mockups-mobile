@@ -773,7 +773,7 @@ export default function ChequeoScreen({ despachoId }: Props) {
                                     fontWeight: "600",
                                   }}
                                 >
-                                  • Frío ❄️
+                                  • Frío
                                 </Text>
                               )}
                             </View>

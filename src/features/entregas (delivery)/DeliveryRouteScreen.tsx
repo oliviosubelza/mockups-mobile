@@ -24,7 +24,7 @@ import { findRouteById, navigateTo } from '@/navigation/registry';
 import { Badge, Button, SearchField, FilterChips, AppDialog, type FilterChipOption, type DialogType } from '@/shared/ui';
 import { Text, useAppTheme } from '@/theme';
 import { RouteMapView } from './components/RouteMapView';
-import { setSelectedStop } from './data/delivery-store';
+import { setSelectedStop, useDeliveryStore, updateStopStatus } from './data/delivery-store';
 import type { ActiveTrip, DeliveryStop, EstadoEntrega } from './types';
 
 const INITIAL_TRIP: ActiveTrip = {
@@ -50,7 +50,7 @@ const INITIAL_STOPS: DeliveryStop[] = [
     contactName: 'Lic. Roberto Gómez (Almacén Alimentos)',
     contactPhone: '+591 71234567',
     deliveryWindow: '08:00 - 09:30 hs',
-    status: 'EN_ROUTE',
+    status: 'PENDING',
     isCold: true,
     packagesCount: '180.5 kg • 0.6 m³',
     weightKg: 180.5,
@@ -166,7 +166,7 @@ const INITIAL_STOPS: DeliveryStop[] = [
 export function DeliveryRouteScreen() {
   const theme = useAppTheme();
   const [trip] = useState<ActiveTrip>(INITIAL_TRIP);
-  const [stops, setStops] = useState<DeliveryStop[]>(INITIAL_STOPS);
+  const { stops, updateStopStatus: updateStoreStatus } = useDeliveryStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<'todos' | EstadoEntrega>('todos');
   const [viewMode, setViewMode] = useState<'lista' | 'mapa'>('lista');
@@ -245,6 +245,15 @@ export function DeliveryRouteScreen() {
   };
 
   const handleOpenDetail = (stop: DeliveryStop) => {
+    if (stop.status !== 'ARRIVED' && stop.status !== 'DELIVERED') {
+      setDialogConfig({
+        visible: true,
+        title: 'Llegada Requerida',
+        message: `Debes marcar llegada a la parada de ${stop.clientName} para acceder a la verificación de productos y cobro.`,
+        type: 'warning',
+      });
+      return;
+    }
     setSelectedStop(stop);
     const route = findRouteById('entregas.detalle');
     if (route) navigateTo(route);
@@ -258,13 +267,11 @@ export function DeliveryRouteScreen() {
 
   // 1. INICIAR VIAJE (EN_ROUTE)
   const handleStartEnRoute = (stopId: string) => {
-    setStops((current) =>
-      current.map((s) => (s.id === stopId ? { ...s, status: 'EN_ROUTE' as EstadoEntrega } : s)),
-    );
+    updateStoreStatus(stopId, 'EN_ROUTE');
     const target = stops.find((s) => s.id === stopId);
     setDialogConfig({
       visible: true,
-      title: '🚚 Parada En Camino',
+      title: 'Parada En Camino',
       message: `Te estás desplazando hacia la Parada #${target?.sequence || ''}: ${target?.clientName || ''}.`,
       type: 'info',
     });
@@ -272,13 +279,11 @@ export function DeliveryRouteScreen() {
 
   // 2. MARCAR LLEGADA EN SITIO (ARRIVED)
   const handleMarkArrived = (stopId: string) => {
-    setStops((current) =>
-      current.map((s) => (s.id === stopId ? { ...s, status: 'ARRIVED' as EstadoEntrega } : s)),
-    );
+    updateStoreStatus(stopId, 'ARRIVED');
     const target = stops.find((s) => s.id === stopId);
     setDialogConfig({
       visible: true,
-      title: '🏬 Llegada Confirmada',
+      title: 'Llegada Confirmada',
       message: `Has llegado al destino de ${target?.clientName || ''}. Listo para descarga y cobro.`,
       type: 'info',
     });
@@ -286,31 +291,17 @@ export function DeliveryRouteScreen() {
 
   // 3. FINALIZAR ENTREGA (DELIVERED) Y AVANZAR AUTOMÁTICAMENTE A LA SIGUIENTE PARADA
   const handleMarkDelivered = (stopId: string) => {
-    let nextStopSeq: number | null = null;
-    let nextStopName: string = '';
+    const currentStop = stops.find((s) => s.id === stopId);
+    const nextSeq = currentStop ? currentStop.sequence + 1 : null;
+    const nextTarget = stops.find((s) => s.sequence === nextSeq);
 
-    setStops((current) => {
-      const currentStop = current.find((s) => s.id === stopId);
-      const nextSeq = currentStop ? currentStop.sequence + 1 : null;
-
-      return current.map((s) => {
-        if (s.id === stopId) {
-          return { ...s, status: 'DELIVERED' as EstadoEntrega };
-        }
-        if (nextSeq && s.sequence === nextSeq && s.status === 'PENDING') {
-          nextStopSeq = s.sequence;
-          nextStopName = s.clientName;
-          return { ...s, status: 'EN_ROUTE' as EstadoEntrega };
-        }
-        return s;
-      });
-    });
+    updateStoreStatus(stopId, 'DELIVERED');
 
     setDialogConfig({
       visible: true,
-      title: '✅ Entrega Completada',
-      message: nextStopSeq
-        ? `¡Parada completada! Avanzando automáticamente a la Parada #${nextStopSeq}: ${nextStopName}.`
+      title: 'Entrega Completada',
+      message: nextTarget
+        ? `¡Parada completada! La siguiente parada es #${nextTarget.sequence}: ${nextTarget.clientName}.`
         : '¡Felicidades! Has completado todas las paradas de la hoja de ruta.',
       type: 'info',
     });
@@ -549,29 +540,82 @@ export function DeliveryRouteScreen() {
                 </View>
               </View>
 
-              {/* ÚNICAMENTE LAS 2 OPCIONES: LLAMAR AL CLIENTE Y VER DETALLE DE LA ENTREGA */}
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-                <View style={{ flex: 1 }}>
-                  <Button
-                    label="Llamar al cliente"
-                    icon={Phone}
-                    variant="outline"
-                    size="sm"
-                    fullWidth
-                    onPress={() => handleCall(activeStop.contactPhone)}
-                  />
-                </View>
+              {/* ACCIONES RÁPIDAS DE LA PARADA EN HOJA DE RUTA */}
+              <View style={{ gap: 8, marginTop: 4 }}>
+                {activeStop.status === 'PENDING' && (
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Button
+                        label="Llamar"
+                        icon={Phone}
+                        variant="outline"
+                        size="md"
+                        fullWidth
+                        onPress={() => handleCall(activeStop.contactPhone)}
+                      />
+                    </View>
+                    <View style={{ flex: 1.5 }}>
+                      <Button
+                        label="Estoy en camino"
+                        icon={Truck}
+                        variant="primary"
+                        size="md"
+                        fullWidth
+                        onPress={() => handleStartEnRoute(activeStop.id)}
+                      />
+                    </View>
+                  </View>
+                )}
 
-                <View style={{ flex: 1.2 }}>
-                  <Button
-                    label="Ver detalle de la entrega"
-                    variant="primary"
-                    size="sm"
-                    fullWidth
-                    endIcon={ArrowRight}
-                    onPress={() => handleOpenDetail(activeStop)}
-                  />
-                </View>
+                {activeStop.status === 'EN_ROUTE' && (
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Button
+                        label="Llamar"
+                        icon={Phone}
+                        variant="outline"
+                        size="md"
+                        fullWidth
+                        onPress={() => handleCall(activeStop.contactPhone)}
+                      />
+                    </View>
+                    <View style={{ flex: 1.5 }}>
+                      <Button
+                        label="Marcar llegada"
+                        icon={CheckCircle2}
+                        variant="primary"
+                        size="md"
+                        fullWidth
+                        onPress={() => handleMarkArrived(activeStop.id)}
+                      />
+                    </View>
+                  </View>
+                )}
+
+                {(activeStop.status === 'ARRIVED' || activeStop.status === 'DELIVERED') && (
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Button
+                        label="Llamar"
+                        icon={Phone}
+                        variant="outline"
+                        size="md"
+                        fullWidth
+                        onPress={() => handleCall(activeStop.contactPhone)}
+                      />
+                    </View>
+                    <View style={{ flex: 1.5 }}>
+                      <Button
+                        label={activeStop.status === 'ARRIVED' ? 'Ver detalle y cobrar' : 'Ver detalle'}
+                        variant="primary"
+                        size="md"
+                        fullWidth
+                        endIcon={ArrowRight}
+                        onPress={() => handleOpenDetail(activeStop)}
+                      />
+                    </View>
+                  </View>
+                )}
               </View>
             </View>
           )}

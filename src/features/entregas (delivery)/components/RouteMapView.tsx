@@ -36,10 +36,12 @@ import {
   ChevronsUp,
   Locate,
   ClipboardList,
+  Truck,
 } from 'lucide-react-native';
 
 import { Button, Badge } from '@/shared/ui';
 import { Text, useAppTheme } from '@/theme';
+import { updateStopStatus } from '../data/delivery-store';
 import {
   SANTA_CRUZ_DEPOT,
   SANTA_CRUZ_INITIAL_REGION,
@@ -511,61 +513,96 @@ export function RouteMapView({
           )}
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 6, paddingHorizontal: 2 }}
+        {/* LEYENDA POR COLOR DE ESTADOS DE ENTREGA */}
+        <View
+          style={{
+            flexDirection: 'row',
+            gap: 6,
+            paddingHorizontal: 2,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
         >
-          {stops.map((stop) => {
-            const isSelected = selectedStop.id === stop.id;
-            const pinColor = getPinColor(stop.status);
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: theme.colors.cardBackground,
+              borderColor: theme.colors.border,
+              borderWidth: 1,
+              borderRadius: 14,
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              gap: 5,
+              elevation: 2,
+            }}
+          >
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#0284c7' }} />
+            <Text variant="caption" style={{ fontSize: 11, fontWeight: '600', color: theme.colors.foreground }}>
+              En Sitio / Llegada
+            </Text>
+          </View>
 
-            return (
-              <TouchableOpacity
-                key={stop.id}
-                activeOpacity={0.8}
-                onPress={() => handleSelectStop(stop)}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  backgroundColor: isSelected ? theme.colors.cardBackground : theme.colors.cardBackground + 'EE',
-                  borderColor: isSelected ? theme.colors.primary : theme.colors.border,
-                  borderWidth: isSelected ? 2 : 1,
-                  borderRadius: 18,
-                  paddingHorizontal: 10,
-                  paddingVertical: 5,
-                  gap: 6,
-                  elevation: isSelected ? 4 : 2,
-                }}
-              >
-                <View
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 9,
-                    backgroundColor: pinColor,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Text style={{ fontSize: 9, fontWeight: '900', color: '#ffffff' }}>
-                    #{stop.sequence}
-                  </Text>
-                </View>
-                <Text
-                  variant="label"
-                  style={{
-                    fontSize: 11,
-                    color: isSelected ? theme.colors.primary : theme.colors.foreground,
-                    fontWeight: isSelected ? '700' : '500',
-                  }}
-                >
-                  {stop.clientName.split(' - ')[0]}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: theme.colors.cardBackground,
+              borderColor: theme.colors.border,
+              borderWidth: 1,
+              borderRadius: 14,
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              gap: 5,
+              elevation: 2,
+            }}
+          >
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#eab308' }} />
+            <Text variant="caption" style={{ fontSize: 11, fontWeight: '600', color: theme.colors.foreground }}>
+              Pendientes
+            </Text>
+          </View>
+
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: theme.colors.cardBackground,
+              borderColor: theme.colors.border,
+              borderWidth: 1,
+              borderRadius: 14,
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              gap: 5,
+              elevation: 2,
+            }}
+          >
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e' }} />
+            <Text variant="caption" style={{ fontSize: 11, fontWeight: '600', color: theme.colors.foreground }}>
+              Entregados
+            </Text>
+          </View>
+
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: theme.colors.cardBackground,
+              borderColor: theme.colors.border,
+              borderWidth: 1,
+              borderRadius: 14,
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              gap: 5,
+              elevation: 2,
+            }}
+          >
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444' }} />
+            <Text variant="caption" style={{ fontSize: 11, fontWeight: '600', color: theme.colors.foreground }}>
+              Incidencias
+            </Text>
+          </View>
+        </View>
       </View>
 
       {/* 3. BOTONES DE CONTROL DE MAPA: COMPÁS, MI UBICACIÓN Y ZOOM +, - */}
@@ -850,22 +887,81 @@ export function RouteMapView({
               </Text>
             </View>
 
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 2 }}>
-              <Button
-                label="Llamar"
-                icon={Phone}
-                variant="outline"
-                size="sm"
-                onPress={() => handleCall(selectedStop.contactPhone)}
-              />
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+              {selectedStop.status === 'PENDING' && (
+                <>
+                  <View style={{ flex: 1 }}>
+                    <Button
+                      label="Llamar"
+                      icon={Phone}
+                      variant="outline"
+                      size="sm"
+                      fullWidth
+                      onPress={() => handleCall(selectedStop.contactPhone)}
+                    />
+                  </View>
+                  <View style={{ flex: 1.5 }}>
+                    <Button
+                      label="Estoy en camino"
+                      icon={Truck}
+                      variant="primary"
+                      size="sm"
+                      fullWidth
+                      onPress={() => updateStopStatus(selectedStop.id, 'EN_ROUTE')}
+                    />
+                  </View>
+                </>
+              )}
 
-              <Button
-                label="Ver Detalle de Parada"
-                variant="primary"
-                size="sm"
-                endIcon={ArrowRight}
-                onPress={() => onSelectStopDetail(selectedStop)}
-              />
+              {selectedStop.status === 'EN_ROUTE' && (
+                <>
+                  <View style={{ flex: 1 }}>
+                    <Button
+                      label="Llamar"
+                      icon={Phone}
+                      variant="outline"
+                      size="sm"
+                      fullWidth
+                      onPress={() => handleCall(selectedStop.contactPhone)}
+                    />
+                  </View>
+                  <View style={{ flex: 1.5 }}>
+                    <Button
+                      label="Marcar llegada"
+                      icon={CheckCircle2}
+                      variant="primary"
+                      size="sm"
+                      fullWidth
+                      onPress={() => updateStopStatus(selectedStop.id, 'ARRIVED')}
+                    />
+                  </View>
+                </>
+              )}
+
+              {(selectedStop.status === 'ARRIVED' || selectedStop.status === 'DELIVERED') && (
+                <>
+                  <View style={{ flex: 1 }}>
+                    <Button
+                      label="Llamar"
+                      icon={Phone}
+                      variant="outline"
+                      size="sm"
+                      fullWidth
+                      onPress={() => handleCall(selectedStop.contactPhone)}
+                    />
+                  </View>
+                  <View style={{ flex: 1.5 }}>
+                    <Button
+                      label={selectedStop.status === 'ARRIVED' ? 'Ver detalle y cobrar' : 'Ver detalle'}
+                      variant="primary"
+                      size="sm"
+                      fullWidth
+                      endIcon={ArrowRight}
+                      onPress={() => onSelectStopDetail(selectedStop)}
+                    />
+                  </View>
+                </>
+              )}
             </View>
           </View>
         )}
@@ -883,7 +979,7 @@ export function RouteMapView({
                   DATOS DE ENTREGA
                 </Text>
                 {selectedStop.isCold && (
-                  <Badge label="Cadena de Frío ❄️" tone="primary" emphasis="soft" size="sm" />
+                  <Badge label="Cadena de Frío" tone="primary" emphasis="soft" size="sm" />
                 )}
               </View>
 
@@ -1033,13 +1129,35 @@ export function RouteMapView({
                 )}
               </View>
 
-              <Button
-                label="Ver Detalle de Parada"
-                variant="primary"
-                fullWidth
-                endIcon={ArrowRight}
-                onPress={() => onSelectStopDetail(selectedStop)}
-              />
+              {selectedStop.status === 'PENDING' && (
+                <Button
+                  label="Estoy en camino"
+                  icon={Truck}
+                  variant="primary"
+                  fullWidth
+                  onPress={() => updateStopStatus(selectedStop.id, 'EN_ROUTE')}
+                />
+              )}
+
+              {selectedStop.status === 'EN_ROUTE' && (
+                <Button
+                  label="Marcar llegada"
+                  icon={CheckCircle2}
+                  variant="primary"
+                  fullWidth
+                  onPress={() => updateStopStatus(selectedStop.id, 'ARRIVED')}
+                />
+              )}
+
+              {(selectedStop.status === 'ARRIVED' || selectedStop.status === 'DELIVERED') && (
+                <Button
+                  label={selectedStop.status === 'ARRIVED' ? 'Ver detalle y cobrar' : 'Ver detalle'}
+                  variant="primary"
+                  fullWidth
+                  endIcon={ArrowRight}
+                  onPress={() => onSelectStopDetail(selectedStop)}
+                />
+              )}
             </View>
           </ScrollView>
         )}

@@ -15,7 +15,7 @@ export function RegistrarVisitaScreen() {
       style={{ flex: 1, backgroundColor: theme.colors.mainBackground }}
       contentContainerStyle={{ padding: 16, gap: 16 }}
     >
-      {/* BOTÓN REGRESAR */}
+      {/* BOTÓN REGRESAR
       <TouchableOpacity
         onPress={() => router.back()}
         activeOpacity={0.7}
@@ -31,7 +31,7 @@ export function RegistrarVisitaScreen() {
         <Text variant="label" style={{ fontWeight: '600', color: theme.colors.foreground }}>
           Volver a la Hoja de Ruta
         </Text>
-      </TouchableOpacity>
+      </TouchableOpacity> */}
 
       {/* TARJETA DE TÍTULO PRINCIPAL */}
       <View

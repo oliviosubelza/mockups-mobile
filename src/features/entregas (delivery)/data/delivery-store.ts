@@ -1,4 +1,5 @@
-import type { DeliveryStop } from '../types';
+import { create } from 'zustand';
+import type { DeliveryStop, EstadoEntrega } from '../types';
 
 export const INITIAL_STOPS: DeliveryStop[] = [
   {
@@ -10,7 +11,7 @@ export const INITIAL_STOPS: DeliveryStop[] = [
     contactName: 'Lic. Roberto Gómez (Almacén Alimentos)',
     contactPhone: '+591 71234567',
     deliveryWindow: '08:00 - 09:30 hs',
-    status: 'EN_ROUTE',
+    status: 'PENDING',
     isCold: true,
     packagesCount: '180.5 kg • 0.6 m³',
     weightKg: 180.5,
@@ -123,12 +124,41 @@ export const INITIAL_STOPS: DeliveryStop[] = [
   },
 ];
 
-let currentSelectedStop: DeliveryStop = INITIAL_STOPS[3];
+type DeliveryStoreState = {
+  stops: DeliveryStop[];
+  selectedStopId: string;
+  setSelectedStop: (stop: DeliveryStop) => void;
+  getSelectedStop: () => DeliveryStop;
+  updateStopStatus: (stopId: string, status: EstadoEntrega) => void;
+};
+
+export const useDeliveryStore = create<DeliveryStoreState>((set, get) => ({
+  stops: INITIAL_STOPS,
+  selectedStopId: INITIAL_STOPS[0].id,
+
+  setSelectedStop: (stop) => set({ selectedStopId: stop.id }),
+
+  getSelectedStop: () => {
+    const { stops, selectedStopId } = get();
+    return stops.find((s) => s.id === selectedStopId) || stops[0];
+  },
+
+  updateStopStatus: (stopId, status) =>
+    set((state) => ({
+      stops: state.stops.map((s) =>
+        s.id === stopId ? { ...s, status } : s
+      ),
+    })),
+}));
 
 export function setSelectedStop(stop: DeliveryStop): void {
-  currentSelectedStop = stop;
+  useDeliveryStore.getState().setSelectedStop(stop);
 }
 
 export function getSelectedStop(): DeliveryStop {
-  return currentSelectedStop;
+  return useDeliveryStore.getState().getSelectedStop();
+}
+
+export function updateStopStatus(stopId: string, status: EstadoEntrega): void {
+  useDeliveryStore.getState().updateStopStatus(stopId, status);
 }

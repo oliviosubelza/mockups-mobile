@@ -25,9 +25,9 @@ export const SearchField = forwardRef<TextInput, Props>(function SearchField(
       backgroundColor="secondary"
       borderRadius="md"
       paddingHorizontal="m"
-      height={48}
+      height={42}
     >
-      <Search color={theme.colors.mutedForeground} size={20} />
+      <Search color={theme.colors.mutedForeground} size={18} />
       <TextInput
         ref={ref}
         value={value}
@@ -37,7 +37,7 @@ export const SearchField = forwardRef<TextInput, Props>(function SearchField(
         style={[
           {
             flex: 1,
-            fontSize: 16,
+            fontSize: 13,
             marginLeft: 8,
             color: theme.colors.foreground,
             fontFamily: 'Montserrat_500Medium',

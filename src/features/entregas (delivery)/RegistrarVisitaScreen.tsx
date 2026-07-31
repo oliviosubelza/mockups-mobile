@@ -1,10 +1,13 @@
-import { useState } from 'react';
-import { ScrollView, View, TouchableOpacity } from 'react-native';
-import { ArrowLeft, MapPin, ClipboardList, Info, CheckCircle2 } from 'lucide-react-native';
+import {
+  ClipboardList,
+  Info,
+  MapPin
+} from "lucide-react-native";
+import { useState } from "react";
+import { ScrollView, View } from "react-native";
 
-import { router } from 'expo-router';
-import { Badge, Button, AppDialog } from '@/shared/ui';
-import { Box, Text, useAppTheme } from '@/theme';
+import { AppDialog, Badge, Button } from "@/shared/ui";
+import { Text, useAppTheme } from "@/theme";
 
 export function RegistrarVisitaScreen() {
   const theme = useAppTheme();
@@ -15,7 +18,7 @@ export function RegistrarVisitaScreen() {
       style={{ flex: 1, backgroundColor: theme.colors.mainBackground }}
       contentContainerStyle={{ padding: 16, gap: 16 }}
     >
-      {/* BOTÓN REGRESAR */}
+      {/* BOTÓN REGRESAR
       <TouchableOpacity
         onPress={() => router.back()}
         activeOpacity={0.7}
@@ -24,13 +27,14 @@ export function RegistrarVisitaScreen() {
           alignItems: 'center',
           gap: 8,
           alignSelf: 'flex-start',
+          paddingVertical: 4,
         }}
       >
-        {/* <ArrowLeft size={20} color={theme.colors.foreground} />
+        <ArrowLeft size={20} color={theme.colors.foreground} />
         <Text variant="label" style={{ fontWeight: '600', color: theme.colors.foreground }}>
-          Volver a Mis Entregas
-        </Text> */}
-      </TouchableOpacity>
+          Volver a la Hoja de Ruta
+        </Text>
+      </TouchableOpacity> */}
 
       {/* TARJETA DE TÍTULO PRINCIPAL */}
       <View
@@ -43,24 +47,34 @@ export function RegistrarVisitaScreen() {
           gap: 12,
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <View
             style={{
               width: 44,
               height: 44,
               borderRadius: 22,
               backgroundColor: theme.colors.primarySoft,
-              alignItems: 'center',
-              justifyContent: 'center',
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
             <MapPin size={24} color={theme.colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Badge label="En Desarrollo" tone="warning" emphasis="soft" size="sm" />
+            <Badge
+              label="En Desarrollo"
+              tone="warning"
+              emphasis="soft"
+              size="sm"
+            />
             <Text
               variant="header"
-              style={{ fontSize: 20, fontWeight: '700', marginTop: 4, color: theme.colors.foreground }}
+              style={{
+                fontSize: 20,
+                fontWeight: "700",
+                marginTop: 4,
+                color: theme.colors.foreground,
+              }}
             >
               Aquí se registrará una visita
             </Text>
@@ -84,7 +98,9 @@ export function RegistrarVisitaScreen() {
             color: theme.colors.mutedForeground,
           }}
         >
-          En esta sección el conductor o repartidor podrá realizar el registro de una visita previa o gestión presencial en el destino del cliente antes de iniciar la hoja de ruta oficial.
+          En esta sección el conductor o repartidor podrá realizar el registro
+          de una visita previa o gestión presencial en el destino del cliente
+          antes de iniciar la hoja de ruta oficial.
         </Text>
 
         <Text
@@ -95,7 +111,10 @@ export function RegistrarVisitaScreen() {
             color: theme.colors.mutedForeground,
           }}
         >
-          Esta herramienta incluirá captura de coordenadas GPS, registro de observaciones sobre el estado del punto de entrega, toma de evidencia fotográfica y reporte de motivos de contacto cuando la orden de transporte no pueda ser iniciada inmediatamente.
+          Esta herramienta incluirá captura de coordenadas GPS, registro de
+          observaciones sobre el estado del punto de entrega, toma de evidencia
+          fotográfica y reporte de motivos de contacto cuando la orden de
+          transporte no pueda ser iniciada inmediatamente.
         </Text>
 
         <View
@@ -103,18 +122,28 @@ export function RegistrarVisitaScreen() {
             backgroundColor: theme.colors.secondary,
             borderRadius: 12,
             padding: 14,
-            flexDirection: 'row',
+            flexDirection: "row",
             gap: 10,
-            alignItems: 'flex-start',
+            alignItems: "flex-start",
             marginTop: 4,
           }}
         >
-          <Info size={20} color={theme.colors.primary} style={{ marginTop: 2 }} />
+          <Info
+            size={20}
+            color={theme.colors.primary}
+            style={{ marginTop: 2 }}
+          />
           <Text
             variant="caption"
-            style={{ flex: 1, fontSize: 13, color: theme.colors.foreground, lineHeight: 18 }}
+            style={{
+              flex: 1,
+              fontSize: 13,
+              color: theme.colors.foreground,
+              lineHeight: 18,
+            }}
           >
-            Módulo en proceso de definición operativa y técnica para su posterior integración con el sistema central.
+            Módulo en proceso de definición operativa y técnica para su
+            posterior integración con el sistema central.
           </Text>
         </View>
 

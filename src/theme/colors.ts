@@ -62,7 +62,10 @@ export const darkColors: typeof lightColors = {
   ring: palette.cobaltBright,
 
   danger: palette.dangerBright,
-  warningForeground: palette.ink,
+  // `ink` is near-black: legible on the light `warning` amber, unreadable on the
+  // dark elevation ramp. Follows `dangerForeground`/`successForeground`, which
+  // stay `white` in both schemes.
+  warningForeground: palette.white,
 
   primarySoft: palette.cobaltSoftDark,
   successSoft: palette.successSoftDark,

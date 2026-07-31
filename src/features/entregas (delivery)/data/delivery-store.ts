@@ -1,4 +1,5 @@
-import type { DeliveryStop } from '../types';
+import { create } from 'zustand';
+import type { DeliveryStop, EstadoEntrega } from '../types';
 
 export const INITIAL_STOPS: DeliveryStop[] = [
   {
@@ -10,13 +11,15 @@ export const INITIAL_STOPS: DeliveryStop[] = [
     contactName: 'Lic. Roberto Gómez (Almacén Alimentos)',
     contactPhone: '+591 71234567',
     deliveryWindow: '08:00 - 09:30 hs',
-    status: 'DELIVERED',
+    status: 'PENDING',
     isCold: true,
     packagesCount: '180.5 kg • 0.6 m³',
     weightKg: 180.5,
     volumeM3: 0.6,
     totalUnits: 96,
-    netTotal: 'Bs. 2,450.00',
+    netTotal: 'Bs. 5,030.00',
+    invoiceTotal: 5030,
+    advanceAmount: 0,
     notes: 'Recibe en rampa de frío con sello.',
     latitude: -17.768,
     longitude: -63.195,
@@ -30,13 +33,15 @@ export const INITIAL_STOPS: DeliveryStop[] = [
     contactName: 'Marcos Vargas (Recepción Abarrotes)',
     contactPhone: '+591 72345678',
     deliveryWindow: '09:30 - 11:00 hs',
-    status: 'DELIVERED',
+    status: 'PENDING',
     isCold: false,
     packagesCount: '340.0 kg • 1.1 m³',
     weightKg: 340.0,
     volumeM3: 1.1,
     totalUnits: 180,
-    netTotal: 'Bs. 5,120.00',
+    netTotal: 'Bs. 3,450.00',
+    invoiceTotal: 3450,
+    advanceAmount: 450,
     notes: 'Descarga por rampa trasera de proveedores.',
     latitude: -17.752,
     longitude: -63.181,
@@ -50,14 +55,16 @@ export const INITIAL_STOPS: DeliveryStop[] = [
     contactName: 'Ing. Fernando Roca',
     contactPhone: '+591 73456789',
     deliveryWindow: '11:00 - 12:30 hs',
-    status: 'INCIDENT',
+    status: 'PENDING',
     isCold: true,
     packagesCount: '520.0 kg • 1.8 m³',
     weightKg: 520.0,
     volumeM3: 1.8,
     totalUnits: 264,
-    netTotal: 'Bs. 8,900.00',
-    notes: 'Incidencia reportada en parada anterior.',
+    netTotal: 'Bs. 9,800.00',
+    invoiceTotal: 9800,
+    advanceAmount: 200,
+    notes: 'Revisar temperatura de bultos al entregar.',
     latitude: -17.792,
     longitude: -63.184,
   },
@@ -70,14 +77,16 @@ export const INITIAL_STOPS: DeliveryStop[] = [
     contactName: 'Lucía Fernández',
     contactPhone: '+591 74567890',
     deliveryWindow: '13:00 - 14:30 hs',
-    status: 'ARRIVED',
+    status: 'PENDING',
     isCold: false,
     packagesCount: '210.0 kg • 0.7 m³',
     weightKg: 210.0,
     volumeM3: 0.7,
     totalUnits: 120,
-    netTotal: 'Bs. 3,100.00',
-    notes: 'Chofer en destino listo para descarga de productos.',
+    netTotal: 'Bs. 2,150.00',
+    invoiceTotal: 2150,
+    advanceAmount: 2150,
+    notes: 'Ingreso por portón lateral de carga.',
     latitude: -17.805,
     longitude: -63.201,
   },
@@ -96,7 +105,9 @@ export const INITIAL_STOPS: DeliveryStop[] = [
     weightKg: 95.0,
     volumeM3: 0.3,
     totalUnits: 60,
-    netTotal: 'Bs. 1,850.00',
+    netTotal: 'Bs. 1,680.00',
+    invoiceTotal: 1680,
+    advanceAmount: 1650,
     notes: 'Ingreso por parqueo de clientes.',
     latitude: -17.741,
     longitude: -63.17,
@@ -116,19 +127,50 @@ export const INITIAL_STOPS: DeliveryStop[] = [
     weightKg: 310.0,
     volumeM3: 0.9,
     totalUnits: 168,
-    netTotal: 'Bs. 4,200.00',
+    netTotal: 'Bs. 7,320.00',
+    invoiceTotal: 7320,
+    advanceAmount: 0,
     notes: 'Recepción hasta las 17:30 imprevistos.',
     latitude: -17.789,
     longitude: -63.138,
   },
 ];
 
-let currentSelectedStop: DeliveryStop = INITIAL_STOPS[3];
+type DeliveryStoreState = {
+  stops: DeliveryStop[];
+  selectedStopId: string;
+  setSelectedStop: (stop: DeliveryStop) => void;
+  getSelectedStop: () => DeliveryStop;
+  updateStopStatus: (stopId: string, status: EstadoEntrega) => void;
+};
+
+export const useDeliveryStore = create<DeliveryStoreState>((set, get) => ({
+  stops: INITIAL_STOPS,
+  selectedStopId: INITIAL_STOPS[0].id,
+
+  setSelectedStop: (stop) => set({ selectedStopId: stop.id }),
+
+  getSelectedStop: () => {
+    const { stops, selectedStopId } = get();
+    return stops.find((s) => s.id === selectedStopId) || stops[0];
+  },
+
+  updateStopStatus: (stopId, status) =>
+    set((state) => ({
+      stops: state.stops.map((s) =>
+        s.id === stopId ? { ...s, status } : s
+      ),
+    })),
+}));
 
 export function setSelectedStop(stop: DeliveryStop): void {
-  currentSelectedStop = stop;
+  useDeliveryStore.getState().setSelectedStop(stop);
 }
 
 export function getSelectedStop(): DeliveryStop {
-  return currentSelectedStop;
+  return useDeliveryStore.getState().getSelectedStop();
+}
+
+export function updateStopStatus(stopId: string, status: EstadoEntrega): void {
+  useDeliveryStore.getState().updateStopStatus(stopId, status);
 }

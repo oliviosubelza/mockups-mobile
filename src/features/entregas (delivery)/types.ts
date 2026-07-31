@@ -1,5 +1,8 @@
 export type EstadoEntrega = 'PENDING' | 'EN_ROUTE' | 'ARRIVED' | 'DELIVERED' | 'INCIDENT';
 
+/** Metodo de cobro en sitio. Compartido entre la pantalla y el modal de cobro. */
+export type PaymentMethodType = 'CASH' | 'TRANSFER' | 'QR' | 'CHECK';
+
 export type DeliveryStop = {
   id: string;
   sequence: number;
@@ -16,6 +19,11 @@ export type DeliveryStop = {
   volumeM3: number;
   totalUnits: number;
   netTotal: string;
+  /** Total facturado del punto de entrega. Mapea a dispatch_delivery_points.total_neto. */
+  invoiceTotal: number;
+  /** Anticipo que la empresa ya debe al cliente y se descuenta de la factura.
+   *  NO existe aun en el esquema (db.puml); es un campo de mockup. */
+  advanceAmount: number;
   notes?: string;
   latitude?: number;
   longitude?: number;

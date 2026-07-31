@@ -16,6 +16,7 @@ export type ButtonVariant =
   | 'outline'
   | 'ghost'
   | 'danger'
+  | 'success'
   | 'link';
 
 export type ButtonSize = ControlSize;
@@ -71,6 +72,12 @@ const variantStyles: Record<ButtonVariant, VariantStyle> = {
   danger: {
     background: 'danger',
     foreground: 'dangerForeground',
+    border: null,
+    pressedBackground: null,
+  },
+  success: {
+    background: 'success',
+    foreground: 'successForeground',
     border: null,
     pressedBackground: null,
   },

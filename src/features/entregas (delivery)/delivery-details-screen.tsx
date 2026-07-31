@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   CheckSquare,
   ChevronDown,
+  ChevronUp,
   ClipboardList,
   Clock,
   DollarSign,
@@ -26,7 +27,7 @@ import {
   Trash2,
   Truck,
   X,
-  type LucideIcon
+  type LucideIcon,
 } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import {
@@ -37,7 +38,7 @@ import {
   TouchableOpacity,
   View,
   type TextStyle,
-  type ViewStyle
+  type ViewStyle,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
@@ -49,9 +50,22 @@ import {
 import { AppDialog, Badge, Button, type DialogType } from "@/shared/ui";
 import { SuccessDialog } from "@/shared/ui/SuccessDialog";
 import { Text, useAppTheme } from "@/theme";
+import {
+  DeliveryActionBar,
+  type DeliveryActionBarProps,
+} from "./components/DeliveryActionBar";
+import { DeliveryProgressHeader } from "./components/DeliveryProgressHeader";
 import { PaymentMethodModal } from "./components/PaymentMethodModal";
-import { SignaturePadModal } from "./components/SignaturePadModal";
-import { getSelectedStop, updateStopStatus } from "./data/delivery-store";
+import {
+  SIGNATURE_INK_COLOR,
+  SIGNATURE_PAPER_COLOR,
+  SignaturePadModal,
+} from "./components/SignaturePadModal";
+import {
+  getSelectedStop,
+  updateStopStatus,
+  useDeliveryStore,
+} from "./data/delivery-store";
 import { SANTA_CRUZ_STOPS_COORDINATES } from "./data/santa-cruz-route";
 import type { EstadoEntrega, PaymentMethodType } from "./types";
 
@@ -102,40 +116,78 @@ const PAYMENT_METHOD_OPTIONS: PaymentMethodOption[] = [
   },
 ];
 
+type PaymentCurrency = "BOB" | "USD";
+
 type PaymentRecord = {
   id: string;
   method: PaymentMethodType;
+  /** SIEMPRE el equivalente en bolivianos. Es lo unico que toca el saldo. */
   amount: number;
+  /** Moneda en que el cliente entrego el pago. */
+  currency: PaymentCurrency;
+  /** Monto tal como se entrego fisicamente, en `currency`. */
+  originalAmount: number;
+  /** Tipo de cambio aplicado. 1 cuando la moneda es BOB. */
+  exchangeRate: number;
   reference?: string;
   bank?: string;
   hasPhoto?: boolean;
   isVerified?: boolean;
 };
 
+// TIPO DE CAMBIO DE MOCKUP. El boliviano esta anclado oficialmente al dolar, y la
+// empresa COMPRA los dolares que recibe, por lo que corresponde la cotizacion de
+// compra. En produccion este valor NO se hardcodea: viene de configuracion o de
+// SAP, y debe quedar registrado en el pago porque puede cambiar entre entregas.
+const USD_TO_BOB_BUY_RATE = 6.86;
+
+const CASH_CURRENCY_OPTIONS: { currency: PaymentCurrency; label: string }[] = [
+  { currency: "BOB", label: "Bolivianos (Bs.)" },
+  { currency: "USD", label: "Dolares (USD)" },
+];
+
+// EL MONTO DEL FORMULARIO DE EFECTIVO SIEMPRE SE EXPRESA EN LA MONEDA ELEGIDA,
+// ASI QUE CUALQUIER SIEMBRA QUE VENGA DE UN SALDO EN BOLIVIANOS SE CONVIERTE.
+const toCashCurrencyAmount = (
+  bobValue: number,
+  currency: PaymentCurrency,
+): number =>
+  currency === "USD"
+    ? Math.round((bobValue / USD_TO_BOB_BUY_RATE) * 100) / 100
+    : bobValue;
+
 const formatMoney = (val?: number | null): string => {
   if (val === undefined || val === null || isNaN(val)) return "0.00";
   return val.toFixed(2);
 };
 
+// HORA CORTA (HH:MM) PARA LA CABECERA DE PROGRESO
+const formatClockLabel = (date: Date): string => {
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  return `${hours}:${minutes}`;
+};
+
 // AJUSTA LOS TRAZOS CAPTURADOS AL RECUADRO DE PREVISUALIZACION DEL POD
+// ENCUADRA LA FIRMA GUARDADA. LOS TRAZOS USAN CURVAS CUADRATICAS (M / Q / L), ASI
+// QUE NO ALCANZA CON LEER M Y L: SE RECORREN TODOS LOS PARES DE COORDENADAS.
 const getSignatureViewBox = (strokePaths: string[]): string => {
-  const pointPattern = /[ML]\s*(-?[\d.]+)\s+(-?[\d.]+)/g;
+  const numberPattern = /-?[\d.]+/g;
   const source = strokePaths.join(" ");
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  let match = pointPattern.exec(source);
-  while (match !== null) {
-    const x = parseFloat(match[1]);
-    const y = parseFloat(match[2]);
+  const coords = source.match(numberPattern) ?? [];
+  for (let i = 0; i + 1 < coords.length; i += 2) {
+    const x = parseFloat(coords[i]);
+    const y = parseFloat(coords[i + 1]);
     if (!isNaN(x) && !isNaN(y)) {
       minX = Math.min(minX, x);
       maxX = Math.max(maxX, x);
       minY = Math.min(minY, y);
       maxY = Math.max(maxY, y);
     }
-    match = pointPattern.exec(source);
   }
   if (!isFinite(minX) || !isFinite(minY)) return "0 0 100 70";
   const padding = 6;
@@ -183,9 +235,28 @@ export const DeliveryDetailScreen = () => {
   // OBTENER LA PARADA SELECCIONADA DINÁMICAMENTE DE LA HOJA DE RUTA
   const stop = getSelectedStop();
 
+  // TOTAL DE PARADAS DE LA HOJA DE RUTA, PARA LA CABECERA DE PROGRESO
+  const totalStops = useDeliveryStore((state) => state.stops.length);
+
   // ESTADO LOCAL DE LA PARADA (SOPORTA TRANSIÓN 'EN_ROUTE' / 'PENDING' -> 'ARRIVED')
   const [currentStatus, setCurrentStatus] = useState<EstadoEntrega>(
     stop.status,
+  );
+
+  // HORA EN QUE EL CHOFER MARCO LLEGADA. VACIA MIENTRAS NO LLEGO.
+  const [arrivedAtLabel, setArrivedAtLabel] = useState<string | undefined>(
+    undefined,
+  );
+
+  // LA INCIDENCIA SE GUARDA EN LA PARADA Y NO EN EL ESTADO LOCAL,
+  // ASI QUE LA CABECERA DE PROGRESO LA TIENE QUE LEER DE AHI.
+  const progressStatus: EstadoEntrega =
+    stop.status === "INCIDENT" ? "INCIDENT" : currentStatus;
+
+  // LA DIRECCION IMPORTA ANTES DE LLEGAR, NO DESPUES: LA TARJETA NACE
+  // EXPANDIDA MIENTRAS EL CHOFER VIAJA Y COLAPSADA CUANDO YA ESTA EN SITIO.
+  const [isClientCardExpanded, setIsClientCardExpanded] = useState(
+    stop.status === "PENDING" || stop.status === "EN_ROUTE",
   );
 
   // VALIDACIÓN CLAVE: EL COBRO Y DESCARGA SE HABILITA AL INICIAR LA ENTREGA (ESTADO: ARRIVED O DELIVERED)
@@ -306,6 +377,9 @@ export const DeliveryDetailScreen = () => {
 
   // Formularios de Cobro
   const [cashAmount, setCashAmount] = useState(netAmountToCollect.toString());
+  // SOLO EL EFECTIVO ADMITE DOLARES: EL QR INTEROPERABLE OPERA EN BOLIVIANOS Y
+  // LA TRANSFERENCIA Y EL CHEQUE LLEGAN EN LA MONEDA DE LA FACTURA.
+  const [cashCurrency, setCashCurrency] = useState<PaymentCurrency>("BOB");
   const [cashReceiptNo, setCashReceiptNo] = useState("REC-00982");
   const [cashPhoto, setCashPhoto] = useState(false);
 
@@ -392,6 +466,10 @@ export const DeliveryDetailScreen = () => {
   const handleMarkArrived = () => {
     setCurrentStatus("ARRIVED");
     stop.status = "ARRIVED";
+    setArrivedAtLabel(formatClockLabel(new Date()));
+    // YA EN SITIO LA DIRECCION DEJA DE SER LO IMPORTANTE: SE CEDE LA ALTURA
+    // A LOS PRODUCTOS Y AL COBRO.
+    setIsClientCardExpanded(false);
     showDialog(
       "Llegada Marcada",
       `Has marcado llegada a la parada de ${stop.clientName}. Estado: "En Descarga". Ya puedes verificar los productos a descargar y procesar el cobro.`,
@@ -492,7 +570,14 @@ export const DeliveryDetailScreen = () => {
   const handleSelectPaymentMethod = (method: PaymentMethodType) => {
     if (blockChargeIfCoveredByAdvance()) return;
     const seededAmount = pendingBalance > 0 ? pendingBalance.toString() : "";
-    if (method === "CASH") setCashAmount(seededAmount);
+    if (method === "CASH") {
+      // EL SALDO ESTA EN BOLIVIANOS; EL CAMPO, EN LA MONEDA ELEGIDA.
+      setCashAmount(
+        pendingBalance > 0
+          ? toCashCurrencyAmount(pendingBalance, cashCurrency).toString()
+          : "",
+      );
+    }
     if (method === "TRANSFER") setTransferAmount(seededAmount);
     if (method === "CHECK") setCheckAmount(seededAmount);
     if (method === "QR") {
@@ -521,6 +606,9 @@ export const DeliveryDetailScreen = () => {
         id: Date.now().toString(),
         method: "QR",
         amount: amt,
+        currency: "BOB",
+        originalAmount: amt,
+        exchangeRate: 1,
         reference: `QR-BCO-${Math.floor(100000 + Math.random() * 900000)}`,
         isVerified: true,
       };
@@ -548,8 +636,9 @@ export const DeliveryDetailScreen = () => {
   // AGREGAR COBROS INDIVIDUALES / PARCIALES
   const handleAddCashPayment = () => {
     if (blockChargeIfCoveredByAdvance()) return;
-    const amt = parseFloat(cashAmount);
-    if (isNaN(amt) || amt <= 0) {
+    // LO TIPEADO ESTA EN LA MONEDA ELEGIDA; EL SALDO SIEMPRE EN BOLIVIANOS.
+    const originalAmount = parseFloat(cashAmount);
+    if (isNaN(originalAmount) || originalAmount <= 0) {
       showDialog(
         "Monto Invalido",
         "Ingresa un monto valido para el cobro en efectivo.",
@@ -557,10 +646,16 @@ export const DeliveryDetailScreen = () => {
       );
       return;
     }
+    const rate = cashCurrency === "USD" ? USD_TO_BOB_BUY_RATE : 1;
+    const bobAmount = Math.round(originalAmount * rate * 100) / 100;
+    const paidCurrency = cashCurrency;
     const newPayment: PaymentRecord = {
       id: Date.now().toString(),
       method: "CASH",
-      amount: amt,
+      amount: bobAmount,
+      currency: paidCurrency,
+      originalAmount,
+      exchangeRate: rate,
       reference: cashReceiptNo || "Recibo Manual",
       hasPhoto: false,
     };
@@ -568,17 +663,19 @@ export const DeliveryDetailScreen = () => {
     setPayments(newPayments);
     const newPending = Math.max(
       0,
-      netAmountToCollect -
-        newPayments.reduce((a, p) => a + (p.amount || 0), 0),
+      netAmountToCollect - newPayments.reduce((a, p) => a + (p.amount || 0), 0),
     );
     setCashAmount(newPending.toString());
+    setCashCurrency("BOB");
     setTransferAmount(newPending.toString());
     setCheckAmount(newPending.toString());
     setQrAmount(newPending.toString());
     setIsPaymentModalOpen(false);
     showDialog(
       "Cobro Registrado",
-      `Se registraron Bs. ${formatMoney(amt)} en efectivo.`,
+      paidCurrency === "USD"
+        ? `Se recibieron USD ${formatMoney(originalAmount)} en efectivo y se acreditaron Bs. ${formatMoney(bobAmount)} al saldo (tipo de cambio ${rate}).`
+        : `Se registraron Bs. ${formatMoney(bobAmount)} en efectivo.`,
       "success",
     );
   };
@@ -606,6 +703,9 @@ export const DeliveryDetailScreen = () => {
       id: Date.now().toString(),
       method: "TRANSFER",
       amount: amt,
+      currency: "BOB",
+      originalAmount: amt,
+      exchangeRate: 1,
       bank: transferBank,
       reference: transferRef,
       hasPhoto: true,
@@ -614,8 +714,7 @@ export const DeliveryDetailScreen = () => {
     setPayments(newPayments);
     const newPending = Math.max(
       0,
-      netAmountToCollect -
-        newPayments.reduce((a, p) => a + (p.amount || 0), 0),
+      netAmountToCollect - newPayments.reduce((a, p) => a + (p.amount || 0), 0),
     );
     setCashAmount(newPending.toString());
     setTransferAmount(newPending.toString());
@@ -652,6 +751,9 @@ export const DeliveryDetailScreen = () => {
       id: Date.now().toString(),
       method: "CHECK",
       amount: amt,
+      currency: "BOB",
+      originalAmount: amt,
+      exchangeRate: 1,
       bank: checkBank,
       reference: `Cheque #${checkNo}`,
       hasPhoto: true,
@@ -660,8 +762,7 @@ export const DeliveryDetailScreen = () => {
     setPayments(newPayments);
     const newPending = Math.max(
       0,
-      netAmountToCollect -
-        newPayments.reduce((a, p) => a + (p.amount || 0), 0),
+      netAmountToCollect - newPayments.reduce((a, p) => a + (p.amount || 0), 0),
     );
     setCashAmount(newPending.toString());
     setTransferAmount(newPending.toString());
@@ -680,8 +781,7 @@ export const DeliveryDetailScreen = () => {
     setPayments(newPayments);
     const newPending = Math.max(
       0,
-      netAmountToCollect -
-        newPayments.reduce((a, p) => a + (p.amount || 0), 0),
+      netAmountToCollect - newPayments.reduce((a, p) => a + (p.amount || 0), 0),
     );
     setCashAmount(newPending.toString());
     setTransferAmount(newPending.toString());
@@ -853,16 +953,170 @@ export const DeliveryDetailScreen = () => {
     </TouchableOpacity>
   );
 
+  // CHIP COMPACTO DE CONFORMIDAD (FIRMA / FOTO) CON SU ESTADO CAPTURADO O PENDIENTE
+  const renderConformityChip = (config: {
+    label: string;
+    icon: LucideIcon;
+    captured: boolean;
+    onPress: () => void;
+  }) => {
+    const ChipIcon = config.icon;
+    return (
+      <TouchableOpacity
+        onPress={config.onPress}
+        activeOpacity={0.8}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: config.captured
+            ? theme.colors.success
+            : theme.colors.border,
+          backgroundColor: config.captured
+            ? theme.colors.successSoft
+            : theme.colors.secondary,
+        }}
+      >
+        <ChipIcon
+          size={16}
+          color={
+            config.captured
+              ? theme.colors.success
+              : theme.colors.mutedForeground
+          }
+        />
+        <Text
+          variant="label"
+          style={{
+            fontSize: 12,
+            color: config.captured
+              ? theme.colors.success
+              : theme.colors.foreground,
+          }}
+        >
+          {config.label}
+        </Text>
+        <Text
+          variant="caption"
+          style={{
+            fontSize: 11,
+            color: config.captured
+              ? theme.colors.success
+              : theme.colors.mutedForeground,
+          }}
+        >
+          {config.captured ? "Capturada" : "Pendiente"}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
+  // CAMBIAR DE MONEDA NO REINTERPRETA LA CIFRA YA TIPEADA: UN MONTO EN UNA
+  // MONEDA NO SIGNIFICA NADA EN LA OTRA, ASI QUE SE RESIEMBRA EL SALDO
+  // PENDIENTE CONVERTIDO A LA MONEDA RECIEN ELEGIDA.
+  const handleSelectCashCurrency = (currency: PaymentCurrency) => {
+    if (currency === cashCurrency) return;
+    setCashCurrency(currency);
+    setCashAmount(toCashCurrencyAmount(pendingBalance, currency).toString());
+  };
+
+  // LINEA DE CONVERSION DEL EFECTIVO EN DOLARES. QUEDA VACIA MIENTRAS LO
+  // TIPEADO NO SEA UN NUMERO UTIL, PARA NO MOSTRAR NaN EN PANTALLA.
+  const cashConversionLabel = (() => {
+    if (cashCurrency !== "USD") return "";
+    const typedAmount = parseFloat(cashAmount);
+    if (isNaN(typedAmount) || typedAmount <= 0) return "";
+    const bobAmount = Math.round(typedAmount * USD_TO_BOB_BUY_RATE * 100) / 100;
+    return `USD ${formatMoney(typedAmount)} x ${USD_TO_BOB_BUY_RATE} = Bs. ${formatMoney(bobAmount)}`;
+  })();
+
   // 1. EFECTIVO
   const renderCashForm = () => (
     <View style={{ gap: 10 }}>
-      {renderAmountField({
-        label: "Monto en Efectivo Recibido (Bs.)",
-        value: cashAmount,
-        onChangeText: setCashAmount,
-        onHalf: () => setCashAmount((netAmountToCollect / 2).toString()),
-        onPending: () => setCashAmount(pendingBalance.toString()),
-      })}
+      {/* MONEDA DEL EFECTIVO: SUB-ELECCION DEL MONTO, NO UNA ACCION PRINCIPAL */}
+      <View>
+        <Text variant="label" style={{ marginBottom: 4, fontSize: 13 }}>
+          Moneda
+        </Text>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {CASH_CURRENCY_OPTIONS.map((option) => {
+            const isSelected = cashCurrency === option.currency;
+            return (
+              <TouchableOpacity
+                key={option.currency}
+                onPress={() => handleSelectCashCurrency(option.currency)}
+                activeOpacity={0.8}
+                style={{
+                  flex: 1,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingVertical: 7,
+                  paddingHorizontal: 8,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: isSelected
+                    ? theme.colors.primary
+                    : theme.colors.border,
+                  backgroundColor: isSelected
+                    ? theme.colors.primarySoft
+                    : theme.colors.secondary,
+                }}
+              >
+                <Text
+                  variant="label"
+                  numberOfLines={1}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: isSelected ? "700" : "500",
+                    color: isSelected
+                      ? theme.colors.primary
+                      : theme.colors.foreground,
+                  }}
+                >
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* MONTO EN LA MONEDA ELEGIDA, CON SU EQUIVALENTE EN BOLIVIANOS DEBAJO */}
+      <View style={{ gap: 4 }}>
+        {renderAmountField({
+          label: `Monto en Efectivo Recibido (${cashCurrency === "USD" ? "USD" : "Bs."})`,
+          value: cashAmount,
+          onChangeText: setCashAmount,
+          onHalf: () =>
+            setCashAmount(
+              toCashCurrencyAmount(
+                netAmountToCollect / 2,
+                cashCurrency,
+              ).toString(),
+            ),
+          onPending: () =>
+            setCashAmount(
+              toCashCurrencyAmount(pendingBalance, cashCurrency).toString(),
+            ),
+        })}
+        {cashConversionLabel ? (
+          <Text
+            variant="caption"
+            style={{
+              fontSize: 11,
+              color: theme.colors.mutedForeground,
+              fontVariant: ["tabular-nums"],
+            }}
+          >
+            {cashConversionLabel}
+          </Text>
+        ) : null}
+      </View>
+
       {renderTextField({
         label: "Nro. de Recibo / Nota Manual",
         value: cashReceiptNo,
@@ -1098,331 +1352,116 @@ export const DeliveryDetailScreen = () => {
   const isPaymentModalLocked =
     selectedMethod === "QR" && qrStatus === "VALIDATING";
 
+  // MONTO Y ACCION DE LA BARRA FIJA SEGUN LA FASE DE LA ENTREGA.
+  // SOLO REUSA LOS HANDLERS EXISTENTES, NO AGREGA REGLAS DE NEGOCIO.
+  const actionBar: DeliveryActionBarProps = (() => {
+    if (currentStatus === "DELIVERED") {
+      return {
+        amountValue: `Bs. ${formatMoney(totalPaid)}`,
+        amountLabel: "cobrado",
+        actionLabel: "Entrega finalizada",
+        actionIcon: CheckCircle2,
+        actionDisabled: true,
+        tone: "success",
+        onAction: () => {},
+      };
+    }
+
+    if (currentStatus === "PENDING") {
+      return {
+        amountValue: `Bs. ${formatMoney(invoiceTotal)}`,
+        amountLabel: "a facturar",
+        actionLabel: "Iniciar viaje",
+        actionIcon: Truck,
+        onAction: handleStartEnRoute,
+      };
+    }
+
+    if (currentStatus === "EN_ROUTE") {
+      return {
+        amountValue: `Bs. ${formatMoney(invoiceTotal)}`,
+        amountLabel: "a facturar",
+        actionLabel: "Llegue al cliente",
+        actionIcon: CheckCircle2,
+        onAction: handleMarkArrived,
+      };
+    }
+
+    // EL ANTICIPO YA CUBRE TODO: NO CORRESPONDE COBRO EN SITIO, SOLO CERRAR.
+    if (isFullyCoveredByAdvance) {
+      return {
+        amountValue: `Bs. ${formatMoney(appliedAdvance)}`,
+        amountLabel: "cubierto por anticipo",
+        actionLabel: "Finalizar entrega",
+        actionIcon: CheckCircle2,
+        tone: "success",
+        onAction: handleConfirmFinalDelivery,
+      };
+    }
+
+    if (activeTab === "productos") {
+      return {
+        amountValue: `Bs. ${formatMoney(netAmountToCollect)}`,
+        amountLabel: "por cobrar",
+        actionLabel: "Ir al cobro",
+        actionIcon: DollarSign,
+        onAction: () => handleSelectTab("cobro"),
+      };
+    }
+
+    if (pendingBalance > 0) {
+      return {
+        amountValue: `Bs. ${formatMoney(pendingBalance)}`,
+        amountLabel: "por cobrar",
+        actionLabel: "Registrar cobro",
+        actionIcon: Plus,
+        onAction: () => handleSelectPaymentMethod(selectedMethod),
+      };
+    }
+
+    if (TOTAL_ORDER_AMOUNT > 0) {
+      return {
+        amountValue: `Bs. ${formatMoney(totalPaid)}`,
+        amountLabel: "cobrado",
+        actionLabel: "Finalizar entrega",
+        actionIcon: CheckCircle2,
+        tone: "success",
+        onAction: handleConfirmFinalDelivery,
+      };
+    }
+
+    // SIN PRODUCTOS TICKEADOS NO HAY MONTO NI ENTREGA QUE FINALIZAR.
+    return {
+      amountValue: "--",
+      amountLabel: "sin productos verificados",
+      actionLabel: "Verificar productos",
+      actionIcon: Package,
+      onAction: () => handleSelectTab("productos"),
+    };
+  })();
+
+  // ETIQUETA DE AVANCE DEL TAB DE COBRO
+  const collectionTabProgressLabel = isFullyCoveredByAdvance
+    ? "Cubierto"
+    : netAmountToCollect === 0
+      ? "--"
+      : `Bs. ${formatMoney(totalPaid)} / ${formatMoney(netAmountToCollect)}`;
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.mainBackground }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}
       >
-        {/* 0. INDICADOR VISUAL DE PASOS DE LA ENTREGA */}
-        <View
-          style={{
-            backgroundColor: theme.colors.cardBackground,
-            borderRadius: 14,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            padding: 12,
-            gap: 10,
-            elevation: 1,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <Text
-              variant="label"
-              style={{
-                fontSize: 12,
-                fontWeight: "700",
-                color: theme.colors.foreground,
-              }}
-            >
-              PROGRESO DE LA ENTREGA
-            </Text>
-            <Text
-              variant="caption"
-              style={{
-                fontSize: 11,
-                color: theme.colors.primary,
-                fontWeight: "700",
-              }}
-            >
-              {currentStatus === "PENDING"
-                ? "Paso 1 de 5"
-                : currentStatus === "EN_ROUTE"
-                  ? "Paso 2 de 5"
-                  : currentStatus === "ARRIVED" && activeTab === "productos"
-                    ? "Paso 3 de 5"
-                    : currentStatus === "ARRIVED" && activeTab === "cobro"
-                      ? "Paso 4 de 5"
-                      : currentStatus === "DELIVERED"
-                        ? "Paso 5 de 5"
-                        : "En Curso"}
-            </Text>
-          </View>
+        {/* 0. ESPINA DE PROGRESO DE LA ENTREGA */}
+        <DeliveryProgressHeader
+          sequence={stop.sequence}
+          totalStops={totalStops}
+          status={progressStatus}
+          arrivedAtLabel={arrivedAtLabel}
+        />
 
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              paddingHorizontal: 4,
-            }}
-          >
-            {/* Paso 1: En Camino */}
-            <View style={{ alignItems: "center", flex: 1 }}>
-              <View
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 14,
-                  backgroundColor:
-                    currentStatus === "EN_ROUTE"
-                      ? theme.colors.primary
-                      : currentStatus === "ARRIVED" ||
-                          currentStatus === "DELIVERED"
-                        ? theme.colors.success
-                        : theme.colors.secondary,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Truck
-                  size={14}
-                  color={
-                    currentStatus === "PENDING"
-                      ? theme.colors.mutedForeground
-                      : "#ffffff"
-                  }
-                />
-              </View>
-              <Text
-                variant="caption"
-                style={{
-                  fontSize: 10,
-                  marginTop: 4,
-                  fontWeight: currentStatus === "EN_ROUTE" ? "700" : "400",
-                  color:
-                    currentStatus === "EN_ROUTE"
-                      ? theme.colors.primary
-                      : theme.colors.mutedForeground,
-                }}
-              >
-                1. En Camino
-              </Text>
-            </View>
-
-            <View
-              style={{
-                height: 2,
-                flex: 0.4,
-                backgroundColor:
-                  currentStatus === "EN_ROUTE" ||
-                  currentStatus === "ARRIVED" ||
-                  currentStatus === "DELIVERED"
-                    ? theme.colors.primary
-                    : theme.colors.border,
-              }}
-            />
-
-            {/* Paso 2: Llegada */}
-            <View style={{ alignItems: "center", flex: 1 }}>
-              <View
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 14,
-                  backgroundColor:
-                    currentStatus === "ARRIVED"
-                      ? theme.colors.primary
-                      : currentStatus === "DELIVERED"
-                        ? theme.colors.success
-                        : theme.colors.secondary,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <MapPin
-                  size={14}
-                  color={
-                    currentStatus === "PENDING" || currentStatus === "EN_ROUTE"
-                      ? theme.colors.mutedForeground
-                      : "#ffffff"
-                  }
-                />
-              </View>
-              <Text
-                variant="caption"
-                style={{
-                  fontSize: 10,
-                  marginTop: 4,
-                  fontWeight: currentStatus === "ARRIVED" ? "700" : "400",
-                  color:
-                    currentStatus === "ARRIVED"
-                      ? theme.colors.primary
-                      : theme.colors.mutedForeground,
-                }}
-              >
-                2. Llegada
-              </Text>
-            </View>
-
-            <View
-              style={{
-                height: 2,
-                flex: 0.4,
-                backgroundColor:
-                  currentStatus === "ARRIVED" || currentStatus === "DELIVERED"
-                    ? theme.colors.primary
-                    : theme.colors.border,
-              }}
-            />
-
-            {/* Paso 3: Productos */}
-            <View style={{ alignItems: "center", flex: 1 }}>
-              <View
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 14,
-                  backgroundColor:
-                    currentStatus === "DELIVERED"
-                      ? theme.colors.success
-                      : currentStatus === "ARRIVED" && activeTab === "productos"
-                        ? theme.colors.primary
-                        : theme.colors.secondary,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Package
-                  size={14}
-                  color={
-                    currentStatus === "DELIVERED" ||
-                    (currentStatus === "ARRIVED" && activeTab === "productos")
-                      ? "#ffffff"
-                      : theme.colors.mutedForeground
-                  }
-                />
-              </View>
-              <Text
-                variant="caption"
-                style={{
-                  fontSize: 10,
-                  marginTop: 4,
-                  fontWeight:
-                    activeTab === "productos" && currentStatus === "ARRIVED"
-                      ? "700"
-                      : "400",
-                  color: theme.colors.mutedForeground,
-                }}
-              >
-                3. Productos
-              </Text>
-            </View>
-
-            <View
-              style={{
-                height: 2,
-                flex: 0.4,
-                backgroundColor:
-                  currentStatus === "DELIVERED"
-                    ? theme.colors.success
-                    : theme.colors.border,
-              }}
-            />
-
-            {/* Paso 4: Cobro */}
-            <View style={{ alignItems: "center", flex: 1 }}>
-              <View
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 14,
-                  backgroundColor:
-                    currentStatus === "DELIVERED"
-                      ? theme.colors.success
-                      : currentStatus === "ARRIVED" && activeTab === "cobro"
-                        ? theme.colors.primary
-                        : theme.colors.secondary,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Banknote
-                  size={14}
-                  color={
-                    currentStatus === "DELIVERED" ||
-                    (currentStatus === "ARRIVED" && activeTab === "cobro")
-                      ? "#ffffff"
-                      : theme.colors.mutedForeground
-                  }
-                />
-              </View>
-              <Text
-                variant="caption"
-                style={{
-                  fontSize: 10,
-                  marginTop: 4,
-                  fontWeight:
-                    activeTab === "cobro" && currentStatus === "ARRIVED"
-                      ? "700"
-                      : "400",
-                  color: theme.colors.mutedForeground,
-                }}
-              >
-                4. Cobro
-              </Text>
-            </View>
-
-            <View
-              style={{
-                height: 2,
-                flex: 0.4,
-                backgroundColor:
-                  currentStatus === "DELIVERED"
-                    ? theme.colors.success
-                    : theme.colors.border,
-              }}
-            />
-
-            {/* Paso 5: Entregado */}
-            <View style={{ alignItems: "center", flex: 1 }}>
-              <View
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 14,
-                  backgroundColor:
-                    currentStatus === "DELIVERED"
-                      ? theme.colors.success
-                      : theme.colors.secondary,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <CheckCircle2
-                  size={14}
-                  color={
-                    currentStatus === "DELIVERED"
-                      ? "#ffffff"
-                      : theme.colors.mutedForeground
-                  }
-                />
-              </View>
-              <Text
-                variant="caption"
-                style={{
-                  fontSize: 10,
-                  marginTop: 4,
-                  fontWeight: currentStatus === "DELIVERED" ? "700" : "400",
-                  color:
-                    currentStatus === "DELIVERED"
-                      ? theme.colors.success
-                      : theme.colors.mutedForeground,
-                }}
-              >
-                5. Entregado
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* 1. TARJETA PRINCIPAL DINÁMICA DEL CLIENTE SELECCIONADO Y RESUMEN DE COBRO */}
+        {/* 1. TARJETA PRINCIPAL DINÁMICA DEL CLIENTE SELECCIONADO */}
         <View
           style={{
             backgroundColor: theme.colors.cardBackground,
@@ -1434,11 +1473,13 @@ export const DeliveryDetailScreen = () => {
             elevation: 2,
           }}
         >
+          {/* ENCABEZADO SIEMPRE VISIBLE CON EL TOGGLE DE COLAPSO */}
           <View
             style={{
               flexDirection: "row",
               justifyContent: "space-between",
               alignItems: "flex-start",
+              gap: 8,
             }}
           >
             <View style={{ gap: 2, flex: 1 }}>
@@ -1448,113 +1489,165 @@ export const DeliveryDetailScreen = () => {
               >
                 PARADA #{stop.sequence} • {stop.deliveryPointId}
               </Text>
-              <Text
-                variant="title"
-                style={{ color: theme.colors.foreground, fontSize: 19 }}
-              >
-                {stop.clientName}
-              </Text>
+
+              {isClientCardExpanded ? (
+                <Text
+                  variant="title"
+                  style={{ color: theme.colors.foreground, fontSize: 19 }}
+                >
+                  {stop.clientName}
+                </Text>
+              ) : (
+                /* COLAPSADO: NOMBRE Y DIRECCION EN UNA SOLA LINEA TRUNCADA */
+                <Text
+                  variant="bodySmall"
+                  numberOfLines={1}
+                  style={{ fontSize: 13 }}
+                >
+                  <Text
+                    variant="label"
+                    style={{
+                      fontSize: 13,
+                      fontWeight: "700",
+                      color: theme.colors.foreground,
+                    }}
+                  >
+                    {stop.clientName}
+                  </Text>
+                  {" • "}
+                  <Text
+                    variant="caption"
+                    style={{
+                      fontSize: 12,
+                      color: theme.colors.mutedForeground,
+                    }}
+                  >
+                    {stop.address}
+                  </Text>
+                </Text>
+              )}
             </View>
-            <Badge
-              label={getStatusLabel(currentStatus)}
-              tone={getStatusTone(currentStatus)}
-              emphasis="soft"
-              size="md"
-            />
+
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+            >
+              {isClientCardExpanded ? (
+                <Badge
+                  label={getStatusLabel(currentStatus)}
+                  tone={getStatusTone(currentStatus)}
+                  emphasis="soft"
+                  size="md"
+                />
+              ) : (
+                <>
+                  <TouchableOpacity
+                    onPress={handleCall}
+                    hitSlop={8}
+                    style={{ padding: 4 }}
+                  >
+                    <Phone size={18} color={theme.colors.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleOpenGoogleMaps}
+                    hitSlop={8}
+                    style={{ padding: 4 }}
+                  >
+                    <Navigation size={18} color={theme.colors.primary} />
+                  </TouchableOpacity>
+                </>
+              )}
+
+              <TouchableOpacity
+                onPress={() => setIsClientCardExpanded((prev) => !prev)}
+                hitSlop={8}
+                style={{ padding: 4 }}
+              >
+                {isClientCardExpanded ? (
+                  <ChevronUp size={18} color={theme.colors.mutedForeground} />
+                ) : (
+                  <ChevronDown size={18} color={theme.colors.mutedForeground} />
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
 
-          <View style={{ gap: 6, marginTop: 2 }}>
-            <View
-              style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}
-            >
-              <MapPin
-                size={16}
-                color={theme.colors.mutedForeground}
-                style={{ marginTop: 2 }}
-              />
-              <Text
-                variant="bodySmall"
-                style={{ color: theme.colors.foreground, flex: 1 }}
-              >
-                {stop.address}
-              </Text>
-            </View>
-
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginTop: 4,
-              }}
-            >
+          {/* DETALLE EXPANDIDO: DIRECCION, VENTANA DE ENTREGA Y CONTACTO */}
+          {isClientCardExpanded && (
+            <View style={{ gap: 6, marginTop: 2 }}>
               <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "flex-start",
+                  gap: 6,
+                }}
               >
-                <Clock size={14} color={theme.colors.mutedForeground} />
+                <MapPin
+                  size={16}
+                  color={theme.colors.mutedForeground}
+                  style={{ marginTop: 2 }}
+                />
                 <Text
-                  variant="caption"
-                  style={{ color: theme.colors.mutedForeground }}
+                  variant="bodySmall"
+                  style={{ color: theme.colors.foreground, flex: 1 }}
                 >
-                  Ventana:{" "}
-                  <Text variant="label" style={{ fontSize: 12 }}>
-                    {stop.deliveryWindow}
-                  </Text>
+                  {stop.address}
                 </Text>
               </View>
 
-              <TouchableOpacity
-                onPress={handleCall}
-                style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginTop: 4,
+                }}
               >
-                <Phone size={14} color={theme.colors.primary} />
-                <Text
-                  variant="label"
-                  style={{ color: theme.colors.primary, fontSize: 12 }}
+                <View
+                  style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
                 >
-                  {stop.contactPhone}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* BOTONES DE ACCIÓN */}
-            <View style={{ gap: 8, marginTop: 4 }}>
-              {currentStatus === "PENDING" && (
-                <Button
-                  label="Estoy en camino"
-                  icon={Truck}
-                  variant="primary"
-                  size="md"
-                  fullWidth
-                  onPress={handleStartEnRoute}
-                />
-              )}
-
-              {currentStatus === "EN_ROUTE" && (
-                <View style={{ gap: 8 }}>
-                  <View
-                    style={{
-                      backgroundColor: theme.colors.primarySoft,
-                      padding: 10,
-                      borderRadius: 10,
-                      gap: 2,
-                    }}
+                  <Clock size={14} color={theme.colors.mutedForeground} />
+                  <Text
+                    variant="caption"
+                    style={{ color: theme.colors.mutedForeground }}
                   >
-                    <Text
-                      variant="label"
-                      style={{ color: theme.colors.primary, fontSize: 12 }}
-                    >
-                      En camino hacia la ubicación del cliente
+                    Ventana:{" "}
+                    <Text variant="label" style={{ fontSize: 12 }}>
+                      {stop.deliveryWindow}
                     </Text>
-                  </View>
-                  <Button
-                    label="Marcar llegada"
-                    icon={CheckCircle2}
-                    variant="primary"
-                    size="md"
-                    fullWidth
-                    onPress={handleMarkArrived}
-                  />
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  onPress={handleCall}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+                >
+                  <Phone size={14} color={theme.colors.primary} />
+                  <Text
+                    variant="label"
+                    style={{ color: theme.colors.primary, fontSize: 12 }}
+                  >
+                    {stop.contactPhone}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* AVISOS DE FASE. LA TRANSICIÓN DE ESTADO LA DISPARA LA BARRA FIJA. */}
+              {currentStatus === "EN_ROUTE" && (
+                <View
+                  style={{
+                    backgroundColor: theme.colors.primarySoft,
+                    padding: 10,
+                    borderRadius: 10,
+                    gap: 2,
+                    marginTop: 4,
+                  }}
+                >
+                  <Text
+                    variant="label"
+                    style={{ color: theme.colors.primary, fontSize: 12 }}
+                  >
+                    En camino hacia la ubicación del cliente
+                  </Text>
                 </View>
               )}
 
@@ -1565,6 +1658,7 @@ export const DeliveryDetailScreen = () => {
                     padding: 10,
                     borderRadius: 10,
                     gap: 2,
+                    marginTop: 4,
                   }}
                 >
                   <Text
@@ -1583,261 +1677,43 @@ export const DeliveryDetailScreen = () => {
                 </View>
               )}
 
+              <View style={{ marginTop: 4 }}>
+                <Button
+                  label="Cómo llegar"
+                  icon={Navigation}
+                  variant="secondary"
+                  size="sm"
+                  fullWidth
+                  onPress={handleOpenGoogleMaps}
+                />
+              </View>
+            </View>
+          )}
+
+          {/* BOTONES DE ACCIÓN — SIGUEN DISPONIBLES CON LA TARJETA COLAPSADA */}
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
               <Button
-                label="Cómo llegar"
-                icon={Navigation}
+                label="Registrar Visita"
+                icon={ClipboardList}
                 variant="secondary"
                 size="sm"
                 fullWidth
-                onPress={handleOpenGoogleMaps}
+                onPress={handleGoRegistrarVisita}
               />
-
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <View style={{ flex: 1 }}>
-                  <Button
-                    label="Registrar Visita"
-                    icon={ClipboardList}
-                    variant="secondary"
-                    size="sm"
-                    fullWidth
-                    onPress={handleGoRegistrarVisita}
-                  />
-                </View>
-                <View style={{ flex: 1.2 }}>
-                  <Button
-                    label="Reportar Incidencia"
-                    icon={AlertTriangle}
-                    variant="danger"
-                    size="sm"
-                    fullWidth
-                    onPress={() => {
-                      setIncidentItemName("Toda la Entrega");
-                      setIsIncidentModalOpen(true);
-                    }}
-                  />
-                </View>
-              </View>
             </View>
-          </View>
-
-          {/* DESGLOSE DE FACTURA Y ANTICIPO */}
-          <View
-            style={{
-              backgroundColor: theme.colors.cardBackground,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              padding: 12,
-              borderRadius: 12,
-              gap: 8,
-              marginTop: 4,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <Text
-                variant="caption"
-                style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
-              >
-                Factura
-              </Text>
-              <Text
-                variant="label"
-                style={{ fontSize: 13, color: theme.colors.foreground }}
-              >
-                Bs. {formatMoney(invoiceTotal)}
-              </Text>
-            </View>
-
-            {/* EL ANTICIPO SE MUESTRA SIEMPRE, INCLUSO EN CERO, PARA QUE EL CHOFER
-                SEPA QUE EL DATO SE CONSULTO Y NO QUE FALTA EN PANTALLA. */}
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <Text
-                variant="caption"
-                style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
-              >
-                Anticipo
-              </Text>
-              <Text
-                variant="label"
-                style={{
-                  fontSize: 13,
-                  color:
-                    appliedAdvance > 0
-                      ? theme.colors.success
-                      : theme.colors.mutedForeground,
-                }}
-              >
-                {appliedAdvance > 0
-                  ? `- Bs. ${formatMoney(appliedAdvance)}`
-                  : `Bs. ${formatMoney(0)}`}
-              </Text>
-            </View>
-
-            {advanceAmount > 0 && (
-              <Text
-                variant="caption"
-                style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
-              >
-                Anticipo registrado previamente a favor del cliente.
-              </Text>
-            )}
-
-            {remainingAdvance > 0 && (
-              <Text
-                variant="caption"
-                style={{ color: theme.colors.warningForeground, fontSize: 11 }}
-              >
-                {`Saldo de anticipo no aplicado: Bs. ${formatMoney(remainingAdvance)}. Queda como credito a favor del cliente para la siguiente factura.`}
-              </Text>
-            )}
-
-            {hasInvalidAdvance && (
-              <Badge
-                label="Anticipo mayor a la factura"
-                tone="danger"
-                emphasis="soft"
+            <View style={{ flex: 1.2 }}>
+              <Button
+                label="Reportar Incidencia"
+                icon={AlertTriangle}
+                variant="danger"
                 size="sm"
-              />
-            )}
-          </View>
-
-          {/* RESUMEN FINANCIERO DINÁMICO DE COBRO */}
-          <View
-            style={{
-              backgroundColor: theme.colors.secondary,
-              padding: 12,
-              borderRadius: 12,
-              gap: 8,
-              marginTop: 4,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <View>
-                <Text
-                  variant="caption"
-                  style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
-                >
-                  Total a Cobrar
-                </Text>
-                <Text
-                  variant="header"
-                  style={{ fontSize: 18, color: theme.colors.foreground }}
-                >
-                  Bs. {formatMoney(netAmountToCollect)}
-                </Text>
-                {appliedAdvance > 0 && (
-                  <Text
-                    variant="caption"
-                    style={{
-                      color: theme.colors.mutedForeground,
-                      fontSize: 11,
-                    }}
-                  >
-                    {`Factura Bs. ${formatMoney(TOTAL_ORDER_AMOUNT)} - Anticipo Bs. ${formatMoney(appliedAdvance)}`}
-                  </Text>
-                )}
-              </View>
-
-              <Badge
-                label={
-                  TOTAL_ORDER_AMOUNT === 0
-                    ? "Selecciona productos"
-                    : isFullyCoveredByAdvance
-                      ? "Cubierto por Anticipo"
-                      : pendingBalance === 0
-                        ? "Cobrado 100%"
-                        : `Pendiente: Bs. ${formatMoney(pendingBalance)}`
-                }
-                tone={
-                  TOTAL_ORDER_AMOUNT === 0
-                    ? "warning"
-                    : isFullyCoveredByAdvance
-                      ? "success"
-                      : pendingBalance === 0
-                        ? "success"
-                        : "danger"
-                }
-                emphasis="soft"
-                size="md"
-              />
-            </View>
-
-            {/* BARRA VISUAL DE DESGLOSE DE COBRO */}
-            <View style={{ gap: 4 }}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
+                fullWidth
+                onPress={() => {
+                  setIncidentItemName("Toda la Entrega");
+                  setIsIncidentModalOpen(true);
                 }}
-              >
-                <Text
-                  variant="caption"
-                  style={{ fontSize: 11, color: theme.colors.mutedForeground }}
-                >
-                  Cobrado:{" "}
-                  <Text
-                    variant="label"
-                    style={{ fontSize: 11, color: theme.colors.success }}
-                  >
-                    Bs. {formatMoney(totalPaid)}
-                  </Text>
-                </Text>
-                <Text
-                  variant="caption"
-                  style={{ fontSize: 11, color: theme.colors.mutedForeground }}
-                >
-                  {netAmountToCollect > 0
-                    ? Math.min(
-                        100,
-                        Math.max(
-                          0,
-                          Math.round((totalPaid / netAmountToCollect) * 100),
-                        ),
-                      )
-                    : 0}
-                  %
-                </Text>
-              </View>
-
-              <View
-                style={{
-                  height: 6,
-                  backgroundColor: theme.colors.secondary,
-                  borderRadius: 3,
-                  overflow: "hidden",
-                }}
-              >
-                <View
-                  style={{
-                    width: `${netAmountToCollect > 0 ? Math.min(100, Math.max(0, (totalPaid / netAmountToCollect) * 100)) : isFullyCoveredByAdvance ? 100 : 0}%`,
-                    height: "100%",
-                    backgroundColor:
-                      (netAmountToCollect > 0 || isFullyCoveredByAdvance) &&
-                      pendingBalance === 0
-                        ? "#22c55e"
-                        : theme.colors.primary,
-                    borderRadius: 3,
-                  }}
-                />
-              </View>
+              />
             </View>
           </View>
         </View>
@@ -1928,32 +1804,54 @@ export const DeliveryDetailScreen = () => {
                   : "transparent",
               alignItems: "center",
               justifyContent: "center",
-              flexDirection: "row",
-              gap: 6,
+              gap: 2,
               elevation: activeTab === "productos" ? 1 : 0,
             }}
           >
-            <Package
-              size={16}
-              color={
-                activeTab === "productos"
-                  ? theme.colors.primary
-                  : theme.colors.mutedForeground
-              }
-            />
-            <Text
-              variant="label"
-              style={{
-                fontSize: 13,
-                color:
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+            >
+              <Package
+                size={16}
+                color={
                   activeTab === "productos"
                     ? theme.colors.primary
-                    : theme.colors.mutedForeground,
-                fontWeight: activeTab === "productos" ? "700" : "500",
-              }}
+                    : theme.colors.mutedForeground
+                }
+              />
+              <Text
+                variant="label"
+                style={{
+                  fontSize: 13,
+                  color:
+                    activeTab === "productos"
+                      ? theme.colors.primary
+                      : theme.colors.mutedForeground,
+                  fontWeight: activeTab === "productos" ? "700" : "500",
+                }}
+              >
+                Productos & POD
+              </Text>
+            </View>
+
+            {/* AVANCE DE VERIFICACION DENTRO DEL PROPIO TAB */}
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
             >
-              Productos & POD
-            </Text>
+              <Text
+                variant="caption"
+                style={{
+                  fontSize: 11,
+                  color: isAllChecked
+                    ? theme.colors.success
+                    : theme.colors.mutedForeground,
+                  fontVariant: ["tabular-nums"],
+                }}
+              >
+                {checkedItemIds.length}/{items.length}
+              </Text>
+              {isAllChecked && <Check size={12} color={theme.colors.success} />}
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -1969,37 +1867,57 @@ export const DeliveryDetailScreen = () => {
                   : "transparent",
               alignItems: "center",
               justifyContent: "center",
-              flexDirection: "row",
-              gap: 6,
+              gap: 2,
               opacity: isPaymentEnabled ? 1 : 0.5,
               elevation: activeTab === "cobro" ? 1 : 0,
             }}
           >
-            {isPaymentEnabled ? (
-              <DollarSign
-                size={16}
-                color={
-                  activeTab === "cobro"
-                    ? theme.colors.primary
-                    : theme.colors.mutedForeground
-                }
-              />
-            ) : (
-              <Lock size={14} color={theme.colors.mutedForeground} />
-            )}
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+            >
+              {isPaymentEnabled ? (
+                <DollarSign
+                  size={16}
+                  color={
+                    activeTab === "cobro"
+                      ? theme.colors.primary
+                      : theme.colors.mutedForeground
+                  }
+                />
+              ) : (
+                <Lock size={14} color={theme.colors.mutedForeground} />
+              )}
+              <Text
+                variant="label"
+                style={{
+                  fontSize: 13,
+                  color: isPaymentEnabled
+                    ? activeTab === "cobro"
+                      ? theme.colors.primary
+                      : theme.colors.mutedForeground
+                    : theme.colors.mutedForeground,
+                  fontWeight: activeTab === "cobro" ? "700" : "500",
+                }}
+              >
+                Cobro en Sitio
+              </Text>
+            </View>
+
+            {/* AVANCE DE COBRO DENTRO DEL PROPIO TAB */}
             <Text
-              variant="label"
+              variant="caption"
+              numberOfLines={1}
               style={{
-                fontSize: 13,
-                color: isPaymentEnabled
-                  ? activeTab === "cobro"
-                    ? theme.colors.primary
-                    : theme.colors.mutedForeground
-                  : theme.colors.mutedForeground,
-                fontWeight: activeTab === "cobro" ? "700" : "500",
+                fontSize: 11,
+                color:
+                  isFullyCoveredByAdvance ||
+                  (netAmountToCollect > 0 && pendingBalance === 0)
+                    ? theme.colors.success
+                    : theme.colors.mutedForeground,
+                fontVariant: ["tabular-nums"],
               }}
             >
-              Cobro en Sitio
+              {collectionTabProgressLabel}
             </Text>
           </TouchableOpacity>
         </View>
@@ -2304,85 +2222,46 @@ export const DeliveryDetailScreen = () => {
                 </View>
               </View>
 
-              {stop.status == "ARRIVED" && (
-                <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
-                  <TouchableOpacity
-                    onPress={handleSimulatePhoto}
+              {/* CONFORMIDAD: FOTO Y FIRMA SON UNA ALTERNATIVA, NO DOS REQUISITOS.
+                  BASTA UNA DE LAS DOS PARA PODER FINALIZAR LA ENTREGA. */}
+              {currentStatus === "ARRIVED" && (
+                <View style={{ gap: 8, marginTop: 4 }}>
+                  <View
                     style={{
-                      flex: 1,
-                      backgroundColor: hasPhoto
-                        ? theme.colors.successSoft
-                        : theme.colors.secondary,
-                      borderWidth: 1,
-                      borderColor: hasPhoto
-                        ? theme.colors.success
-                        : theme.colors.border,
-                      borderRadius: 10,
-                      paddingVertical: 12,
+                      flexDirection: "row",
                       alignItems: "center",
-                      justifyContent: "center",
-                      gap: 6,
+                      justifyContent: "space-between",
+                      gap: 8,
                     }}
                   >
-                    <Camera
-                      size={20}
-                      color={
-                        hasPhoto
-                          ? theme.colors.success
-                          : theme.colors.mutedForeground
-                      }
-                    />
+                    <Text variant="label" style={{ fontSize: 13 }}>
+                      Conformidad
+                    </Text>
                     <Text
-                      variant="label"
+                      variant="caption"
                       style={{
-                        fontSize: 12,
-                        color: hasPhoto
-                          ? theme.colors.success
-                          : theme.colors.foreground,
+                        fontSize: 11,
+                        color: theme.colors.mutedForeground,
                       }}
                     >
-                      {hasPhoto ? "Foto Adjunta" : "Tomar Foto POD"}
+                      Basta una de las dos
                     </Text>
-                  </TouchableOpacity>
+                  </View>
 
-                  <TouchableOpacity
-                    onPress={handleOpenSignaturePad}
-                    style={{
-                      flex: 1,
-                      backgroundColor: hasSignature
-                        ? theme.colors.successSoft
-                        : theme.colors.secondary,
-                      borderWidth: 1,
-                      borderColor: hasSignature
-                        ? theme.colors.success
-                        : theme.colors.border,
-                      borderRadius: 10,
-                      paddingVertical: 12,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <FileSignature
-                      size={20}
-                      color={
-                        hasSignature
-                          ? theme.colors.success
-                          : theme.colors.mutedForeground
-                      }
-                    />
-                    <Text
-                      variant="label"
-                      style={{
-                        fontSize: 12,
-                        color: hasSignature
-                          ? theme.colors.success
-                          : theme.colors.foreground,
-                      }}
-                    >
-                      {hasSignature ? "Firma Registrada" : "Firma Digital"}
-                    </Text>
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    {renderConformityChip({
+                      label: "Firma",
+                      icon: FileSignature,
+                      captured: hasSignature,
+                      onPress: handleOpenSignaturePad,
+                    })}
+                    {renderConformityChip({
+                      label: "Foto",
+                      icon: Camera,
+                      captured: hasPhoto,
+                      onPress: handleSimulatePhoto,
+                    })}
+                  </View>
                 </View>
               )}
 
@@ -2392,7 +2271,7 @@ export const DeliveryDetailScreen = () => {
                   <View
                     style={{
                       height: 70,
-                      backgroundColor: theme.colors.secondary,
+                      backgroundColor: SIGNATURE_PAPER_COLOR,
                       borderWidth: 1,
                       borderColor: theme.colors.border,
                       borderRadius: 10,
@@ -2409,7 +2288,7 @@ export const DeliveryDetailScreen = () => {
                         <Path
                           key={`pod-stroke-${idx}`}
                           d={d}
-                          stroke={theme.colors.foreground}
+                          stroke={SIGNATURE_INK_COLOR}
                           strokeWidth={2.5}
                           fill="none"
                           strokeLinecap="round"
@@ -2432,23 +2311,262 @@ export const DeliveryDetailScreen = () => {
                 </View>
               )}
             </View>
-
-            {/* BOTÓN PARA PASAR AL COBRO */}
-            {stop.status == "ARRIVED" && (
-              <Button
-                label="Continuar al Registro de Cobro"
-                variant="primary"
-                size="md"
-                fullWidth
-                onPress={() => handleSelectTab("cobro")}
-              />
-            )}
           </View>
         )}
 
         {/* TAB 2: MÓDULO COMPLETO DE REGISTRO DE COBRO (Habilitado en ARRIVED) */}
         {activeTab === "cobro" && (
           <View style={{ gap: 16 }}>
+            {/* DESGLOSE DE FACTURA Y ANTICIPO */}
+            <View
+              style={{
+                backgroundColor: theme.colors.cardBackground,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                padding: 12,
+                borderRadius: 12,
+                gap: 8,
+                marginTop: 4,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <Text
+                  variant="caption"
+                  style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
+                >
+                  Factura
+                </Text>
+                <Text
+                  variant="label"
+                  style={{
+                    fontSize: 13,
+                    color: theme.colors.foreground,
+                    fontVariant: ["tabular-nums"],
+                  }}
+                >
+                  Bs. {formatMoney(invoiceTotal)}
+                </Text>
+              </View>
+
+              {/* EL ANTICIPO SE MUESTRA SIEMPRE, INCLUSO EN CERO, PARA QUE EL CHOFER
+                  SEPA QUE EL DATO SE CONSULTO Y NO QUE FALTA EN PANTALLA. */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <Text
+                  variant="caption"
+                  style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
+                >
+                  Anticipo
+                </Text>
+                <Text
+                  variant="label"
+                  style={{
+                    fontSize: 13,
+                    color:
+                      appliedAdvance > 0
+                        ? theme.colors.success
+                        : theme.colors.mutedForeground,
+                    fontVariant: ["tabular-nums"],
+                  }}
+                >
+                  {appliedAdvance > 0
+                    ? `- Bs. ${formatMoney(appliedAdvance)}`
+                    : `Bs. ${formatMoney(0)}`}
+                </Text>
+              </View>
+
+              {advanceAmount > 0 && (
+                <Text
+                  variant="caption"
+                  style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
+                >
+                  Anticipo registrado previamente a favor del cliente.
+                </Text>
+              )}
+
+              {remainingAdvance > 0 && (
+                <Text
+                  variant="caption"
+                  style={{
+                    color: theme.colors.warningForeground,
+                    fontSize: 11,
+                  }}
+                >
+                  {`Saldo de anticipo no aplicado: Bs. ${formatMoney(remainingAdvance)}. Queda como credito a favor del cliente para la siguiente factura.`}
+                </Text>
+              )}
+
+              {hasInvalidAdvance && (
+                <Badge
+                  label="Anticipo mayor a la factura"
+                  tone="danger"
+                  emphasis="soft"
+                  size="sm"
+                />
+              )}
+            </View>
+
+            {/* RESUMEN FINANCIERO DINÁMICO DE COBRO */}
+            <View
+              style={{
+                backgroundColor: theme.colors.secondary,
+                padding: 12,
+                borderRadius: 12,
+                gap: 8,
+                marginTop: 4,
+              }}
+            >
+              {/* EL TOTAL Y SU ESTADO VAN EN LINEAS SEPARADAS: DOS CIFRAS
+                  MONETARIAS COMPITIENDO POR EL MISMO RENGLON SE DESBORDAN
+                  DEL ANCHO DEL TELEFONO. */}
+              <View style={{ gap: 8 }}>
+                {/* EN REACT NATIVE flexShrink ES 0 POR DEFECTO: SIN ESTO LA
+                    COLUMNA CONSERVA SU ANCHO INTRINSECO Y DESBORDA. */}
+                <View style={{ flexShrink: 1 }}>
+                  <Text
+                    variant="caption"
+                    style={{
+                      color: theme.colors.mutedForeground,
+                      fontSize: 11,
+                    }}
+                  >
+                    Total a Cobrar
+                  </Text>
+                  <Text
+                    variant="header"
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    style={{
+                      fontSize: 18,
+                      color: theme.colors.foreground,
+                      fontVariant: ["tabular-nums"],
+                    }}
+                  >
+                    Bs. {formatMoney(netAmountToCollect)}
+                  </Text>
+                  {/* {appliedAdvance > 0 && (
+                    <Text
+                      variant="caption"
+                      numberOfLines={1}
+                      style={{
+                        color: theme.colors.mutedForeground,
+                        fontSize: 11,
+                      }}
+                    >
+                      {`Factura Bs. ${formatMoney(TOTAL_ORDER_AMOUNT)} - Anticipo Bs. ${formatMoney(appliedAdvance)}`}
+                    </Text>
+                  )} */}
+                </View>
+
+                <View style={{ alignSelf: "flex-start", maxWidth: "100%" }}>
+                  <Badge
+                    label={
+                      TOTAL_ORDER_AMOUNT === 0
+                        ? "Selecciona productos"
+                        : isFullyCoveredByAdvance
+                          ? "Cubierto por Anticipo"
+                          : pendingBalance === 0
+                            ? "Cobrado 100%"
+                            : `Pendiente: Bs. ${formatMoney(pendingBalance)}`
+                    }
+                    tone={
+                      TOTAL_ORDER_AMOUNT === 0
+                        ? "warning"
+                        : isFullyCoveredByAdvance
+                          ? "success"
+                          : pendingBalance === 0
+                            ? "success"
+                            : "danger"
+                    }
+                    emphasis="soft"
+                    size="md"
+                  />
+                </View>
+              </View>
+
+              {/* BARRA VISUAL DE DESGLOSE DE COBRO */}
+              <View style={{ gap: 4 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    variant="caption"
+                    style={{
+                      fontSize: 11,
+                      color: theme.colors.mutedForeground,
+                    }}
+                  >
+                    Cobrado:{" "}
+                    <Text
+                      variant="label"
+                      style={{
+                        fontSize: 11,
+                        color: theme.colors.success,
+                        fontVariant: ["tabular-nums"],
+                      }}
+                    >
+                      Bs. {formatMoney(totalPaid)}
+                    </Text>
+                  </Text>
+                  <Text
+                    variant="caption"
+                    style={{
+                      fontSize: 11,
+                      color: theme.colors.mutedForeground,
+                    }}
+                  >
+                    {netAmountToCollect > 0
+                      ? Math.min(
+                          100,
+                          Math.max(
+                            0,
+                            Math.round((totalPaid / netAmountToCollect) * 100),
+                          ),
+                        )
+                      : 0}
+                    %
+                  </Text>
+                </View>
+
+                <View
+                  style={{
+                    height: 6,
+                    backgroundColor: theme.colors.secondary,
+                    borderRadius: 3,
+                    overflow: "hidden",
+                  }}
+                >
+                  <View
+                    style={{
+                      width: `${netAmountToCollect > 0 ? Math.min(100, Math.max(0, (totalPaid / netAmountToCollect) * 100)) : isFullyCoveredByAdvance ? 100 : 0}%`,
+                      height: "100%",
+                      backgroundColor:
+                        (netAmountToCollect > 0 || isFullyCoveredByAdvance) &&
+                        pendingBalance === 0
+                          ? "#22c55e"
+                          : theme.colors.primary,
+                      borderRadius: 3,
+                    }}
+                  />
+                </View>
+              </View>
+            </View>
+
             {/* TARJETA DE SELECTOR DE MÉTODOS DE COBRO */}
             <View
               style={{
@@ -2640,9 +2758,12 @@ export const DeliveryDetailScreen = () => {
                         borderBottomColor: theme.colors.border,
                       }}
                     >
-                      <View style={{ gap: 2 }}>
+                      {/* EN REACT NATIVE flexShrink ES 0 POR DEFECTO: SIN ESTO
+                          EL DETALLE CONSERVA SU ANCHO INTRINSECO Y DESBORDA. */}
+                      <View style={{ gap: 2, flexShrink: 1 }}>
                         <Text
                           variant="label"
+                          numberOfLines={1}
                           style={{ fontSize: 14, fontWeight: "700" }}
                         >
                           {p.method === "CASH"
@@ -2655,6 +2776,7 @@ export const DeliveryDetailScreen = () => {
                         </Text>
                         <Text
                           variant="caption"
+                          numberOfLines={1}
                           style={{
                             color: theme.colors.mutedForeground,
                             fontSize: 11,
@@ -2665,23 +2787,42 @@ export const DeliveryDetailScreen = () => {
                         </Text>
                       </View>
 
+                      {/* LA CIFRA Y EL BOTON DE BORRADO NO SE ENCOGEN */}
                       <View
                         style={{
                           flexDirection: "row",
                           alignItems: "center",
                           gap: 10,
+                          flexShrink: 0,
                         }}
                       >
-                        <Text
-                          variant="label"
-                          style={{
-                            fontSize: 15,
-                            fontWeight: "800",
-                            color: theme.colors.primary,
-                          }}
-                        >
-                          Bs. {formatMoney(p.amount)}
-                        </Text>
+                        <View style={{ alignItems: "flex-end", gap: 1 }}>
+                          {/* LA CIFRA EN BOLIVIANOS ES LA QUE DESCUENTA EL SALDO */}
+                          <Text
+                            variant="label"
+                            style={{
+                              fontSize: 15,
+                              fontWeight: "800",
+                              color: theme.colors.primary,
+                              fontVariant: ["tabular-nums"],
+                            }}
+                          >
+                            Bs. {formatMoney(p.amount)}
+                          </Text>
+                          {p.currency === "USD" && (
+                            <Text
+                              variant="caption"
+                              style={{
+                                fontSize: 10,
+                                color: theme.colors.mutedForeground,
+                                fontVariant: ["tabular-nums"],
+                              }}
+                            >
+                              USD {formatMoney(p.originalAmount)} x{" "}
+                              {p.exchangeRate}
+                            </Text>
+                          )}
+                        </View>
 
                         <TouchableOpacity
                           onPress={() => handleRemovePayment(p.id)}
@@ -2694,21 +2835,12 @@ export const DeliveryDetailScreen = () => {
                 </View>
               )}
             </View>
-
-            {/* BOTÓN PRINCIPAL FINALIZAR ENTREGA */}
-            {stop.status !== "DELIVERED" && (
-              <Button
-                label="Finalizar Entrega"
-                variant="success"
-                size="md"
-                fullWidth
-                icon={CheckCircle2}
-                onPress={handleConfirmFinalDelivery}
-              />
-            )}
           </View>
         )}
       </ScrollView>
+
+      {/* BARRA DE ACCIÓN FIJA: EL MONTO Y LA ÚNICA ACCIÓN DE LA FASE ACTUAL */}
+      <DeliveryActionBar {...actionBar} />
 
       {/* DIÁLOGO PERSONALIZADO DE NOTIFICACIÓN AppDialog */}
       <AppDialog

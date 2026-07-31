@@ -19,7 +19,7 @@ export const INITIAL_STOPS: DeliveryStop[] = [
     totalUnits: 96,
     netTotal: 'Bs. 5,030.00',
     invoiceTotal: 5030,
-    advanceAmount: 0,
+    advanceAmount: 800,
     notes: 'Recibe en rampa de frío con sello.',
     latitude: -17.768,
     longitude: -63.195,

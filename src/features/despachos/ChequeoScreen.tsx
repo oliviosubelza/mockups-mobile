@@ -1,7 +1,6 @@
 import {
   CheckCircle2,
   XCircle,
-  Trash2,
   Package,
   Layers,
   X,
@@ -20,14 +19,36 @@ import {
 } from "react-native";
 
 import { findRouteById, navigateTo } from "@/navigation/registry";
-import { FloatingActionButton, SwipeableItem, Badge, Button } from "@/shared/ui";
+import { Badge, Button } from "@/shared/ui";
 import { FormSkeleton, ListSkeleton } from "@/shared/ui/Skeleton";
 import { SuccessDialog } from "@/shared/ui/SuccessDialog";
 import { Box, Text, useAppTheme } from "@/theme";
 import { useDespachos } from "./store";
 
-type TipoUnidad = "UNIDAD" | "CAJA";
 const EMPTY: any[] = [];
+
+/** Parses detail string or raw counts into structured numCajas and numUnidades */
+function parseCantidadDetalle(
+  detalle: string,
+  contado: number,
+  cjArg?: number,
+  unArg?: number
+) {
+  if (typeof cjArg === "number" && !isNaN(cjArg) && typeof unArg === "number" && !isNaN(unArg)) {
+    return { numCajas: cjArg, numUnidades: unArg };
+  }
+  const matchCjas = detalle.match(/(\d+)\s*(?:cj|cajas)/i);
+  const matchUn = detalle.match(/(\d+)\s*(?:un|unidades|unid)/i);
+
+  const numCajas = matchCjas ? parseInt(matchCjas[1], 10) : 0;
+  const numUnidades = matchUn
+    ? parseInt(matchUn[1], 10)
+    : matchCjas
+    ? 0
+    : contado;
+
+  return { numCajas, numUnidades };
+}
 
 // ==========================================
 // MOCK DB DE PRODUCTOS PARA EL BUSCADOR
@@ -95,7 +116,6 @@ export default function ChequeoScreen({ despachoId }: Props) {
   const despachos = useDespachos((state) => state.despachos);
   const checksByDespacho = useDespachos((state) => state.checksByDespacho);
   const addCheck = useDespachos((state) => state.addCheck);
-  const removeCheck = useDespachos((state) => state.removeCheck);
   const guardar = useDespachos((state) => state.guardar);
 
   const activeId = despachoId || activeIdFromStore || "1";
@@ -106,17 +126,19 @@ export default function ChequeoScreen({ despachoId }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [productoTexto, setProductoTexto] = useState("");
   const [productoSeleccionado, setProductoSeleccionado] = useState<any>(null);
-  const [cantidad, setCantidad] = useState("");
-  const [tipoUnidad, setTipoUnidad] = useState<TipoUnidad>("UNIDAD");
+  const [cantCajas, setCantCajas] = useState("");
+  const [cantUnidades, setCantUnidades] = useState("");
   const [saved, setSaved] = useState(false);
 
   // Focus y sugerencias
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const [isCantFocused, setIsCantFocused] = useState(false);
+  const [isCajasFocused, setIsCajasFocused] = useState(false);
+  const [isUnidadesFocused, setIsUnidadesFocused] = useState(false);
   const [sugerencias, setSugerencias] = useState<any[]>([]);
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
 
-  const cantidadInputRef = useRef<TextInput>(null);
+  const cajasInputRef = useRef<TextInput>(null);
+  const unidadesInputRef = useRef<TextInput>(null);
 
   // Simulación de carga
   useEffect(() => {
@@ -155,27 +177,41 @@ export default function ChequeoScreen({ despachoId }: Props) {
     setProductoSeleccionado(producto);
     setProductoTexto(`${producto.codigo} - ${producto.nombre}`);
     setMostrarSugerencias(false);
-    cantidadInputRef.current?.focus();
+    unidadesInputRef.current?.focus();
   };
 
   const limpiarBuscador = () => {
     setProductoTexto("");
     setProductoSeleccionado(null);
-    setCantidad("");
+    setCantCajas("");
+    setCantUnidades("");
     setMostrarSugerencias(false);
   };
 
-  const canAdd = productoSeleccionado !== null && cantidad.trim().length > 0;
+  const numCajas = parseInt(cantCajas || "0", 10);
+  const numUnidades = parseInt(cantUnidades || "0", 10);
+  const cajaSize = productoSeleccionado?.cajaSize ?? 1;
+  const totalContadoCalculado = (numCajas * cajaSize) + numUnidades;
+
+  const canAdd =
+    productoSeleccionado !== null &&
+    (cantCajas.trim().length > 0 || cantUnidades.trim().length > 0) &&
+    totalContadoCalculado > 0;
 
   const onAdd = () => {
     if (!canAdd) return;
-    const cantidadNumerica = parseInt(cantidad, 10);
-    const multiplicador =
-      tipoUnidad === "CAJA" ? productoSeleccionado.cajaSize : 1;
-    const totalContado = cantidadNumerica * multiplicador;
-    const isMatch = totalContado === productoSeleccionado.expectedQty;
+    const isMatch = totalContadoCalculado === productoSeleccionado.expectedQty;
 
-    const dataEmpaquetada = `${productoSeleccionado.nombre} | ${cantidad} ${tipoUnidad} | ${isMatch} | ${productoSeleccionado.isCold} | ${productoSeleccionado.expectedQty} | ${totalContado}`;
+    let detalleCantidad = "";
+    if (numCajas > 0 && numUnidades > 0) {
+      detalleCantidad = `${numCajas} Cajas + ${numUnidades} Unidades`;
+    } else if (numCajas > 0) {
+      detalleCantidad = `${numCajas} Cajas`;
+    } else {
+      detalleCantidad = `${numUnidades} Unidades`;
+    }
+
+    const dataEmpaquetada = `${productoSeleccionado.nombre} | ${detalleCantidad} | ${isMatch} | ${productoSeleccionado.isCold} | ${productoSeleccionado.expectedQty} | ${totalContadoCalculado} | ${numCajas} | ${numUnidades}`;
 
     addCheck(activeId, productoSeleccionado.codigo, dataEmpaquetada);
     limpiarBuscador();
@@ -185,12 +221,6 @@ export default function ChequeoScreen({ despachoId }: Props) {
   const onGuardar = () => {
     guardar(activeId);
     setSaved(true);
-  };
-
-  const handleIncrement = (inc: number) => {
-    const actual = parseInt(cantidad || "0", 10);
-    const nxt = Math.max(0, actual + inc);
-    setCantidad(nxt.toString());
   };
 
   const redirectToList = () => {
@@ -228,7 +258,7 @@ export default function ChequeoScreen({ despachoId }: Props) {
         contentContainerStyle={{ padding: 16, paddingBottom: 90, gap: 14 }}
         keyboardShouldPersistTaps="handled"
       >
-        {/* HEADER DE CONTEXTO Y BOTÓN DE FINALIZAR EN EL HEADER (OPCIÓN 3) */}
+        {/* HEADER DE CONTEXTO Y BOTÓN DE FINALIZAR EN EL HEADER */}
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <View style={{ gap: 2 }}>
             <Text
@@ -256,7 +286,7 @@ export default function ChequeoScreen({ despachoId }: Props) {
             </View>
           </View>
 
-          {/* BOTÓN DE ACCIÓN PRINCIPAL EN HEADER (OPCIÓN 3) */}
+          {/* BOTÓN DE ACCIÓN PRINCIPAL EN HEADER */}
           <Button
             label="Finalizar"
             icon={CloudUpload}
@@ -290,9 +320,27 @@ export default function ChequeoScreen({ despachoId }: Props) {
                 zIndex: 50,
               }}
             >
-              <Text variant="label" style={{ marginBottom: 6, fontSize: 14 }}>
-                {productoSeleccionado ? "Producto Seleccionado" : "Buscar Producto"}
-              </Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 6,
+                }}
+              >
+                <Text variant="label" style={{ fontSize: 14 }}>
+                  {productoSeleccionado ? "Producto Seleccionado" : "Buscar Producto"}
+                </Text>
+                {canAdd && (
+                  <Badge
+                    label={`Total: ${totalContadoCalculado} unids`}
+                    tone="primary"
+                    emphasis="outline"
+                    size="sm"
+                    icon={Package}
+                  />
+                )}
+              </View>
 
               {/* BUSCADOR O PÍLDORA DE PRODUCTO SELECCIONADO */}
               <View
@@ -334,7 +382,7 @@ export default function ChequeoScreen({ despachoId }: Props) {
                       }}
                       numberOfLines={1}
                     >
-                      {productoSeleccionado.nombre} {productoSeleccionado.isCold ? " (Frío)" : ""}
+                      {productoSeleccionado.nombre}
                     </Text>
 
                     <TouchableOpacity onPress={limpiarBuscador} style={{ padding: 6 }}>
@@ -423,7 +471,6 @@ export default function ChequeoScreen({ despachoId }: Props) {
                               <Text variant="bodySmall" style={{ color: theme.colors.foreground }}>
                                 <Text variant="label">{prod.codigo}</Text> -{" "}
                                 {prod.nombre}
-                                {prod.isCold ? " (Frío)" : ""}
                               </Text>
                             </TouchableOpacity>
                           ))
@@ -440,164 +487,98 @@ export default function ChequeoScreen({ despachoId }: Props) {
                 )}
               </View>
 
-              {/* CANTIDAD Y TIPO DE EMPAQUE */}
+              {/* DOS INPUTS: CAJAS Y UNIDADES SUELTAS */}
               <View
                 style={{
                   flexDirection: "row",
-                  gap: 10,
-                  marginBottom: 12,
+                  gap: 12,
+                  marginBottom: 14,
                   zIndex: 10,
                 }}
               >
+                {/* INPUT 2: UNIDADES SUELTAS */}
                 <View style={{ flex: 1 }}>
-                  <Text variant="label" style={{ marginBottom: 4, fontSize: 13 }}>
-                    Cantidad
-                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 }}>
+                    <Package size={14} color={theme.colors.primary} />
+                    <Text variant="label" style={{ fontSize: 13 }}>
+                      Unidades
+                    </Text>
+                  </View>
                   <TextInput
-                    ref={cantidadInputRef}
-                    value={cantidad}
-                    onChangeText={setCantidad}
-                    onFocus={() => setIsCantFocused(true)}
-                    onBlur={() => setIsCantFocused(false)}
+                    ref={unidadesInputRef}
+                    value={cantUnidades}
+                    onChangeText={setCantUnidades}
+                    onFocus={() => setIsUnidadesFocused(true)}
+                    onBlur={() => setIsUnidadesFocused(false)}
                     placeholder="0"
                     placeholderTextColor={theme.colors.mutedForeground}
                     keyboardType="numeric"
                     style={{
-                      backgroundColor: isCantFocused ? theme.colors.cardBackground : theme.colors.secondary,
+                      backgroundColor: isUnidadesFocused
+                        ? theme.colors.cardBackground
+                        : theme.colors.secondary,
                       paddingVertical: 8,
                       paddingHorizontal: 10,
-                      height: 42,
-                      borderRadius: 8,
-                      fontSize: 15,
+                      height: 44,
+                      borderRadius: 10,
+                      fontSize: 16,
                       fontFamily: "Montserrat_600SemiBold",
                       borderWidth: 1.5,
-                      borderColor: isCantFocused ? theme.colors.primary : theme.colors.border,
+                      borderColor: isUnidadesFocused
+                        ? theme.colors.primary
+                        : theme.colors.border,
                       textAlign: "center",
                       color: theme.colors.foreground,
                     }}
                   />
                 </View>
 
-                {/* SELECTOR DE EMPAQUE */}
-                <View style={{ flex: 1.8 }}>
-                  <Text variant="label" style={{ marginBottom: 4, fontSize: 13 }}>
-                    Empaque
-                  </Text>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      backgroundColor: theme.colors.secondary,
-                      borderRadius: 8,
-                      padding: 3,
-                      height: 42,
-                      alignItems: "center",
-                    }}
-                  >
-                    <TouchableOpacity
-                      onPress={() => setTipoUnidad("UNIDAD")}
-                      style={{
-                        flex: 1,
-                        height: 36,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        backgroundColor:
-                          tipoUnidad === "UNIDAD" ? theme.colors.cardBackground : "transparent",
-                        borderRadius: 6,
-                        elevation: tipoUnidad === "UNIDAD" ? 1 : 0,
-                        shadowColor: "#000",
-                        shadowOffset: { width: 0, height: 1 },
-                        shadowOpacity: 0.08,
-                        flexDirection: "row",
-                        gap: 6,
-                      }}
-                    >
-                      <Package
-                        size={16}
-                        color={tipoUnidad === "UNIDAD" ? theme.colors.primary : theme.colors.mutedForeground}
-                      />
-                      <Text
-                        variant="label"
-                        style={{
-                          fontSize: 13,
-                          color:
-                            tipoUnidad === "UNIDAD" ? theme.colors.primary : theme.colors.mutedForeground,
-                        }}
-                      >
-                        Unidad
+                 {/* INPUT 1: CAJAS */}
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 }}>
+                    <Layers size={14} color={theme.colors.primary} />
+                    <Text variant="label" style={{ fontSize: 13 }}>
+                      Cajas
+                    </Text>
+                    {productoSeleccionado && (
+                      <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
+                        ({productoSeleccionado.cajaSize} u/cj)
                       </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={() => setTipoUnidad("CAJA")}
-                      style={{
-                        flex: 1,
-                        height: 36,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        backgroundColor:
-                          tipoUnidad === "CAJA" ? theme.colors.cardBackground : "transparent",
-                        borderRadius: 6,
-                        elevation: tipoUnidad === "CAJA" ? 1 : 0,
-                        shadowColor: "#000",
-                        shadowOffset: { width: 0, height: 1 },
-                        shadowOpacity: 0.08,
-                        flexDirection: "row",
-                        gap: 6,
-                      }}
-                    >
-                      <Layers
-                        size={16}
-                        color={tipoUnidad === "CAJA" ? theme.colors.primary : theme.colors.mutedForeground}
-                      />
-                      <Text
-                        variant="label"
-                        style={{
-                          fontSize: 13,
-                          color: tipoUnidad === "CAJA" ? theme.colors.primary : theme.colors.mutedForeground,
-                        }}
-                      >
-                        Caja
-                      </Text>
-                    </TouchableOpacity>
+                    )}
                   </View>
+                  <TextInput
+                    ref={cajasInputRef}
+                    value={cantCajas}
+                    onChangeText={setCantCajas}
+                    onFocus={() => setIsCajasFocused(true)}
+                    onBlur={() => setIsCajasFocused(false)}
+                    placeholder="0"
+                    placeholderTextColor={theme.colors.mutedForeground}
+                    keyboardType="numeric"
+                    style={{
+                      backgroundColor: isCajasFocused
+                        ? theme.colors.cardBackground
+                        : theme.colors.secondary,
+                      paddingVertical: 8,
+                      paddingHorizontal: 10,
+                      height: 44,
+                      borderRadius: 10,
+                      fontSize: 16,
+                      fontFamily: "Montserrat_600SemiBold",
+                      borderWidth: 1.5,
+                      borderColor: isCajasFocused
+                        ? theme.colors.primary
+                        : theme.colors.border,
+                      textAlign: "center",
+                      color: theme.colors.foreground,
+                    }}
+                  />
                 </View>
               </View>
 
-              {/* ATAJOS RÁPIDOS DE INCREMENTO */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 6,
-                  marginBottom: 14,
-                }}
-              >
-                <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 12 }}>
-                  Rápido:
-                </Text>
-                {[1, 5, 10, 24].map((inc) => (
-                  <TouchableOpacity
-                    key={inc}
-                    onPress={() => handleIncrement(inc)}
-                    style={{
-                      backgroundColor: theme.colors.secondary,
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
-                      borderRadius: 6,
-                      borderWidth: 1,
-                      borderColor: theme.colors.border,
-                    }}
-                  >
-                    <Text variant="caption" style={{ fontWeight: "700", color: theme.colors.foreground, fontSize: 12 }}>
-                      +{inc}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* BOTÓN DE REGISTRO COMPARTIDO DE LA GALERÍA */}
+              {/* BOTÓN DE REGISTRO CON TOTAL INTEGRADO (SIN SALTO DE ALTURA) */}
               <Button
-                label="Registrar Ítem"
+                label={canAdd ? `Registrar ${totalContadoCalculado} Unidades` : "Registrar Ítem"}
                 variant={canAdd ? "primary" : "secondary"}
                 disabled={!canAdd}
                 onPress={onAdd}
@@ -607,7 +588,7 @@ export default function ChequeoScreen({ despachoId }: Props) {
               />
             </View>
 
-            {/* LISTA DE RESULTADOS ESTILO LIST TILE UNIFICADO */}
+            {/* LISTA DE RESULTADOS ESTILO LIST TILE UNIFICADO (SIN BOTÓN DE ELIMINAR) */}
             <View style={{ gap: 10, zIndex: 1, marginTop: 4 }}>
               <View
                 style={{
@@ -657,6 +638,9 @@ export default function ChequeoScreen({ despachoId }: Props) {
                     const isCold = partes[3] === "true";
                     const esperado = parseInt(partes[4], 10);
                     const contado = parseInt(partes[5], 10);
+                    const rawCajas = partes[6] ? parseInt(partes[6], 10) : undefined;
+                    const rawUnids = partes[7] ? parseInt(partes[7], 10) : undefined;
+                    const parsedCount = parseCantidadDetalle(detalleCantidad, contado, rawCajas, rawUnids);
 
                     const diferencia = contado - esperado;
                     const textoDiferencia =
@@ -667,151 +651,128 @@ export default function ChequeoScreen({ despachoId }: Props) {
                     const isLast = index === items.length - 1;
 
                     return (
-                      <SwipeableItem
+                      <View
                         key={item.id}
-                        onDelete={() => removeCheck(activeId, item.id)}
+                        style={{
+                          backgroundColor: theme.colors.cardBackground,
+                          paddingVertical: 8,
+                          paddingHorizontal: 12,
+                          borderBottomWidth: isLast ? 0 : 1,
+                          borderBottomColor: theme.colors.border,
+                          gap: 4,
+                        }}
                       >
+                        {/* FILA 1: Ícono + Código • Nombre + Icono Frío + Badge de Total */}
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          {esMatch ? (
+                            <CheckCircle2 size={16} color={theme.colors.success} style={{ flexShrink: 0 }} />
+                          ) : (
+                            <XCircle size={16} color={theme.colors.danger} style={{ flexShrink: 0 }} />
+                          )}
+
+                          <Text
+                            variant="label"
+                            style={{
+                              fontSize: 12,
+                              color: theme.colors.foreground,
+                              fontWeight: "700",
+                            }}
+                          >
+                            {item.codigo}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: theme.colors.mutedForeground }}>•</Text>
+                          <Text
+                            variant="bodySmall"
+                            style={{
+                              fontSize: 12,
+                              color: theme.colors.foreground,
+                              flex: 1,
+                              fontWeight: "600",
+                            }}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                          >
+                            {nombreReal}
+                          </Text>
+
+                          {isCold && (
+                            <View style={{ flexShrink: 0 }}>
+                              <Snowflake size={13} color={theme.colors.primary} />
+                            </View>
+                          )}
+
+                          <View
+                            style={{
+                              backgroundColor: theme.colors.primarySoft,
+                              paddingHorizontal: 6,
+                              paddingVertical: 1,
+                              borderRadius: 5,
+                              borderWidth: 1,
+                              borderColor: theme.colors.primary,
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: "700", color: theme.colors.primary }}>
+                              Total: {contado} u.
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* FILA 2: Desglose Cajas/Unidades (Izquierda) vs Conforme (Derecha) */}
                         <View
                           style={{
                             flexDirection: "row",
                             alignItems: "center",
-                            backgroundColor: theme.colors.cardBackground,
-                            paddingVertical: 10,
-                            paddingHorizontal: 12,
-                            borderBottomWidth: isLast ? 0 : 1,
-                            borderBottomColor: theme.colors.border,
+                            justifyContent: "space-between",
+                            gap: 8,
+                            paddingLeft: 22,
                           }}
                         >
-                          {/* LEADING: Badge circular de estado */}
-                          <View
-                            style={{
-                              width: 34,
-                              height: 34,
-                              borderRadius: 17,
-                              backgroundColor: esMatch ? theme.colors.successSoft : theme.colors.dangerSoft,
-                              alignItems: "center",
-                              justifyContent: "center",
-                              marginRight: 10,
-                              flexShrink: 0,
-                            }}
-                          >
-                            {esMatch ? (
-                              <CheckCircle2 size={18} color={theme.colors.success} />
-                            ) : (
-                              <XCircle size={18} color={theme.colors.danger} />
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                            <Text style={{ fontSize: 11, color: theme.colors.mutedForeground }}>Ingresado:</Text>
+                            {parsedCount.numCajas > 0 && (
+                              <Text style={{ fontSize: 11, color: theme.colors.mutedForeground, fontWeight: "500" }}>
+                                <Text style={{ fontWeight: "700", color: theme.colors.foreground }}>{parsedCount.numCajas}</Text> {parsedCount.numCajas === 1 ? "Caja" : "Cajas"}
+                              </Text>
                             )}
-                          </View>
 
-                          {/* BODY: Título y Subtítulos con desborde controlado */}
-                          <View style={{ flex: 1, gap: 3, overflow: "hidden", marginRight: 8 }}>
-                            <View
-                              style={{
-                                flexDirection: "row",
-                                alignItems: "center",
-                                gap: 5,
-                              }}
-                            >
-                              <Text
-                                variant="label"
-                                style={{
-                                  fontSize: 12,
-                                  color: theme.colors.foreground,
-                                  fontWeight: "700",
-                                  flexShrink: 0,
-                                }}
-                              >
-                                {item.codigo}
-                              </Text>
-                              <Text style={{ fontSize: 11, color: theme.colors.mutedForeground, flexShrink: 0 }}>•</Text>
-                              <Text
-                                variant="bodySmall"
-                                style={{
-                                  fontSize: 13,
-                                  color: theme.colors.foreground,
-                                  flex: 1,
-                                  fontWeight: "500",
-                                }}
-                                numberOfLines={1}
-                                ellipsizeMode="tail"
-                              >
-                                {nombreReal}
-                              </Text>
-                              {isCold && (
-                                <View style={{ flexShrink: 0, marginLeft: 2 }}>
-                                  <Snowflake size={13} color={theme.colors.primary} />
-                                </View>
-                              )}
-                            </View>
+                            {parsedCount.numCajas > 0 && parsedCount.numUnidades > 0 && (
+                              <Text style={{ fontSize: 11, color: theme.colors.mutedForeground }}>+</Text>
+                            )}
 
-                            <View
-                              style={{
-                                flexDirection: "row",
-                                alignItems: "center",
-                                gap: 8,
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              <Text
-                                variant="caption"
-                                style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
-                              >
-                                Ingresado:{" "}
-                                <Text
-                                  variant="label"
-                                  style={{ fontSize: 11, fontWeight: "600" }}
-                                >
-                                  {detalleCantidad}
-                                </Text>
-                              </Text>
-
-                              {isCold && (
-                                <Text
-                                  variant="caption"
-                                  style={{
-                                    color: theme.colors.primary,
-                                    fontSize: 11,
-                                    fontWeight: "600",
-                                  }}
-                                >
-                                  • Frío
-                                </Text>
-                              )}
-                            </View>
-
-                            {!esMatch && (
-                              <Text
-                                variant="caption"
-                                style={{
-                                  color: theme.colors.danger,
-                                  fontWeight: "700",
-                                  fontSize: 11,
-                                  marginTop: 1,
-                                }}
-                                numberOfLines={1}
-                                ellipsizeMode="tail"
-                              >
-                                {isCold
-                                  ? `Diferencia: ${textoDiferencia} (Esperado: ${esperado})`
-                                  : "Diferencia detectada en inventario."}
+                            {parsedCount.numUnidades > 0 && (
+                              <Text style={{ fontSize: 11, color: theme.colors.mutedForeground, fontWeight: "500" }}>
+                                <Text style={{ fontWeight: "700", color: theme.colors.foreground }}>{parsedCount.numUnidades}</Text> {parsedCount.numUnidades === 1 ? "Unid." : "Unids."}
                               </Text>
                             )}
                           </View>
 
-                          {/* TRAILING: Botón de eliminar manual FIJO */}
-                          <Pressable
-                            onPress={() => removeCheck(activeId, item.id)}
-                            hitSlop={10}
-                            style={{
-                              flexShrink: 0,
-                              padding: 6,
-                              borderRadius: 8,
-                              backgroundColor: theme.colors.secondary,
-                            }}
-                          >
-                            <Trash2 size={16} color={theme.colors.mutedForeground} />
-                          </Pressable>
+                          {esMatch && (
+                            <Text style={{ fontSize: 11, color: theme.colors.success, fontWeight: "600" }}>
+                              ✓ Conforme ({esperado} u.)
+                            </Text>
+                          )}
                         </View>
-                      </SwipeableItem>
+
+                        {/* FILA DE DIFERENCIA (EN ROJO DEBAJO DE INGRESADO) */}
+                        {!esMatch && (
+                          <View style={{ paddingLeft: 22, marginTop: 1 }}>
+                            <Text
+                              style={{
+                                fontSize: 11,
+                                color: theme.colors.danger,
+                                fontWeight: "600",
+                              }}
+                              numberOfLines={1}
+                              ellipsizeMode="tail"
+                            >
+                              {isCold
+                                ? `Diferencia: ${textoDiferencia} (Esperado: ${esperado})`
+                                : "Diferencia detectada en inventario."}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                     );
                   })}
                 </View>
@@ -820,8 +781,6 @@ export default function ChequeoScreen({ despachoId }: Props) {
           </View>
         )}
       </ScrollView>
-
-
 
       {/* DIÁLOGO DE ÉXITO */}
       <SuccessDialog

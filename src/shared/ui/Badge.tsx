@@ -37,11 +37,11 @@ const soft: Record<BadgeTone, BadgeStyle> = {
 };
 
 const outline: Record<BadgeTone, BadgeStyle> = {
-  neutral: { background: 'transparent', foreground: 'mutedForeground', border: 'border' },
-  primary: { background: 'transparent', foreground: 'primary', border: 'primary' },
-  success: { background: 'transparent', foreground: 'success', border: 'success' },
-  warning: { background: 'transparent', foreground: 'warning', border: 'warning' },
-  danger: { background: 'transparent', foreground: 'danger', border: 'danger' },
+  neutral: { background: 'mutedBackground', foreground: 'mutedForeground', border: 'border' },
+  primary: { background: 'primarySoft', foreground: 'primary', border: 'primary' },
+  success: { background: 'successSoft', foreground: 'success', border: 'success' },
+  warning: { background: 'warningSoft', foreground: 'warning', border: 'warning' },
+  danger: { background: 'dangerSoft', foreground: 'danger', border: 'danger' },
 };
 
 const emphasisStyles: Record<BadgeEmphasis, Record<BadgeTone, BadgeStyle>> = {
@@ -86,7 +86,7 @@ export function Badge({
     <Box
       backgroundColor={style.background}
       borderColor={style.border ?? 'transparent'}
-      borderWidth={style.border ? theme.borderWidths.hairline : 0}
+      borderWidth={style.border ? (emphasis === 'outline' ? 1.5 : theme.borderWidths.hairline) : 0}
       borderRadius={shape === 'pill' ? 'full' : 'sm'}
       minHeight={spec.height}
       paddingHorizontal={spec.paddingHorizontal}
@@ -103,7 +103,7 @@ export function Badge({
         color={style.foreground}
         fontSize={spec.fontSize}
         lineHeight={spec.lineHeight}
-        fontWeight="600"
+        fontWeight={emphasis === 'outline' ? '700' : '600'}
         numberOfLines={1}
       >
         {label}

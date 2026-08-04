@@ -5,7 +5,8 @@ export type EstadoDespacho = 'pendiente' | 'cargado' | 'aprobado';
 export type Despacho = {
   id: string;
   codigo: string;
-  cliente: string;
+  puntosCount: number;
+  zonaRuta: string;
   estado: EstadoDespacho;
 };
 
@@ -13,7 +14,6 @@ export type Despacho = {
 export type ProductCheck = {
   id: string;
   codigo: string;
-  // isProductCold: boolean;
   nombre: string;
 };
 

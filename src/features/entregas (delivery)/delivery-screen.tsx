@@ -52,7 +52,7 @@ export function DeliveryScreen() {
       (d) =>
         !query ||
         d.codigo.toLowerCase().includes(query) ||
-        d.cliente.toLowerCase().includes(query) ||
+        d.zonaRuta.toLowerCase().includes(query) ||
         d.id.toLowerCase().includes(query),
     );
   }, [ordenesAprobadas, searchQuery]);
@@ -203,14 +203,14 @@ export function DeliveryScreen() {
                   }}
                   numberOfLines={1}
                 >
-                  {despacho.cliente} • ID: {despacho.id}
+                  📍 {despacho.puntosCount} Puntos de entrega ({despacho.zonaRuta}) • ID: {despacho.id}
                 </Text>
 
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
                     <ListOrdered color={theme.colors.mutedForeground} size={12} />
                     <Text variant="label" style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>
-                      6 paradas
+                      {despacho.puntosCount} paradas
                     </Text>
                   </View>
 
@@ -288,12 +288,12 @@ export function DeliveryScreen() {
                 >
                   <Truck size={22} color={theme.colors.primary} />
                 </View>
-                <View>
+                <View style={{ flexShrink: 1 }}>
                   <Text variant="label" style={{ fontSize: 16, fontWeight: '700', color: theme.colors.foreground }}>
                     OT-{selectedOrder?.codigo}
                   </Text>
-                  <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 12 }}>
-                    {selectedOrder?.cliente}
+                  <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 12 }} numberOfLines={1}>
+                    📍 {selectedOrder?.puntosCount} Puntos de entrega ({selectedOrder?.zonaRuta})
                   </Text>
                 </View>
               </View>

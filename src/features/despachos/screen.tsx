@@ -103,7 +103,7 @@ export default function DespachosScreen() {
       const matchesSearch =
         !query ||
         d.codigo.toLowerCase().includes(query) ||
-        d.cliente.toLowerCase().includes(query) ||
+        d.zonaRuta.toLowerCase().includes(query) ||
         d.id.toLowerCase().includes(query);
 
       const matchesStatus =
@@ -140,7 +140,7 @@ export default function DespachosScreen() {
           <SearchField
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Buscar por OT, ID o Cliente..."
+            placeholder="Buscar por OT, ID o Ruta..."
           />
 
           {/* COMPONENTE REUTILIZABLE DE CHIPS DE FILTRO */}

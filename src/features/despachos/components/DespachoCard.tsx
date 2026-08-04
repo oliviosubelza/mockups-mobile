@@ -19,12 +19,14 @@ export function DespachoCard({
   despacho,
   sequence,
   onPress,
-  paradas = "12 paradas",
+  paradas,
   timeWindow = "7hr",
   weight = "120 kg",
 }: Props) {
   const theme = useAppTheme();
   const meta = ESTADO_META[despacho.estado];
+
+  const totalParadasText = paradas || `${despacho.puntosCount} paradas`;
 
   return (
     <TouchableOpacity
@@ -89,7 +91,7 @@ export function DespachoCard({
           <Badge label={meta.label} tone={meta.tone} emphasis="soft" size="sm" />
         </View>
 
-        {/* Fila 2: Cliente & ID SAP */}
+        {/* Fila 2: Resumen de Puntos de Entrega & Zona / ID */}
         <Text
           variant="label"
           style={{
@@ -99,7 +101,7 @@ export function DespachoCard({
           }}
           numberOfLines={1}
         >
-          {despacho.cliente} • ID: {despacho.id}
+          📍 {despacho.puntosCount} Puntos de entrega ({despacho.zonaRuta}) • ID: {despacho.id}
         </Text>
 
         {/* Fila 3: Metadatos en línea ultra compacta */}
@@ -113,7 +115,7 @@ export function DespachoCard({
           <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
             <ListOrdered color={theme.colors.mutedForeground} size={12} />
             <Text variant="label" style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>
-              {paradas}
+              {totalParadasText}
             </Text>
           </View>
 

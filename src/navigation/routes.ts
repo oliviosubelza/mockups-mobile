@@ -1,9 +1,11 @@
-import { ClipboardCheck, Palette, Settings, Truck,Package } from 'lucide-react-native';
+import { ClipboardCheck, Palette, Settings, Truck, Package, ShieldCheck, CheckSquare } from 'lucide-react-native';
 
 import ChequeoScreen from '@/features/despachos/ChequeoScreen';
 import DespachosScreen from '@/features/despachos/screen';
 import GalleryScreen from '@/features/gallery/screen';
 import SettingsScreen from '@/features/settings/screen';
+import OrdenesParaRevisarScreen from '@/features/supervisor/OrdenesParaRevisarScreen';
+import ConsolidacionConteoScreen from '@/features/supervisor/ConsolidacionConteoScreen';
 
 import type { RouteInterface } from './types';
 import { DeliveryScreen } from '@/features/entregas (delivery)/delivery-screen';
@@ -18,6 +20,27 @@ import { DeliveryDetailScreen } from '@/features/entregas (delivery)/delivery-de
  */
 export const routes: RouteInterface[] = [
   {
+    id: 'supervisor.ordenes',
+    path: '/supervisor/ordenes',
+    title: 'Órdenes para Revisar',
+    description: 'Aprobación y consolidación de revisión a ciegas',
+    icon: ShieldCheck,
+    component: OrdenesParaRevisarScreen,
+    showInHome: true,
+    showInMenuBottom: true,
+    badge: 2,
+    order: 0,
+    subRoutes: [
+      {
+        id: 'supervisor.consolidacion',
+        path: '/supervisor/consolidacion',
+        title: 'Consolidación de Conteo',
+        icon: CheckSquare,
+        component: ConsolidacionConteoScreen,
+      },
+    ],
+  },
+  {
     id: 'despachos',
     path: '/despachos',
     title: 'Revision a ciegas',
@@ -27,7 +50,7 @@ export const routes: RouteInterface[] = [
     showInHome: true,
     showInMenuBottom: true,
     badge: 1,
-    order: 0,
+    order: 1,
     subRoutes: [
       {
         id: 'despachos.chequeo',
@@ -48,7 +71,7 @@ export const routes: RouteInterface[] = [
     showInHome: true,
     showInMenuBottom: true,
     badge: 4,
-    order: 0,
+    order: 2,
     subRoutes: [
       {
         id: 'entregas.ruta',

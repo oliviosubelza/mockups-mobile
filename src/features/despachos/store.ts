@@ -6,12 +6,12 @@ let seq = 0;
 const nextId = () => `chk-${Date.now()}-${seq++}`;
 
 const SEED: Despacho[] = [
-  { id: '2045', codigo: '1000456', cliente: 'Distribuidora Andina', estado: 'pendiente' },
-  { id: '2046', codigo: '1000457', cliente: 'Comercial del Sur', estado: 'pendiente' },
-  { id: '2044', codigo: '1000458', cliente: 'Mayorista Central', estado: 'cargado' },
-  { id: '2043', codigo: '1000459', cliente: 'Almacenes Norte', estado: 'aprobado' },
-  { id: '2042', codigo: '98421', cliente: 'Hipermaxi Equipetrol Norte', estado: 'aprobado' },
-  { id: '2041', codigo: '98422', cliente: 'IC Norte - Cristo Redentor', estado: 'aprobado' },
+  { id: '2045', codigo: '1000456', puntosCount: 6, zonaRuta: 'Ruta Norte • Santa Cruz', estado: 'pendiente' },
+  { id: '2046', codigo: '1000457', puntosCount: 4, zonaRuta: 'Ruta Equipetrol', estado: 'pendiente' },
+  { id: '2044', codigo: '1000458', puntosCount: 8, zonaRuta: 'Ruta Centro Comercial', estado: 'cargado' },
+  { id: '2043', codigo: '1000459', puntosCount: 5, zonaRuta: 'Ruta Plan 3000', estado: 'aprobado' },
+  { id: '2042', codigo: '98421', puntosCount: 7, zonaRuta: 'Ruta Villa 1ro de Mayo', estado: 'aprobado' },
+  { id: '2041', codigo: '98422', puntosCount: 3, zonaRuta: 'Ruta Doble Vía La Guardia', estado: 'aprobado' },
 ];
 
 type DespachosState = {
@@ -33,9 +33,9 @@ export const useDespachos = create<DespachosState>((set) => ({
 
   setActive: (id) => set({ activeId: id }),
 
-  addCheck: (despachoId, codigo, nombre ) =>
+  addCheck: (despachoId, codigo, nombre) =>
     set((state) => {
-      const item: ProductCheck = { id: nextId(), codigo, nombre  };
+      const item: ProductCheck = { id: nextId(), codigo, nombre };
       const current = state.checksByDespacho[despachoId] ?? [];
       return {
         checksByDespacho: {

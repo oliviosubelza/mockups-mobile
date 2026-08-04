@@ -433,6 +433,39 @@ export const DeliveryDetailScreen = () => {
   );
   const pendingBalance = unallocatedBalance;
 
+  // MONTO PROGRESIVO VALIDADO EN TIEMPO REAL DURANTE EL FLUJO DE VALIDACIÓN (isProcessingFlow)
+  const approvedCurrentAmount =
+    isProcessingFlow &&
+    processingStepStatus === "APPROVED" &&
+    stagedPayments[currentProcessingIndex]
+      ? stagedPayments[currentProcessingIndex].amount || 0
+      : 0;
+
+  const previousCompletedStepsAmount = isProcessingFlow
+    ? stagedPayments
+        .slice(0, currentProcessingIndex)
+        .reduce((acc, p) => acc + (p.amount || 0), 0)
+    : 0;
+
+  const validatedProgressAmount =
+    totalPaid +
+    (isProcessingFlow
+      ? previousCompletedStepsAmount + approvedCurrentAmount
+      : totalStaged);
+
+  const validatedProgressPercent =
+    netAmountToCollect > 0
+      ? Math.min(
+          100,
+          Math.max(
+            0,
+            Math.round((validatedProgressAmount / netAmountToCollect) * 100),
+          ),
+        )
+      : isFullyCoveredByAdvance
+        ? 100
+        : 0;
+
   const showDialog = (
     title: string,
     message: string,
@@ -2461,122 +2494,127 @@ export const DeliveryDetailScreen = () => {
         {/* TAB 2: MÓDULO COMPLETO DE REGISTRO DE COBRO (Habilitado en ARRIVED) */}
         {activeTab === "cobro" && (
           <View style={{ gap: 16 }}>
-            {/* DESGLOSE DE FACTURA Y ANTICIPO */}
-            <View
-              style={{
-                backgroundColor: theme.colors.cardBackground,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                padding: 12,
-                borderRadius: 12,
-                gap: 8,
-                marginTop: 4,
-              }}
-            >
+            {/* DESGLOSE DE FACTURA Y ANTICIPO (SE OCULTA DURANTE LA VALIDACIÓN DE PAGOS) */}
+            {!isProcessingFlow && (
               <View
                 style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
+                  backgroundColor: theme.colors.cardBackground,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  padding: 12,
+                  borderRadius: 12,
+                  gap: 8,
+                  marginTop: 4,
                 }}
               >
-                <Text
-                  variant="caption"
-                  style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
-                >
-                  Factura
-                </Text>
-                <Text
-                  variant="label"
+                <View
                   style={{
-                    fontSize: 13,
-                    color: theme.colors.foreground,
-                    fontVariant: ["tabular-nums"],
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
                   }}
                 >
-                  Bs. {formatMoney(invoiceTotal)}
-                </Text>
+                  <Text
+                    variant="caption"
+                    style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
+                  >
+                    Factura
+                  </Text>
+                  <Text
+                    variant="label"
+                    style={{
+                      fontSize: 13,
+                      color: theme.colors.foreground,
+                      fontVariant: ["tabular-nums"],
+                    }}
+                  >
+                    Bs. {formatMoney(invoiceTotal)}
+                  </Text>
+                </View>
+
+                {/* EL ANTICIPO SE MUESTRA SIEMPRE, INCLUSO EN CERO, PARA QUE EL CHOFER
+                    SEPA QUE EL DATO SE CONSULTO Y NO QUE FALTA EN PANTALLA. */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    variant="caption"
+                    style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
+                  >
+                    Anticipo
+                  </Text>
+                  <Text
+                    variant="label"
+                    style={{
+                      fontSize: 13,
+                      color:
+                        appliedAdvance > 0
+                          ? theme.colors.success
+                          : theme.colors.mutedForeground,
+                      fontVariant: ["tabular-nums"],
+                    }}
+                  >
+                    {appliedAdvance > 0
+                      ? `- Bs. ${formatMoney(appliedAdvance)}`
+                      : `Bs. ${formatMoney(0)}`}
+                  </Text>
+                </View>
+
+                {advanceAmount > 0 && (
+                  <Text
+                    variant="caption"
+                    style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
+                  >
+                    Anticipo registrado previamente a favor del cliente.
+                  </Text>
+                )}
+
+                {remainingAdvance > 0 && (
+                  <Text
+                    variant="caption"
+                    style={{
+                      color: theme.colors.warningForeground,
+                      fontSize: 11,
+                    }}
+                  >
+                    {`Saldo de anticipo no aplicado: Bs. ${formatMoney(remainingAdvance)}. Queda como credito a favor del cliente para la siguiente factura.`}
+                  </Text>
+                )}
+
+                {hasInvalidAdvance && (
+                  <Badge
+                    label="Anticipo mayor a la factura"
+                    tone="danger"
+                    emphasis="soft"
+                    size="sm"
+                  />
+                )}
               </View>
+            )}
 
-              {/* EL ANTICIPO SE MUESTRA SIEMPRE, INCLUSO EN CERO, PARA QUE EL CHOFER
-                  SEPA QUE EL DATO SE CONSULTO Y NO QUE FALTA EN PANTALLA. */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <Text
-                  variant="caption"
-                  style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
-                >
-                  Anticipo
-                </Text>
-                <Text
-                  variant="label"
-                  style={{
-                    fontSize: 13,
-                    color:
-                      appliedAdvance > 0
-                        ? theme.colors.success
-                        : theme.colors.mutedForeground,
-                    fontVariant: ["tabular-nums"],
-                  }}
-                >
-                  {appliedAdvance > 0
-                    ? `- Bs. ${formatMoney(appliedAdvance)}`
-                    : `Bs. ${formatMoney(0)}`}
-                </Text>
-              </View>
-
-              {advanceAmount > 0 && (
-                <Text
-                  variant="caption"
-                  style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
-                >
-                  Anticipo registrado previamente a favor del cliente.
-                </Text>
-              )}
-
-              {remainingAdvance > 0 && (
-                <Text
-                  variant="caption"
-                  style={{
-                    color: theme.colors.warningForeground,
-                    fontSize: 11,
-                  }}
-                >
-                  {`Saldo de anticipo no aplicado: Bs. ${formatMoney(remainingAdvance)}. Queda como credito a favor del cliente para la siguiente factura.`}
-                </Text>
-              )}
-
-              {hasInvalidAdvance && (
-                <Badge
-                  label="Anticipo mayor a la factura"
-                  tone="danger"
-                  emphasis="soft"
-                  size="sm"
-                />
-              )}
-            </View>
-
-            {/* RESUMEN FINANCIERO DINÁMICO DE COBRO */}
+            {/* RESUMEN FINANCIERO DINÁMICO DE COBRO CON PROGRESS BAR (COMPACTO Y REACTIVO A LA VALIDACIÓN) */}
             <View
               style={{
                 backgroundColor: theme.colors.secondary,
-                padding: 12,
+                padding: 10,
                 borderRadius: 12,
-                gap: 8,
-                marginTop: 4,
+                gap: 6,
+                marginTop: 2,
               }}
             >
-              {/* EL TOTAL Y SU ESTADO VAN EN LINEAS SEPARADAS: DOS CIFRAS
-                  MONETARIAS COMPITIENDO POR EL MISMO RENGLON SE DESBORDAN
-                  DEL ANCHO DEL TELEFONO. */}
-              <View style={{ gap: 8 }}>
-                {/* EN REACT NATIVE flexShrink ES 0 POR DEFECTO: SIN ESTO LA
-                    COLUMNA CONSERVA SU ANCHO INTRINSECO Y DESBORDA. */}
+              {/* FILA SUPERIOR: TÍTULO + MONTO (IZQ) Y BADGE DE ESTADO (DER) */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
                 <View style={{ flexShrink: 1 }}>
                   <Text
                     variant="caption"
@@ -2592,55 +2630,47 @@ export const DeliveryDetailScreen = () => {
                     numberOfLines={1}
                     adjustsFontSizeToFit
                     style={{
-                      fontSize: 18,
+                      fontSize: 17,
                       color: theme.colors.foreground,
                       fontVariant: ["tabular-nums"],
+                      fontWeight: "700",
                     }}
                   >
                     Bs. {formatMoney(netAmountToCollect)}
                   </Text>
-                  {/* {appliedAdvance > 0 && (
-                    <Text
-                      variant="caption"
-                      numberOfLines={1}
-                      style={{
-                        color: theme.colors.mutedForeground,
-                        fontSize: 11,
-                      }}
-                    >
-                      {`Factura Bs. ${formatMoney(TOTAL_ORDER_AMOUNT)} - Anticipo Bs. ${formatMoney(appliedAdvance)}`}
-                    </Text>
-                  )} */}
                 </View>
 
-                <View style={{ alignSelf: "flex-start", maxWidth: "100%" }}>
+                {/* BADGE ALINEADO A LA ESQUINA SUPERIOR DERECHA (ACTUALIZADO EN TIEMPO REAL AL VALIDAR) */}
+                <View style={{ flexShrink: 0 }}>
                   <Badge
                     label={
                       TOTAL_ORDER_AMOUNT === 0
                         ? "Selecciona productos"
                         : isFullyCoveredByAdvance
                           ? "Cubierto por Anticipo"
-                          : pendingBalance === 0
+                          : validatedProgressPercent >= 100
                             ? "Cobrado 100%"
-                            : `Pendiente: Bs. ${formatMoney(pendingBalance)}`
+                            : isProcessingFlow
+                              ? `Validando (${validatedProgressPercent}%)`
+                              : `Pendiente: Bs. ${formatMoney(pendingBalance)}`
                     }
                     tone={
                       TOTAL_ORDER_AMOUNT === 0
                         ? "warning"
-                        : isFullyCoveredByAdvance
+                        : isFullyCoveredByAdvance || validatedProgressPercent >= 100
                           ? "success"
-                          : pendingBalance === 0
-                            ? "success"
+                          : isProcessingFlow
+                            ? "primary"
                             : "danger"
                     }
                     emphasis="soft"
-                    size="md"
+                    size="sm"
                   />
                 </View>
               </View>
 
-              {/* BARRA VISUAL DE DESGLOSE DE COBRO */}
-              <View style={{ gap: 4 }}>
+              {/* BARRA VISUAL DE DESGLOSE DE COBRO EN TIEMPO REAL */}
+              <View style={{ gap: 3 }}>
                 <View
                   style={{
                     flexDirection: "row",
@@ -2651,57 +2681,49 @@ export const DeliveryDetailScreen = () => {
                   <Text
                     variant="caption"
                     style={{
-                      fontSize: 11,
+                      fontSize: 10,
                       color: theme.colors.mutedForeground,
                     }}
                   >
-                    Cobrado:{" "}
+                    {isProcessingFlow ? "Validado: " : "Cobrado: "}
                     <Text
                       variant="label"
                       style={{
-                        fontSize: 11,
+                        fontSize: 10,
                         color: theme.colors.success,
                         fontVariant: ["tabular-nums"],
+                        fontWeight: "700",
                       }}
                     >
-                      Bs. {formatMoney(totalPaid)}
+                      Bs. {formatMoney(validatedProgressAmount)}
                     </Text>
                   </Text>
                   <Text
                     variant="caption"
                     style={{
-                      fontSize: 11,
+                      fontSize: 10,
                       color: theme.colors.mutedForeground,
+                      fontWeight: "600",
                     }}
                   >
-                    {netAmountToCollect > 0
-                      ? Math.min(
-                          100,
-                          Math.max(
-                            0,
-                            Math.round((totalPaid / netAmountToCollect) * 100),
-                          ),
-                        )
-                      : 0}
-                    %
+                    {validatedProgressPercent}%
                   </Text>
                 </View>
 
                 <View
                   style={{
-                    height: 6,
-                    backgroundColor: theme.colors.secondary,
+                    height: 5,
+                    backgroundColor: theme.colors.cardBackground,
                     borderRadius: 3,
                     overflow: "hidden",
                   }}
                 >
                   <View
                     style={{
-                      width: `${netAmountToCollect > 0 ? Math.min(100, Math.max(0, (totalPaid / netAmountToCollect) * 100)) : isFullyCoveredByAdvance ? 100 : 0}%`,
+                      width: `${validatedProgressPercent}%`,
                       height: "100%",
                       backgroundColor:
-                        (netAmountToCollect > 0 || isFullyCoveredByAdvance) &&
-                        pendingBalance === 0
+                        validatedProgressPercent >= 100 || isFullyCoveredByAdvance
                           ? "#22c55e"
                           : theme.colors.primary,
                       borderRadius: 3,
@@ -2713,16 +2735,16 @@ export const DeliveryDetailScreen = () => {
 
             {/* VISTA DE PROCESAMIENTO SECUENCIAL DE COBRO */}
             {isProcessingFlow ? (
-              <View style={{ gap: 16 }}>
+              <View style={{ gap: 12 }}>
                 {/* CABECERA CON PASO Y BARRA DE PROGRESO */}
                 <View
                   style={{
                     backgroundColor: theme.colors.cardBackground,
-                    borderRadius: 16,
+                    borderRadius: 14,
                     borderWidth: 1,
                     borderColor: theme.colors.primary,
-                    padding: 16,
-                    gap: 12,
+                    padding: 12,
+                    gap: 8,
                   }}
                 >
                   <View
@@ -2732,40 +2754,39 @@ export const DeliveryDetailScreen = () => {
                       alignItems: "center",
                     }}
                   >
-                    <View style={{ gap: 2, flex: 1 }}>
-                      <Text
-                        variant="caption"
-                        style={{
-                          color: theme.colors.primary,
-                          fontWeight: "700",
-                          fontSize: 12,
-                        }}
-                      >
-                        PROCESANDO COBRO EN SITIO
-                      </Text>
-                      <Text
-                        variant="title"
-                        style={{
-                          fontSize: 18,
-                          color: theme.colors.foreground,
-                        }}
-                      >
-                        Paso {currentProcessingIndex + 1} de {stagedPayments.length}:{" "}
-                        {stagedPayments[currentProcessingIndex]?.method === "QR"
-                          ? "Cobro por QR (Banco)"
-                          : stagedPayments[currentProcessingIndex]?.method === "CASH"
-                            ? "Cobro en Efectivo"
-                            : stagedPayments[currentProcessingIndex]?.method === "TRANSFER"
-                              ? "Transferencia Bancaria"
-                              : "Cheque"}
-                      </Text>
-                    </View>
+                    <Text
+                      variant="caption"
+                      style={{
+                        color: theme.colors.primary,
+                        fontWeight: "700",
+                        fontSize: 12,
+                      }}
+                    >
+                      PROCESANDO COBRO EN SITIO
+                    </Text>
+                    <Text
+                      variant="label"
+                      style={{
+                        fontSize: 13,
+                        color: theme.colors.foreground,
+                        fontWeight: "700",
+                      }}
+                    >
+                      Paso {currentProcessingIndex + 1} de {stagedPayments.length}:{" "}
+                      {stagedPayments[currentProcessingIndex]?.method === "QR"
+                        ? "QR (Banco)"
+                        : stagedPayments[currentProcessingIndex]?.method === "CASH"
+                          ? "Efectivo"
+                          : stagedPayments[currentProcessingIndex]?.method === "TRANSFER"
+                            ? "Transferencia"
+                            : "Cheque"}
+                    </Text>
                   </View>
 
-                  {/* BARRA DE AVANCE DEL COBRO SECUENCIAL */}
+                  {/* BARRA DE AVANCE */}
                   <View
                     style={{
-                      height: 6,
+                      height: 5,
                       backgroundColor: theme.colors.secondary,
                       borderRadius: 3,
                       overflow: "hidden",
@@ -2789,8 +2810,8 @@ export const DeliveryDetailScreen = () => {
                     borderRadius: 16,
                     borderWidth: 1,
                     borderColor: theme.colors.border,
-                    padding: 18,
-                    gap: 16,
+                    padding: 16,
+                    gap: 14,
                     alignItems: "center",
                   }}
                 >
@@ -2805,7 +2826,7 @@ export const DeliveryDetailScreen = () => {
                     <Text
                       variant="header"
                       style={{
-                        fontSize: 26,
+                        fontSize: 24,
                         color: theme.colors.primary,
                         fontWeight: "800",
                         fontVariant: ["tabular-nums"],
@@ -2826,14 +2847,14 @@ export const DeliveryDetailScreen = () => {
                     )}
                   </View>
 
-                  {/* RENDERIZAR DETALLE SEGÚN EL MÉTODO DEL PASO */}
+                  {/* RENDERIZAR CÓDIGO QR EN SU TAMAÑO COMPLETO ORIGINAL */}
                   {stagedPayments[currentProcessingIndex]?.method === "QR" && (
-                    <View style={{ alignItems: "center", gap: 14, alignSelf: "stretch" }}>
+                    <View style={{ alignItems: "center", gap: 12, alignSelf: "stretch" }}>
                       <View
                         style={{
                           backgroundColor: "#ffffff",
-                          padding: 18,
-                          borderRadius: 20,
+                          padding: 16,
+                          borderRadius: 18,
                           borderWidth: 3,
                           borderColor: theme.colors.primary,
                           alignItems: "center",
@@ -2875,18 +2896,18 @@ export const DeliveryDetailScreen = () => {
                     <View
                       style={{
                         backgroundColor: theme.colors.secondary,
-                        padding: 16,
-                        borderRadius: 14,
+                        padding: 12,
+                        borderRadius: 10,
                         width: "100%",
                         alignItems: "center",
-                        gap: 8,
+                        gap: 6,
                       }}
                     >
-                      <Banknote size={36} color={theme.colors.primary} />
+                      <Banknote size={28} color={theme.colors.primary} />
                       <Text
                         variant="label"
                         style={{
-                          fontSize: 14,
+                          fontSize: 13,
                           color: theme.colors.foreground,
                           textAlign: "center",
                         }}
@@ -2895,7 +2916,7 @@ export const DeliveryDetailScreen = () => {
                       </Text>
                       <Text
                         variant="caption"
-                        style={{ color: theme.colors.mutedForeground, fontSize: 12 }}
+                        style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
                       >
                         Recibo: {stagedPayments[currentProcessingIndex].reference || "REC-00982"}
                       </Text>
@@ -2906,24 +2927,31 @@ export const DeliveryDetailScreen = () => {
                     <View
                       style={{
                         backgroundColor: theme.colors.secondary,
-                        padding: 16,
-                        borderRadius: 14,
+                        padding: 12,
+                        borderRadius: 10,
                         width: "100%",
-                        gap: 6,
+                        gap: 4,
                       }}
                     >
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                        <Building size={20} color={theme.colors.primary} />
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Building size={18} color={theme.colors.primary} />
                         <Text
                           variant="label"
-                          style={{ fontSize: 14, color: theme.colors.foreground }}
+                          style={{ fontSize: 13, color: theme.colors.foreground, fontWeight: "700" }}
                         >
-                          {stagedPayments[currentProcessingIndex].bank || "Banco Mercantil"}
+                          Transferencia Bancaria
                         </Text>
                       </View>
                       <Text
                         variant="caption"
-                        style={{ color: theme.colors.mutedForeground, fontSize: 12 }}
+                        numberOfLines={1}
+                        style={{ color: theme.colors.foreground, fontSize: 12, fontWeight: "600" }}
+                      >
+                        Banco: {stagedPayments[currentProcessingIndex].bank || "N/A"}
+                      </Text>
+                      <Text
+                        variant="caption"
+                        style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
                       >
                         Ref: {stagedPayments[currentProcessingIndex].reference || "N/A"} • Foto comprobante adjunta
                       </Text>
@@ -2934,88 +2962,74 @@ export const DeliveryDetailScreen = () => {
                     <View
                       style={{
                         backgroundColor: theme.colors.secondary,
-                        padding: 16,
-                        borderRadius: 14,
+                        padding: 12,
+                        borderRadius: 10,
                         width: "100%",
-                        gap: 6,
+                        gap: 4,
                       }}
                     >
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                        <FileText size={20} color={theme.colors.primary} />
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <FileText size={18} color={theme.colors.primary} />
                         <Text
                           variant="label"
-                          style={{ fontSize: 14, color: theme.colors.foreground }}
+                          style={{ fontSize: 13, color: theme.colors.foreground, fontWeight: "700" }}
                         >
-                          {stagedPayments[currentProcessingIndex].bank || "Banco BNB"}
+                          Cheque
                         </Text>
                       </View>
                       <Text
                         variant="caption"
-                        style={{ color: theme.colors.mutedForeground, fontSize: 12 }}
+                        numberOfLines={1}
+                        style={{ color: theme.colors.foreground, fontSize: 12, fontWeight: "600" }}
+                      >
+                        Banco: {stagedPayments[currentProcessingIndex].bank || "N/A"}
+                      </Text>
+                      <Text
+                        variant="caption"
+                        style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
                       >
                         Ref: {stagedPayments[currentProcessingIndex].reference || "N/A"} • Fotos frente y dorso adjuntas
                       </Text>
                     </View>
                   )}
 
-                  {/* ESTADO DE VALIDACIÓN / BANNER DE ÉXITO */}
+                  {/* ESTADO DE VALIDACIÓN / BANNER DE ÉXITO COMPACTO */}
                   {processingStepStatus === "APPROVED" ? (
                     <View
                       style={{
                         backgroundColor: theme.colors.successSoft,
                         borderWidth: 1.5,
                         borderColor: theme.colors.success,
-                        padding: 16,
-                        borderRadius: 14,
+                        padding: 10,
+                        borderRadius: 10,
                         width: "100%",
                         alignItems: "center",
-                        gap: 6,
+                        gap: 4,
                       }}
                     >
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                        <CheckCircle2 size={24} color={theme.colors.success} />
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <CheckCircle2 size={20} color={theme.colors.success} />
                         <Text
                           variant="title"
-                          style={{ fontSize: 17, color: theme.colors.success, fontWeight: "700" }}
+                          style={{ fontSize: 15, color: theme.colors.success, fontWeight: "700" }}
                         >
                           Pago Realizado
                         </Text>
                       </View>
                       <Text
                         variant="caption"
-                        style={{ color: theme.colors.success, textAlign: "center", fontSize: 12 }}
+                        style={{ color: theme.colors.success, textAlign: "center", fontSize: 11 }}
                       >
                         {stagedPayments[currentProcessingIndex]?.method === "QR"
-                          ? "El banco ha verificado la recepción del pago por QR con éxito."
-                          : "El pago se ha registrado y verificado correctamente."}
+                          ? "El banco ha verificado el pago por QR con éxito."
+                          : "El pago se ha registrado correctamente."}
                       </Text>
                     </View>
                   ) : processingStepStatus === "VALIDATING" ? (
                     <View
                       style={{
                         backgroundColor: theme.colors.primarySoft,
-                        padding: 14,
-                        borderRadius: 12,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 8,
-                        width: "100%",
-                      }}
-                    >
-                      <RefreshCw size={18} color={theme.colors.primary} />
-                      <Text
-                        variant="caption"
-                        style={{ color: theme.colors.primary, fontWeight: "600", fontSize: 13 }}
-                      >
-                        Verificando transferencia con el banco...
-                      </Text>
-                    </View>
-                  ) : (
-                    <View
-                      style={{
-                        backgroundColor: theme.colors.secondary,
-                        padding: 12,
+                        padding: 10,
                         borderRadius: 10,
                         flexDirection: "row",
                         alignItems: "center",
@@ -3024,12 +3038,33 @@ export const DeliveryDetailScreen = () => {
                         width: "100%",
                       }}
                     >
-                      <ShieldCheck size={16} color={theme.colors.mutedForeground} />
+                      <RefreshCw size={16} color={theme.colors.primary} />
                       <Text
                         variant="caption"
-                        style={{ color: theme.colors.mutedForeground, fontSize: 12 }}
+                        style={{ color: theme.colors.primary, fontWeight: "600", fontSize: 12 }}
                       >
-                        Presiona "Validar pago" en la parte inferior para continuar.
+                        Verificando transferencia con el banco...
+                      </Text>
+                    </View>
+                  ) : (
+                    <View
+                      style={{
+                        backgroundColor: theme.colors.secondary,
+                        padding: 10,
+                        borderRadius: 8,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                        width: "100%",
+                      }}
+                    >
+                      <ShieldCheck size={14} color={theme.colors.mutedForeground} />
+                      <Text
+                        variant="caption"
+                        style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
+                      >
+                        Presiona "Validar pago" para continuar.
                       </Text>
                     </View>
                   )}
@@ -3348,9 +3383,22 @@ export const DeliveryDetailScreen = () => {
                                       : p.method === "QR"
                                         ? "Pago QR Banco"
                                         : p.method === "TRANSFER"
-                                          ? `Transferencia (${p.bank})`
-                                          : `Cheque (${p.bank})`}
+                                          ? "Transferencia"
+                                          : "Cheque"}
                                   </Text>
+                                  {(p.method === "CHECK" || p.method === "TRANSFER") && p.bank ? (
+                                    <Text
+                                      variant="caption"
+                                      numberOfLines={1}
+                                      style={{
+                                        fontSize: 11,
+                                        fontWeight: "600",
+                                        color: theme.colors.foreground,
+                                      }}
+                                    >
+                                      Banco: {p.bank}
+                                    </Text>
+                                  ) : null}
                                   <Text
                                     variant="caption"
                                     numberOfLines={1}
@@ -3359,7 +3407,7 @@ export const DeliveryDetailScreen = () => {
                                       color: theme.colors.mutedForeground,
                                     }}
                                   >
-                                    Pendiente de cobro
+                                    {p.reference ? `Ref: ${p.reference}` : "Pendiente de cobro"}
                                   </Text>
                                 </View>
                               </View>
@@ -3435,11 +3483,24 @@ export const DeliveryDetailScreen = () => {
                               {p.method === "CASH"
                                 ? "Efectivo"
                                 : p.method === "TRANSFER"
-                                  ? `Transferencia (${p.bank})`
+                                  ? "Transferencia"
                                   : p.method === "QR"
                                     ? "Pago QR Banco"
-                                    : `Cheque (${p.bank})`}
+                                    : "Cheque"}
                             </Text>
+                            {(p.method === "CHECK" || p.method === "TRANSFER") && p.bank ? (
+                              <Text
+                                variant="caption"
+                                numberOfLines={1}
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: "600",
+                                  color: theme.colors.foreground,
+                                }}
+                              >
+                                Banco: {p.bank}
+                              </Text>
+                            ) : null}
                             <Text
                               variant="caption"
                               numberOfLines={1}
@@ -3487,12 +3548,6 @@ export const DeliveryDetailScreen = () => {
                                 </Text>
                               )}
                             </View>
-
-                            <TouchableOpacity
-                              onPress={() => handleRemovePayment(p.id)}
-                            >
-                              <Trash2 size={16} color={theme.colors.danger} />
-                            </TouchableOpacity>
                           </View>
                         </View>
                       ))}

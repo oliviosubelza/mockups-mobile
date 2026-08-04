@@ -1,8 +1,11 @@
-import { Check } from 'lucide-react-native';
-import { Pressable, StyleSheet } from 'react-native';
+import { Check, LogOut } from 'lucide-react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
 import type { ThemeMode } from '@/shared/stores/appearance';
 import { useAppearance } from '@/shared/stores/appearance';
+import { useUser } from '@/shared/stores/user';
+import { Button } from '@/shared/ui';
 import { Box, Text, useAppTheme } from '@/theme';
 
 const OPTIONS: { mode: ThemeMode; label: string }[] = [
@@ -14,7 +17,16 @@ const OPTIONS: { mode: ThemeMode; label: string }[] = [
 export default function SettingsScreen() {
   const mode = useAppearance((state) => state.mode);
   const setMode = useAppearance((state) => state.setMode);
+  const logout = useUser((state) => state.logout);
   const theme = useAppTheme();
+  const router = useRouter();
+
+  const handleLogout = () => {
+    logout();
+    if (router.canGoBack()) {
+      router.back();
+    }
+  };
 
   return (
     <Box flex={1} padding="l" gap="l">
@@ -45,6 +57,15 @@ export default function SettingsScreen() {
           </Pressable>
         ))}
       </Box>
+
+      <View style={{ marginTop: 'auto' }}>
+        <Button
+          label="Cerrar Sesión"
+          onPress={handleLogout}
+          variant="secondary"
+          size="lg"
+        />
+      </View>
     </Box>
   );
 }

@@ -1,4 +1,4 @@
-import { ClipboardCheck, Palette, Settings, Truck, Package, ShieldCheck, CheckSquare } from 'lucide-react-native';
+import { ClipboardCheck, Palette, Settings, Truck, Package, ShieldCheck, CheckSquare, PackageSearch, ShieldAlert } from 'lucide-react-native';
 
 import ChequeoScreen from '@/features/despachos/ChequeoScreen';
 import DespachosScreen from '@/features/despachos/screen';
@@ -6,6 +6,9 @@ import GalleryScreen from '@/features/gallery/screen';
 import SettingsScreen from '@/features/settings/screen';
 import OrdenesParaRevisarScreen from '@/features/supervisor/OrdenesParaRevisarScreen';
 import ConsolidacionConteoScreen from '@/features/supervisor/ConsolidacionConteoScreen';
+import ProductosFaltantesScreen from '@/features/supervisor/ProductosFaltantesScreen';
+import RevisionSemaforoListScreen from '@/features/supervisor/RevisionSemaforoListScreen';
+import RevisionSemaforoExecuteScreen from '@/features/supervisor/RevisionSemaforoExecuteScreen';
 
 import type { RouteInterface } from './types';
 import { DeliveryScreen } from '@/features/entregas (delivery)/delivery-screen';
@@ -19,6 +22,39 @@ import { DeliveryDetailScreen } from '@/features/entregas (delivery)/delivery-de
  * no new files under `app/`.
  */
 export const routes: RouteInterface[] = [
+  {
+    id: 'supervisor.productosFaltantes',
+    path: '/supervisor/productos-faltantes',
+    title: 'Productos Faltantes',
+    description: 'Productos con diferencia y a qué OT pertenecen',
+    icon: PackageSearch,
+    component: ProductosFaltantesScreen,
+    showInHome: true,
+    showInMenuBottom: true,
+    badge: 5,
+    order: 1,
+  },
+  {
+    id: 'supervisor.semaforo',
+    path: '/supervisor/semaforo',
+    title: 'Revisión Semáforo',
+    description: 'Auditoría aleatoria de conteo a ciegas y control de calidad',
+    icon: ShieldAlert,
+    component: RevisionSemaforoListScreen,
+    showInHome: true,
+    showInMenuBottom: true,
+    badge: 3,
+    order: 2,
+    subRoutes: [
+      {
+        id: 'supervisor.semaforoEjecutar',
+        path: '/supervisor/semaforo/ejecutar',
+        title: 'Auditoría a Ciegas Semáforo',
+        icon: ShieldAlert,
+        component: RevisionSemaforoExecuteScreen,
+      },
+    ],
+  },
   {
     id: 'supervisor.ordenes',
     path: '/supervisor/ordenes',

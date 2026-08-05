@@ -35,8 +35,23 @@ export const useDespachos = create<DespachosState>((set) => ({
 
   addCheck: (despachoId, codigo, nombre) =>
     set((state) => {
-      const item: ProductCheck = { id: nextId(), codigo, nombre };
       const current = state.checksByDespacho[despachoId] ?? [];
+      const existingIndex = current.findIndex((i) => i.codigo === codigo);
+
+      if (existingIndex !== -1) {
+        // ACTUALIZAR EL MISMO PRODUCTO EN LUGAR DE INSERTAR UNO NUEVO
+        const updated = [...current];
+        updated[existingIndex] = { ...updated[existingIndex], nombre };
+        return {
+          checksByDespacho: {
+            ...state.checksByDespacho,
+            [despachoId]: updated,
+          },
+        };
+      }
+
+      // SI ES NUEVO, INSERTAR AL PRINCIPIO
+      const item: ProductCheck = { id: nextId(), codigo, nombre };
       return {
         checksByDespacho: {
           ...state.checksByDespacho,

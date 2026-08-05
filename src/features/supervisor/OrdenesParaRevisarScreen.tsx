@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
-import { View, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ClipboardCheck, AlertTriangle, ChevronRight, Truck, Clock, MapPin, Search } from 'lucide-react-native';
+import {
+  ClipboardCheck,
+  AlertTriangle,
+  ChevronRight,
+  Truck,
+  MapPin,
+} from 'lucide-react-native';
 
 import { navigateTo, findRouteById } from '@/navigation/registry';
 import { Badge, SearchField } from '@/shared/ui';
@@ -15,13 +21,15 @@ export interface SupervisorOrder {
   driverName: string;
   time: string;
   status: 'PENDING_REVIEW';
-  hasDiscrepancy: true;
+  hasDiscrepancy: boolean;
   discrepancyCount: number;
+  shortageCount: number; // Cantidad de ítems con faltante
+  surplusCount: number; // Cantidad de ítems con sobrante
   totalItems: number;
   isColdChain?: boolean;
 }
 
-// ÚNICAMENTE ÓRDENES CON DIFERENCIA PENDIENTES DE CONSOLIDACIÓN POR EL SUPERVISOR
+// ÓRDENES PARA REVISAR (CONTENIENDO FALTANTES Y SOBRANTES SIMULTÁNEAMENTE)
 const MOCK_SUPERVISOR_ORDERS: SupervisorOrder[] = [
   {
     id: 'sup-1',
@@ -33,6 +41,8 @@ const MOCK_SUPERVISOR_ORDERS: SupervisorOrder[] = [
     status: 'PENDING_REVIEW',
     hasDiscrepancy: true,
     discrepancyCount: 2,
+    shortageCount: 1, // 1 Faltante (Salsa Ketchup)
+    surplusCount: 1, // 1 Sobrante (Salsa Mayonesa)
     totalItems: 8,
     isColdChain: true,
   },
@@ -46,6 +56,8 @@ const MOCK_SUPERVISOR_ORDERS: SupervisorOrder[] = [
     status: 'PENDING_REVIEW',
     hasDiscrepancy: true,
     discrepancyCount: 1,
+    shortageCount: 1, // 1 Faltante (Harina de Trigo)
+    surplusCount: 0,
     totalItems: 12,
     isColdChain: false,
   },
@@ -55,10 +67,12 @@ const MOCK_SUPERVISOR_ORDERS: SupervisorOrder[] = [
     puntosCount: 5,
     zonaRuta: 'Ruta Plan 3000 • Sector Comercial',
     driverName: 'Roberto Gómez',
-    time: 'Hoy, 11:15',
+    time: 'Ayer, 11:15',
     status: 'PENDING_REVIEW',
     hasDiscrepancy: true,
     discrepancyCount: 3,
+    shortageCount: 2, // 2 Faltantes (Salsa Ketchup + Levadura)
+    surplusCount: 1, // 1 Sobrante (Queso)
     totalItems: 10,
     isColdChain: true,
   },
@@ -68,7 +82,7 @@ export default function OrdenesParaRevisarScreen() {
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
 
-  const [activeFilter, setActiveFilter] = useState<'all' | 'cold' | 'standard'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'shortage' | 'surplus' | 'cold'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredOrders = MOCK_SUPERVISOR_ORDERS.filter((order) => {
@@ -79,10 +93,15 @@ export default function OrdenesParaRevisarScreen() {
 
     if (!matchesSearch) return false;
 
+    if (activeFilter === 'shortage') return order.shortageCount > 0;
+    if (activeFilter === 'surplus') return order.surplusCount > 0;
     if (activeFilter === 'cold') return order.isColdChain;
-    if (activeFilter === 'standard') return !order.isColdChain;
     return true;
   });
+
+  const totalShortageOrders = MOCK_SUPERVISOR_ORDERS.filter((o) => o.shortageCount > 0).length;
+  const totalSurplusOrders = MOCK_SUPERVISOR_ORDERS.filter((o) => o.surplusCount > 0).length;
+  const totalColdOrders = MOCK_SUPERVISOR_ORDERS.filter((o) => o.isColdChain).length;
 
   return (
     <Box flex={1} backgroundColor="mainBackground">
@@ -90,31 +109,33 @@ export default function OrdenesParaRevisarScreen() {
         contentContainerStyle={{
           padding: 16,
           paddingTop: 16,
-          gap: 16,
+          paddingBottom: insets.bottom + 40,
+          gap: 14,
         }}
       >
-        {/* BANNER INFORMATIVO PARA SUPERVISOR */}
+        {/* BANNER INFORMATIVO COMPACTO */}
         <View
           style={{
             backgroundColor: theme.colors.cardBackground,
             borderRadius: 14,
             borderWidth: 1,
             borderColor: theme.colors.border,
-            padding: 14,
+            padding: 12,
             gap: 6,
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <ClipboardCheck size={20} color={theme.colors.primary} />
+            <ClipboardCheck size={18} color={theme.colors.primary} />
             <Text
               variant="label"
-              style={{ fontSize: 14, fontWeight: '700', color: theme.colors.foreground }}
+              style={{ fontSize: 13, fontWeight: '700', color: theme.colors.foreground, flex: 1 }}
+              numberOfLines={1}
             >
-              Consolidación de Revisiones con Diferencia
+              Consolidación de Revisiones
             </Text>
           </View>
           <Text variant="caption" style={{ fontSize: 12, color: theme.colors.mutedForeground }}>
-            Se muestran únicamente las órdenes de transporte con diferencias de inventario detectadas en la revisión a ciegas que requieren tu consolidación y visto bueno.
+            Órdenes de transporte con diferencias (faltantes y sobrantes) pendientes de tu visto bueno.
           </Text>
         </View>
 
@@ -122,25 +143,26 @@ export default function OrdenesParaRevisarScreen() {
         <SearchField
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="Buscar por orden, ruta o chofer..."
+          placeholder="Buscar orden, ruta o chofer..."
         />
 
-        {/* FILTROS RÁPIDOS CON SCROLL HORIZONTAL */}
+        {/* FILTROS RÁPIDOS (SIN CALENDARIO) */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ gap: 8 }}
           style={{ flexGrow: 0 }}
         >
+          {/* CHIP 1: TODAS CON DIFERENCIA */}
           <TouchableOpacity
             onPress={() => setActiveFilter('all')}
             style={{
-              paddingHorizontal: 12,
+              paddingHorizontal: 13,
               paddingVertical: 6,
               borderRadius: 20,
-              backgroundColor: activeFilter === 'all' ? theme.colors.danger : theme.colors.cardBackground,
+              backgroundColor: activeFilter === 'all' ? theme.colors.primary : theme.colors.cardBackground,
               borderWidth: 1,
-              borderColor: activeFilter === 'all' ? theme.colors.danger : theme.colors.border,
+              borderColor: activeFilter === 'all' ? theme.colors.primary : theme.colors.border,
             }}
           >
             <Text
@@ -155,10 +177,59 @@ export default function OrdenesParaRevisarScreen() {
             </Text>
           </TouchableOpacity>
 
+          {/* CHIP 2: CON FALTANTES */}
+          <TouchableOpacity
+            onPress={() => setActiveFilter('shortage')}
+            style={{
+              paddingHorizontal: 13,
+              paddingVertical: 6,
+              borderRadius: 20,
+              backgroundColor: activeFilter === 'shortage' ? theme.colors.danger : theme.colors.cardBackground,
+              borderWidth: 1,
+              borderColor: activeFilter === 'shortage' ? theme.colors.danger : theme.colors.border,
+            }}
+          >
+            <Text
+              variant="caption"
+              style={{
+                fontSize: 12,
+                fontWeight: '700',
+                color: activeFilter === 'shortage' ? '#ffffff' : theme.colors.foreground,
+              }}
+            >
+              🔴 Con Faltantes ({totalShortageOrders})
+            </Text>
+          </TouchableOpacity>
+
+          {/* CHIP 3: CON SOBRANTES */}
+          <TouchableOpacity
+            onPress={() => setActiveFilter('surplus')}
+            style={{
+              paddingHorizontal: 13,
+              paddingVertical: 6,
+              borderRadius: 20,
+              backgroundColor: activeFilter === 'surplus' ? theme.colors.warning : theme.colors.cardBackground,
+              borderWidth: 1,
+              borderColor: activeFilter === 'surplus' ? theme.colors.warning : theme.colors.border,
+            }}
+          >
+            <Text
+              variant="caption"
+              style={{
+                fontSize: 12,
+                fontWeight: '700',
+                color: activeFilter === 'surplus' ? '#ffffff' : theme.colors.foreground,
+              }}
+            >
+              🟡 Con Sobrantes ({totalSurplusOrders})
+            </Text>
+          </TouchableOpacity>
+
+          {/* CHIP 4: CADENA DE FRÍO */}
           <TouchableOpacity
             onPress={() => setActiveFilter('cold')}
             style={{
-              paddingHorizontal: 12,
+              paddingHorizontal: 13,
               paddingVertical: 6,
               borderRadius: 20,
               backgroundColor: activeFilter === 'cold' ? theme.colors.primary : theme.colors.cardBackground,
@@ -174,35 +245,12 @@ export default function OrdenesParaRevisarScreen() {
                 color: activeFilter === 'cold' ? '#ffffff' : theme.colors.foreground,
               }}
             >
-              ❄️ Cadena de Frío ({MOCK_SUPERVISOR_ORDERS.filter((o) => o.isColdChain).length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setActiveFilter('standard')}
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              borderRadius: 20,
-              backgroundColor: activeFilter === 'standard' ? theme.colors.primary : theme.colors.cardBackground,
-              borderWidth: 1,
-              borderColor: activeFilter === 'standard' ? theme.colors.primary : theme.colors.border,
-            }}
-          >
-            <Text
-              variant="caption"
-              style={{
-                fontSize: 12,
-                fontWeight: '700',
-                color: activeFilter === 'standard' ? '#ffffff' : theme.colors.foreground,
-              }}
-            >
-              Estándar ({MOCK_SUPERVISOR_ORDERS.filter((o) => !o.isColdChain).length})
+              ❄️ Cadena de Frío ({totalColdOrders})
             </Text>
           </TouchableOpacity>
         </ScrollView>
 
-        {/* LISTADO DE ÓRDENES ÚNICAMENTE CON DIFERENCIA */}
+        {/* LISTADO DE ÓRDENES CON SOBRANTES Y FALTANTES */}
         <View style={{ gap: 12 }}>
           {filteredOrders.map((order) => (
             <View
@@ -216,15 +264,16 @@ export default function OrdenesParaRevisarScreen() {
                 gap: 10,
               }}
             >
-              {/* FILA SUPERIOR: CÓDIGO + BADGE DE DIFERENCIA */}
+              {/* FILA SUPERIOR: CÓDIGO + BADGES DE DIFERENCIAS (FALTANTE Y/O SOBRANTE) */}
               <View
                 style={{
                   flexDirection: 'row',
                   justifyContent: 'space-between',
                   alignItems: 'center',
+                  gap: 8,
                 }}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
                   <Text
                     variant="label"
                     style={{ fontSize: 15, fontWeight: '800', color: theme.colors.foreground }}
@@ -232,75 +281,100 @@ export default function OrdenesParaRevisarScreen() {
                     {order.code}
                   </Text>
                   {order.isColdChain && (
-                    <Badge label="❄️ Cadena de Frío" tone="neutral" emphasis="soft" size="sm" />
+                    <Badge label="❄️ Frío" tone="neutral" emphasis="soft" size="sm" />
                   )}
                 </View>
 
-                <Badge
-                  label={`${order.discrepancyCount} Diferencia(s)`}
-                  tone="danger"
-                  emphasis="soft"
-                  size="md"
-                />
+                {/* BADGES SEPARADOS PARA FALTANTES Y SOBRANTES EN LA MISMA ORDEN */}
+                <View style={{ flexDirection: 'row', gap: 4, flexShrink: 0 }}>
+                  {order.shortageCount > 0 && (
+                    <Badge
+                      label={`${order.shortageCount} Faltante${order.shortageCount > 1 ? 's' : ''}`}
+                      tone="danger"
+                      emphasis="soft"
+                      size="sm"
+                    />
+                  )}
+                  {order.surplusCount > 0 && (
+                    <Badge
+                      label={`+${order.surplusCount} Sobrante${order.surplusCount > 1 ? 's' : ''}`}
+                      tone="warning"
+                      emphasis="soft"
+                      size="sm"
+                    />
+                  )}
+                </View>
               </View>
 
-              {/* DETALLES DE PUNTOS DE ENTREGA EN RUTA */}
+              {/* DETALLES DE LOGÍSTICA Y PUNTOS DE ENTREGA */}
               <View style={{ gap: 2 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <MapPin size={14} color={theme.colors.primary} />
                   <Text
                     variant="subtitle"
                     numberOfLines={1}
-                    style={{ fontSize: 14, fontWeight: '700', color: theme.colors.foreground }}
+                    style={{ fontSize: 14, fontWeight: '700', color: theme.colors.foreground, flex: 1 }}
                   >
-                    {order.puntosCount} Puntos de entrega en ruta
+                    {order.puntosCount} Puntos de entrega
                   </Text>
                 </View>
-                <Text variant="caption" style={{ fontSize: 12, color: theme.colors.mutedForeground }}>
-                  Zona: {order.zonaRuta}
-                </Text>
 
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Truck size={14} color={theme.colors.mutedForeground} />
-                    <Text variant="caption" style={{ fontSize: 12, color: theme.colors.mutedForeground }}>
+                {/* LOGÍSTICA: CHOFER Y RUTA EN FILAS SEPARADAS */}
+                <View
+                  style={{
+                    backgroundColor: theme.colors.secondary,
+                    borderRadius: 8,
+                    padding: 8,
+                    gap: 3,
+                    marginTop: 4,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Truck size={13} color={theme.colors.mutedForeground} />
+                    <Text variant="caption" style={{ fontSize: 11, fontWeight: '700', color: theme.colors.foreground }}>
                       Chofer: {order.driverName}
                     </Text>
                   </View>
-
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Clock size={14} color={theme.colors.mutedForeground} />
-                    <Text variant="caption" style={{ fontSize: 12, color: theme.colors.mutedForeground }}>
-                      {order.time}
-                    </Text>
-                  </View>
+                  <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground, marginLeft: 19 }}>
+                    Ruta: {order.zonaRuta} • {order.time}
+                  </Text>
                 </View>
               </View>
 
-              {/* BARRA INFORMATIVA DE PRODUCTOS Y DIFERENCIA */}
+              {/* RESUMEN DE DIFERENCIA (DESGLOSE DE FALTANTE Y SOBRANTE) */}
               <View
                 style={{
                   backgroundColor: theme.colors.dangerSoft,
                   borderRadius: 10,
-                  padding: 10,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
                   flexDirection: 'row',
                   justifyContent: 'space-between',
                   alignItems: 'center',
+                  gap: 8,
                 }}
               >
-                <Text variant="caption" style={{ fontSize: 12, color: theme.colors.mutedForeground }}>
-                  Total productos contados: <Text style={{ fontWeight: '700', color: theme.colors.foreground }}>{order.totalItems}</Text>
+                <Text
+                  variant="caption"
+                  numberOfLines={1}
+                  style={{ fontSize: 12, color: theme.colors.foreground, flexShrink: 1, fontWeight: '600' }}
+                >
+                  {order.shortageCount > 0 && order.surplusCount > 0
+                    ? `Diferencias: ${order.shortageCount} Faltante • ${order.surplusCount} Sobrante`
+                    : order.shortageCount > 0
+                    ? `Diferencias: ${order.shortageCount} Faltante`
+                    : `Diferencias: ${order.surplusCount} Sobrante`}
                 </Text>
 
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <AlertTriangle size={14} color={theme.colors.danger} />
-                  <Text variant="caption" style={{ fontSize: 12, fontWeight: '700', color: theme.colors.danger }}>
-                    Requiere consolidación
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                  <AlertTriangle size={13} color={theme.colors.danger} />
+                  <Text variant="caption" style={{ fontSize: 11, fontWeight: '700', color: theme.colors.danger }}>
+                    Por Consolidar
                   </Text>
                 </View>
               </View>
 
-              {/* BOTÓN DE ACCIÓN ROJO OUTLINE PARA ATENCIÓN INMEDIATA */}
+              {/* BOTÓN DE ACCIÓN ROJO OUTLINE */}
               <TouchableOpacity
                 onPress={() => {
                   const route = findRouteById('supervisor.consolidacion');

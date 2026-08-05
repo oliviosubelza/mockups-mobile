@@ -25,8 +25,13 @@ export default function HomeScreen() {
   // FILTRAR RUTAS SEGÚN EL ROL DEL USUARIO
   const items = allRoutes.filter((route) => {
     if (user.role === 'SUPERVISOR') {
-      // El supervisor únicamente ve "Órdenes para Revisar"
-      return route.id === 'supervisor.ordenes' || route.id === 'gallery';
+      // El supervisor ve "Órdenes para Revisar", "Productos Faltantes", "Revisión Semáforo" y Galería
+      return (
+        route.id === 'supervisor.ordenes' ||
+        route.id === 'supervisor.productosFaltantes' ||
+        route.id === 'supervisor.semaforo' ||
+        route.id === 'gallery'
+      );
     }
     // El chofer ve "Revisión a ciegas", "Mis Entregas" y galería
     return route.id === 'despachos' || route.id === 'entregas' || route.id === 'gallery';
@@ -45,7 +50,7 @@ export default function HomeScreen() {
           <Text variant="header">Hola, {firstName}</Text>
           <Text variant="caption">
             {user.role === 'SUPERVISOR'
-              ? 'Panel de Supervisor: Gestiona y consolida revisiones pendientes.'
+              ? 'Panel de Supervisor: Consolidación, Auditoría Semáforo y Productos Faltantes.'
               : 'Panel de Chofer: Selecciona una opción para comenzar tu ruta.'}
           </Text>
         </Box>
@@ -60,7 +65,11 @@ export default function HomeScreen() {
                   ? pendientes
                   : route.id === 'supervisor.ordenes'
                     ? 2
-                    : undefined
+                    : route.id === 'supervisor.productosFaltantes'
+                      ? 5
+                      : route.id === 'supervisor.semaforo'
+                        ? 3
+                        : undefined
               }
             />
           ))}

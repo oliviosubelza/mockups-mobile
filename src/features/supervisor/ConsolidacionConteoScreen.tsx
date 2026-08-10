@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { View, ScrollView, TouchableOpacity, Modal } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -8,13 +7,13 @@ import {
   ChevronDown,
   Check,
   X,
-  PackageCheck,
 } from 'lucide-react-native';
 
 import { goBackOrNavigate } from '@/navigation/registry';
 import {
   Badge,
   AppDialog,
+  ScreenActionBar,
   Card,
   BoxUnitCounter,
   boxUnitTotal,
@@ -111,7 +110,6 @@ const MOCK_ORDER_MANIFEST: OrderProductItem[] = [
 ];
 
 export default function ConsolidacionConteoScreen() {
-  const insets = useSafeAreaInsets();
   const theme = useAppTheme();
 
   // FILTRO RÁPIDO DE LA LISTA: TODOS / CON DIFERENCIA / CONTEO OK
@@ -201,7 +199,7 @@ export default function ConsolidacionConteoScreen() {
         contentContainerStyle={{
           padding: 16,
           paddingTop: 16,
-          paddingBottom: insets.bottom + 90,
+          paddingBottom: 24,
           gap: 14,
         }}
       >
@@ -490,83 +488,19 @@ export default function ConsolidacionConteoScreen() {
         </View>
       </ScrollView>
 
-      {/* BARRA DE ACCIÓN FLOTANTE (FLOATING ACTION DOCK / PILL) */}
-      <View
-        style={{
-          position: 'absolute',
-          bottom: Math.max(16, insets.bottom + 8),
-          left: 16,
-          right: 16,
-          alignItems: 'center',
-        }}
+      {/* BARRA DE ACCIÓN ANCLADA (hermana del ScrollView, no flotante) */}
+      <ScreenActionBar
+        actionLabel="Consolidar Conteo"
+        actionIcon={CheckCircle2}
+        onAction={handleConsolidateOrder}
       >
-        <View
-          style={{
-            width: '100%',
-            maxWidth: 420,
-            backgroundColor: theme.colors.cardBackground,
-            borderRadius: 20,
-            borderWidth: 1.5,
-            borderColor: theme.colors.primary,
-            paddingHorizontal: 16,
-            paddingVertical: 10,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 6 },
-            shadowOpacity: 0.2,
-            shadowRadius: 10,
-            elevation: 8,
-          }}
-        >
-          {/* MÉTRICA RESUMEN DE MANIFIESTO */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 }}>
-            <View
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 10,
-                backgroundColor: theme.colors.primarySoft,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <PackageCheck size={18} color={theme.colors.primary} />
-            </View>
-            <View style={{ flexShrink: 1 }}>
-              <Text variant="caption" style={{ fontSize: 10, color: theme.colors.mutedForeground }}>
-                Manifiesto OT-4892
-              </Text>
-              <Text variant="label" style={{ fontSize: 12, fontWeight: '800', color: theme.colors.foreground }}>
-                {MOCK_ORDER_MANIFEST.length} Productos Total
-              </Text>
-            </View>
-          </View>
-
-          {/* BOTÓN COMPACTO DE ACCIÓN PRINCIPAL */}
-          <TouchableOpacity
-            onPress={handleConsolidateOrder}
-            activeOpacity={0.8}
-            style={{
-              backgroundColor: theme.colors.primary,
-              borderRadius: 12,
-              paddingHorizontal: 18,
-              paddingVertical: 10,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-            }}
-          >
-            <CheckCircle2 size={16} color="#ffffff" />
-            <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13 }}>
-              Consolidar Conteo
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+        <Text variant="caption" style={{ fontSize: 10, color: theme.colors.mutedForeground }}>
+          Manifiesto OT-4892
+        </Text>
+        <Text variant="label" style={{ fontSize: 12, fontWeight: '800', color: theme.colors.foreground }}>
+          {MOCK_ORDER_MANIFEST.length} productos · {totalDiscrepancyCount} con diferencia
+        </Text>
+      </ScreenActionBar>
 
       {/* MODAL SELECTOR DE TIPO DE DIFERENCIA */}
       <Modal

@@ -22,6 +22,7 @@ import {
   Button,
   AppDialog,
   SearchField,
+  ScreenActionBar,
   Card,
   BoxUnitCounter,
   EMPTY_BOX_UNIT,
@@ -278,7 +279,7 @@ export default function RevisionSemaforoExecuteScreen() {
     <View style={{ flex: 1, backgroundColor: theme.colors.mainBackground }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 100, gap: 14 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 24, gap: 14 }}
         keyboardShouldPersistTaps="handled"
       >
         {/* HEADER DE CONTEXTO */}
@@ -847,72 +848,29 @@ export default function RevisionSemaforoExecuteScreen() {
         </View>
       </Modal>
 
-      {/* DOCK FLOTANTE DE PROGRESO Y CIERRE DE AUDITORÍA */}
-      <View
-        style={{
-          position: 'absolute',
-          bottom: Math.max(16, insets.bottom + 8),
-          left: 16,
-          right: 16,
-          backgroundColor: theme.colors.cardBackground,
-          borderRadius: 30,
-          borderWidth: 1.5,
-          borderColor: theme.colors.primary,
-          paddingVertical: 8,
-          paddingHorizontal: 14,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 10,
-          elevation: 12,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.18,
-          shadowRadius: 10,
-        }}
+      {/* BARRA DE ACCIÓN ANCLADA (hermana del ScrollView, no flotante) */}
+      <ScreenActionBar
+        actionLabel="Finalizar"
+        actionIcon={CheckCheck}
+        onAction={handleFinishAudit}
+        actionDisabled={stats.contados === 0}
       >
-        <View style={{ gap: 3, flexShrink: 1 }}>
-          <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.foreground }}>
-            {stats.contados} de {stats.total} contados
-          </Text>
+        <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.foreground }}>
+          {stats.contados} de {stats.total} contados
+        </Text>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            {stats.matches > 0 && <Badge label={`${stats.matches} ok`} tone="success" emphasis="soft" size="sm" />}
-            {stats.mismatches > 0 && (
-              <Badge label={`${stats.mismatches} diff`} tone="danger" emphasis="soft" size="sm" />
-            )}
-            {stats.pendientes > 0 && (
-              <Badge label={`${stats.pendientes} pend.`} tone="neutral" emphasis="soft" size="sm" />
-            )}
-          </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {stats.matches > 0 && (
+            <Badge label={`${stats.matches} ok`} tone="success" emphasis="soft" size="sm" />
+          )}
+          {stats.mismatches > 0 && (
+            <Badge label={`${stats.mismatches} diff`} tone="danger" emphasis="soft" size="sm" />
+          )}
+          {stats.pendientes > 0 && (
+            <Badge label={`${stats.pendientes} pend.`} tone="neutral" emphasis="soft" size="sm" />
+          )}
         </View>
-
-        <TouchableOpacity
-          onPress={handleFinishAudit}
-          disabled={stats.contados === 0}
-          activeOpacity={0.85}
-          style={{
-            backgroundColor: stats.contados === 0 ? theme.colors.secondary : theme.colors.primary,
-            borderRadius: 22,
-            paddingVertical: 10,
-            paddingHorizontal: 16,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <CheckCheck size={18} color={stats.contados === 0 ? theme.colors.mutedForeground : '#ffffff'} />
-          <Text
-            style={{
-              color: stats.contados === 0 ? theme.colors.mutedForeground : '#ffffff',
-              fontWeight: '800',
-              fontSize: 13,
-            }}
-          >
-            Finalizar
-          </Text>
-        </TouchableOpacity>
-      </View>
+      </ScreenActionBar>
 
       {/* DIÁLOGO DE CIERRE DE AUDITORÍA */}
       <AppDialog

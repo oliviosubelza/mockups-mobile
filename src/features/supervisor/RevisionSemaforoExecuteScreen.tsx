@@ -26,7 +26,6 @@ import {
   BoxUnitCounter,
   EMPTY_BOX_UNIT,
   boxUnitTotal,
-  normalizeBoxUnit,
   type BoxUnitValue,
   CountProgressHeader,
   type DialogType,
@@ -141,11 +140,11 @@ export default function RevisionSemaforoExecuteScreen() {
 
   // REGISTRAR EL CONTEO DE UNA FILA: RECIÉN AQUÍ SE REVELA LA CANTIDAD ESPERADA
   const handleRegisterRow = (producto: (typeof MOCK_OT_PRODUCTS)[number]) => {
-    // Se normaliza al registrar: si el input quedó con 12 sueltas de una caja
-    // de 12, el registro debe guardar 1 caja más y 0 sueltas.
-    const draft = normalizeBoxUnit(getDraft(producto.codigo), producto.cajaSize);
-    const numCajas = parseInt(draft.cajas, 10) || 0;
-    const numUnidades = parseInt(draft.unidades, 10) || 0;
+    // Se guarda el desglose tal como se contó. Las cajas son un atajo de
+    // conteo; la cantidad que manda es el total en unidades.
+    const draft = getDraft(producto.codigo);
+    const numCajas = parseInt(draft.cajas || '0', 10) || 0;
+    const numUnidades = parseInt(draft.unidades || '0', 10) || 0;
     const totalContado = boxUnitTotal(draft, producto.cajaSize);
 
     const nuevoRegistro: CountedAuditRecord = {
@@ -189,18 +188,15 @@ export default function RevisionSemaforoExecuteScreen() {
   const saveRecountFromModal = () => {
     if (!modalItem) return;
 
-    // Se normaliza antes de guardar: el desglose nunca debe describir más
-    // unidades sueltas de las que caben en una caja.
-    const normalized = normalizeBoxUnit(modalCount, modalItem.cajaSize);
-    const totalContadoCalculado = boxUnitTotal(normalized, modalItem.cajaSize);
+    const totalContadoCalculado = boxUnitTotal(modalCount, modalItem.cajaSize);
 
     setItemsAuditados((prev) =>
       prev.map((rec) =>
         rec.codigo === modalItem.codigo
           ? {
               ...rec,
-              numCajas: parseInt(normalized.cajas, 10) || 0,
-              numUnidades: parseInt(normalized.unidades, 10) || 0,
+              numCajas: parseInt(modalCount.cajas || '0', 10) || 0,
+              numUnidades: parseInt(modalCount.unidades || '0', 10) || 0,
               totalContado: totalContadoCalculado,
             }
           : rec

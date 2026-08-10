@@ -17,8 +17,6 @@ export {
   BoxUnitCounter,
   boxUnitTotal,
   formatBoxUnit,
-  splitBoxUnit,
-  normalizeBoxUnit,
   EMPTY_BOX_UNIT,
   type BoxUnitCounterProps,
   type BoxUnitValue,

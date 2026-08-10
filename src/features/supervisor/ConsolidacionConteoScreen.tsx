@@ -324,7 +324,7 @@ export default function ConsolidacionConteoScreen() {
         </View>
 
         {/* LISTADO DE TODOS LOS PRODUCTOS DEL MANIFIESTO */}
-        <View style={{ gap: 10 }}>
+        <View style={{ gap: 18 }}>
           {filteredManifest.map((item) => {
             const currentCorrection = corrections[item.id] ?? EMPTY_BOX_UNIT;
             const isOkItem = item.difference === 0;

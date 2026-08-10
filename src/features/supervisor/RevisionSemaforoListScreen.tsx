@@ -316,7 +316,7 @@ export default function RevisionSemaforoListScreen() {
         </ScrollView>
 
         {/* LISTADO DE ORDENES DE TRANSPORTE PARA REVISIÓN SEMÁFORO */}
-        <View style={{ gap: 12 }}>
+        <View style={{ gap: 18 }}>
           {filteredOrders.map((order) => {
             return (
               <View

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, ScrollView, TextInput, TouchableOpacity, Modal } from 'react-native';
+import { View, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Package,
@@ -12,8 +12,6 @@ import {
   Camera,
   ScanLine,
   RotateCcw,
-  Minus,
-  Plus,
   CheckCheck,
   Check,
 } from 'lucide-react-native';
@@ -111,8 +109,7 @@ export default function RevisionSemaforoExecuteScreen() {
   // ESTADO DEL MODAL IN-SITU DE RE-CONTEO RÁPIDO
   const [isRecountModalVisible, setIsRecountModalVisible] = useState(false);
   const [modalItem, setModalItem] = useState<CountedAuditRecord | null>(null);
-  const [modalCajas, setModalCajas] = useState('0');
-  const [modalUnidades, setModalUnidades] = useState('0');
+  const [modalCount, setModalCount] = useState<BoxUnitValue>(EMPTY_BOX_UNIT);
 
   // ESTADO DEL ESCÁNER DE CÓDIGO DE BARRAS POR CÁMARA
   const [isBarcodeScannerVisible, setIsBarcodeScannerVisible] = useState(false);
@@ -143,6 +140,8 @@ export default function RevisionSemaforoExecuteScreen() {
 
   // REGISTRAR EL CONTEO DE UNA FILA: RECIÉN AQUÍ SE REVELA LA CANTIDAD ESPERADA
   const handleRegisterRow = (producto: (typeof MOCK_OT_PRODUCTS)[number]) => {
+    // Se guarda el desglose tal como se contó. Las cajas son un atajo de
+    // conteo; la cantidad que manda es el total en unidades.
     const draft = getDraft(producto.codigo);
     const numCajas = parseInt(draft.cajas || '0', 10) || 0;
     const numUnidades = parseInt(draft.unidades || '0', 10) || 0;
@@ -178,8 +177,10 @@ export default function RevisionSemaforoExecuteScreen() {
     if (attempts >= MAX_RECOUNTS) return;
 
     setModalItem(item);
-    setModalCajas(item.numCajas.toString());
-    setModalUnidades(item.numUnidades.toString());
+    setModalCount({
+      cajas: item.numCajas.toString(),
+      unidades: item.numUnidades.toString(),
+    });
     setIsRecountModalVisible(true);
   };
 
@@ -187,14 +188,17 @@ export default function RevisionSemaforoExecuteScreen() {
   const saveRecountFromModal = () => {
     if (!modalItem) return;
 
-    const numCjas = parseInt(modalCajas || '0', 10) || 0;
-    const numUnids = parseInt(modalUnidades || '0', 10) || 0;
-    const totalContadoCalculado = numCjas * modalItem.cajaSize + numUnids;
+    const totalContadoCalculado = boxUnitTotal(modalCount, modalItem.cajaSize);
 
     setItemsAuditados((prev) =>
       prev.map((rec) =>
         rec.codigo === modalItem.codigo
-          ? { ...rec, numCajas: numCjas, numUnidades: numUnids, totalContado: totalContadoCalculado }
+          ? {
+              ...rec,
+              numCajas: parseInt(modalCount.cajas || '0', 10) || 0,
+              numUnidades: parseInt(modalCount.unidades || '0', 10) || 0,
+              totalContado: totalContadoCalculado,
+            }
           : rec
       )
     );
@@ -269,12 +273,6 @@ export default function RevisionSemaforoExecuteScreen() {
       (p) => p.codigo.toLowerCase().includes(query) || p.nombre.toLowerCase().includes(query)
     );
   }, [searchQuery]);
-
-  // CÁLCULOS DEL MODAL DE RE-CONTEO
-  const modalCjasNum = parseInt(modalCajas || '0', 10) || 0;
-  const modalUnidsNum = parseInt(modalUnidades || '0', 10) || 0;
-  const modalCajaSize = modalItem?.cajaSize || 12;
-  const modalTotalCalc = modalCjasNum * modalCajaSize + modalUnidsNum;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.mainBackground }}>
@@ -370,7 +368,7 @@ export default function RevisionSemaforoExecuteScreen() {
         </View>
 
         {/* LISTA COMPLETA DE PRODUCTOS DEL MANIFIESTO */}
-        <View style={{ gap: 10 }}>
+        <View style={{ gap: 18 }}>
           {filteredProducts.length === 0 ? (
             <View
               style={{
@@ -425,7 +423,7 @@ export default function RevisionSemaforoExecuteScreen() {
                   borderWidth={isHighlighted ? 2 : 1}
                   padding="m"
                   borderRadius="xl"
-                  style={{ gap: 10 }}
+                  style={{ gap: 8 }}
                 >
                   {/* FILA 1: IDENTIFICACIÓN DEL PRODUCTO + ESTADO */}
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -801,187 +799,14 @@ export default function RevisionSemaforoExecuteScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={{ gap: 14 }}>
-              {/* CAJAS */}
-              <View
-                style={{
-                  backgroundColor: theme.colors.secondary,
-                  borderRadius: 12,
-                  padding: 12,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <View style={{ gap: 2 }}>
-                  <Text variant="label" style={{ fontSize: 13, color: theme.colors.foreground }}>
-                    Cajas
-                  </Text>
-                  <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
-                    ({modalCajaSize} unids/caja)
-                  </Text>
-                </View>
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      const val = Math.max(0, (parseInt(modalCajas || '0', 10) || 0) - 1);
-                      setModalCajas(val.toString());
-                    }}
-                    style={{
-                      width: 42,
-                      height: 44,
-                      borderRadius: 10,
-                      backgroundColor: theme.colors.cardBackground,
-                      borderWidth: 1,
-                      borderColor: theme.colors.border,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Minus size={18} color={theme.colors.foreground} />
-                  </TouchableOpacity>
-
-                  <TextInput
-                    value={modalCajas}
-                    onChangeText={(val) => setModalCajas(val.replace(/[^0-9]/g, ''))}
-                    keyboardType="number-pad"
-                    style={{
-                      width: 58,
-                      height: 44,
-                      backgroundColor: theme.colors.cardBackground,
-                      borderRadius: 10,
-                      borderWidth: 1.5,
-                      borderColor: theme.colors.primary,
-                      textAlign: 'center',
-                      textAlignVertical: 'center',
-                      paddingVertical: 0,
-                      paddingTop: 0,
-                      paddingBottom: 0,
-                      fontSize: 16,
-                      fontWeight: '700',
-                      color: theme.colors.foreground,
-                    }}
-                  />
-
-                  <TouchableOpacity
-                    onPress={() => {
-                      const val = (parseInt(modalCajas || '0', 10) || 0) + 1;
-                      setModalCajas(val.toString());
-                    }}
-                    style={{
-                      width: 42,
-                      height: 44,
-                      borderRadius: 10,
-                      backgroundColor: theme.colors.cardBackground,
-                      borderWidth: 1,
-                      borderColor: theme.colors.border,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Plus size={18} color={theme.colors.foreground} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* UNIDADES SUELTAS */}
-              <View
-                style={{
-                  backgroundColor: theme.colors.secondary,
-                  borderRadius: 12,
-                  padding: 12,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <View style={{ gap: 2 }}>
-                  <Text variant="label" style={{ fontSize: 13, color: theme.colors.foreground }}>
-                    Unidades Sueltas
-                  </Text>
-                  <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
-                    Unidades individuales
-                  </Text>
-                </View>
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      const val = Math.max(0, (parseInt(modalUnidades || '0', 10) || 0) - 1);
-                      setModalUnidades(val.toString());
-                    }}
-                    style={{
-                      width: 42,
-                      height: 44,
-                      borderRadius: 10,
-                      backgroundColor: theme.colors.cardBackground,
-                      borderWidth: 1,
-                      borderColor: theme.colors.border,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Minus size={18} color={theme.colors.foreground} />
-                  </TouchableOpacity>
-
-                  <TextInput
-                    value={modalUnidades}
-                    onChangeText={(val) => setModalUnidades(val.replace(/[^0-9]/g, ''))}
-                    keyboardType="number-pad"
-                    style={{
-                      width: 58,
-                      height: 44,
-                      backgroundColor: theme.colors.cardBackground,
-                      borderRadius: 10,
-                      borderWidth: 1.5,
-                      borderColor: theme.colors.primary,
-                      textAlign: 'center',
-                      textAlignVertical: 'center',
-                      paddingVertical: 0,
-                      paddingTop: 0,
-                      paddingBottom: 0,
-                      fontSize: 16,
-                      fontWeight: '700',
-                      color: theme.colors.foreground,
-                    }}
-                  />
-
-                  <TouchableOpacity
-                    onPress={() => {
-                      const val = (parseInt(modalUnidades || '0', 10) || 0) + 1;
-                      setModalUnidades(val.toString());
-                    }}
-                    style={{
-                      width: 42,
-                      height: 44,
-                      borderRadius: 10,
-                      backgroundColor: theme.colors.cardBackground,
-                      borderWidth: 1,
-                      borderColor: theme.colors.border,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Plus size={18} color={theme.colors.foreground} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* TOTAL CALCULADO EN TIEMPO REAL */}
-              <View
-                style={{
-                  backgroundColor: theme.colors.primarySoft,
-                  borderRadius: 10,
-                  padding: 10,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.primary }}>
-                  Total Recontado: {modalTotalCalc} Unidades
-                </Text>
-              </View>
-            </View>
+            {/* MISMO CONTROL QUE LA CARD: acarrea sueltas a cajas */}
+            <BoxUnitCounter
+              value={modalCount}
+              onChange={setModalCount}
+              cajaSize={modalItem?.cajaSize ?? 1}
+              totalLabel="Total recontado"
+              targetQty={modalItem?.expectedQty}
+            />
 
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
               <TouchableOpacity

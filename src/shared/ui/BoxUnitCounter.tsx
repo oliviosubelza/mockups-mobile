@@ -13,32 +13,19 @@ export interface BoxUnitValue {
 
 export const EMPTY_BOX_UNIT: BoxUnitValue = { cajas: '', unidades: '' };
 
-/** Total en unidades de un conteo caja/unidad. */
+/**
+ * Total en unidades de un conteo caja/unidad.
+ *
+ * Las unidades son la cantidad real: las cajas son solo un atajo para contar
+ * de a `cajaSize`. Por eso los dos campos son independientes y las sueltas
+ * PUEDEN superar el tamaño de la caja — quien cuenta 7 cajas y 14 sueltas
+ * contó 98 unidades, y 98 es el número que importa.
+ */
 export const boxUnitTotal = (value: BoxUnitValue, cajaSize: number): number => {
   const cajas = parseInt(value.cajas || '0', 10) || 0;
   const unidades = parseInt(value.unidades || '0', 10) || 0;
   return cajas * cajaSize + unidades;
 };
-
-/** Reparte un total en cajas cerradas + el resto como unidades sueltas. */
-export const splitBoxUnit = (total: number, cajaSize: number): BoxUnitValue => {
-  const safeTotal = Math.max(0, total);
-  if (cajaSize <= 0) return { cajas: '0', unidades: safeTotal.toString() };
-  return {
-    cajas: Math.floor(safeTotal / cajaSize).toString(),
-    unidades: (safeTotal % cajaSize).toString(),
-  };
-};
-
-/**
- * Normaliza un conteo para que las unidades sueltas nunca lleguen al tamaño
- * de la caja: 7 cajas + 12 sueltas (de 12) es 8 cajas + 0 sueltas.
- *
- * Sin esto el total puede cuadrar mientras el desglose describe un estado
- * físicamente imposible.
- */
-export const normalizeBoxUnit = (value: BoxUnitValue, cajaSize: number): BoxUnitValue =>
-  splitBoxUnit(boxUnitTotal(value, cajaSize), cajaSize);
 
 /**
  * Describe un conteo dejando explícita la equivalencia: "7 cajas + 9 u. = 93 u.".
@@ -55,7 +42,7 @@ export const formatBoxUnit = (boxes: number, loose: number, total: number): stri
 export interface BoxUnitCounterProps {
   value: BoxUnitValue;
   onChange: (next: BoxUnitValue) => void;
-  /** Unidades por caja. Se muestra como pista junto a "Cajas". */
+  /** Unidades que aporta cada caja. Se muestra como pista junto a "Cajas". */
   cajaSize: number;
   /** Cuando se define, se muestra la fila de total con esta etiqueta. */
   totalLabel?: string;
@@ -106,12 +93,13 @@ export const BoxUnitCounter = ({
         // Mientras se teclea no se normaliza, para no pelear con el usuario
         // a mitad de un número. El acarreo se aplica al salir del input.
         onChangeText={(next) => onChange({ ...value, [field]: next })}
-        onBlur={() => onChange(normalizeBoxUnit(value, cajaSize))}
+        // Cada campo mueve SOLO su propio valor. Un acarreo de sueltas a cajas
+        // haría que tocar "+" en Unidades cambie Cajas, y el control mentiría
+        // sobre lo que hace.
         onAdjust={(delta) => {
-          // Un paso en "cajas" mueve cajaSize unidades; uno en "unidades", una.
-          const step = field === 'cajas' ? cajaSize : 1;
-          const nextTotal = boxUnitTotal(value, cajaSize) + delta * step;
-          onChange(splitBoxUnit(nextTotal, cajaSize));
+          const parsed = parseInt(value[field] || '0', 10);
+          const safe = isNaN(parsed) ? 0 : parsed;
+          onChange({ ...value, [field]: Math.max(0, safe + delta).toString() });
         }}
       />
     </View>
@@ -120,7 +108,7 @@ export const BoxUnitCounter = ({
   return (
     <View style={{ gap: 8 }}>
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        {renderField('cajas', 'Cajas', `(${cajaSize} u/cj)`, <Layers size={13} color={theme.colors.primary} />)}
+        {renderField('cajas', 'Cajas', `(x${cajaSize} u.)`, <Layers size={13} color={theme.colors.primary} />)}
         {renderField('unidades', 'Unidades', null, <Package size={13} color={theme.colors.primary} />)}
       </View>
 

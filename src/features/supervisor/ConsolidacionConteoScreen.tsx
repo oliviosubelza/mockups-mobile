@@ -1,22 +1,18 @@
 import React, { useState } from 'react';
-import { View, ScrollView, TouchableOpacity, TextInput, Modal } from 'react-native';
+import { View, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  ClipboardCheck,
   AlertTriangle,
   CheckCircle2,
   ShieldCheck,
-  Plus,
-  Minus,
   ChevronDown,
   Check,
   X,
   PackageCheck,
-  Package,
 } from 'lucide-react-native';
 
 import { goBackOrNavigate } from '@/navigation/registry';
-import { Badge, Button, AppDialog, type DialogType } from '@/shared/ui';
+import { Badge, AppDialog, QuantityStepper, Card, type DialogType } from '@/shared/ui';
 import { Box, Text, useAppTheme } from '@/theme';
 
 export interface OrderProductItem {
@@ -33,13 +29,15 @@ export interface OrderProductItem {
   type: 'SURPLUS' | 'SHORTAGE' | 'OK';
 }
 
-export const DISCREPANCY_TYPES = [
-  'Conteo verificado OK (Sin novedad)',
-  'Diferencia por faltante',
-  'Diferencia por cantidad',
-  'Diferencia por producto dañado / merma',
-  'Diferencia por error de empaque',
-] as const;
+// LAS 4 CAUSALES OFICIALES DE DIFERENCIA DEFINIDAS POR LOS KEY USERS
+// Conteo: el chofer se equivocó al contar.
+// Diferencia: realmente hay diferencia, entregar el faltante o recoger el sobrante.
+// Cruce: sobra en un producto y falta en otro de la misma familia.
+// Quiebre: no hay las cantidades en almacén para entregar.
+export const DISCREPANCY_CAUSES = ['Conteo', 'Diferencia', 'Cruce', 'Quiebre'] as const;
+
+// ÍTEMS SIN DIFERENCIA NO SE CLASIFICAN: LLEVAN ESTA ETIQUETA FIJA DE SOLO LECTURA
+export const COUNT_OK_LABEL = 'Conteo verificado OK (Sin novedad)';
 
 // MANIFIESTO COMPLETO DE LA OT-4892 (SALSAS, PANIFICACIÓN Y REPOSTERÍA)
 const MOCK_ORDER_MANIFEST: OrderProductItem[] = [
@@ -114,10 +112,10 @@ export default function ConsolidacionConteoScreen() {
 
   // SELECT DE TIPO DE DIFERENCIA POR ÍTEM
   const [selectedTypes, setSelectedTypes] = useState<Record<string, string>>({
-    'disc-1': 'Diferencia por cantidad',
-    'disc-2': 'Diferencia por faltante',
-    'disc-3': 'Conteo verificado OK (Sin novedad)',
-    'disc-4': 'Conteo verificado OK (Sin novedad)',
+    'disc-1': 'Conteo',
+    'disc-2': 'Diferencia',
+    'disc-3': COUNT_OK_LABEL,
+    'disc-4': COUNT_OK_LABEL,
   });
 
   // MODAL SELECTOR DE TIPO
@@ -315,33 +313,31 @@ export default function ConsolidacionConteoScreen() {
         </View>
 
         {/* LISTADO DE TODOS LOS PRODUCTOS DEL MANIFIESTO */}
-        <View style={{ gap: 12 }}>
+        <View style={{ gap: 10 }}>
           {filteredManifest.map((item) => {
             const currentCorrection = corrections[item.id] || '';
             const currentCorrectionNum = parseInt(currentCorrection || '0', 10);
             const isOkItem = item.difference === 0;
             const isMatched = !isNaN(currentCorrectionNum) && currentCorrectionNum === item.expectedQty;
-            const currentSelectedType = selectedTypes[item.id] || (isOkItem ? 'Conteo verificado OK (Sin novedad)' : DISCREPANCY_TYPES[1]);
+            const currentSelectedType =
+              selectedTypes[item.id] || (isOkItem ? COUNT_OK_LABEL : DISCREPANCY_CAUSES[1]);
+
+            // EL ACENTO DEL BORDE RESUME EL ESTADO DEL ÍTEM DE UN VISTAZO
+            const accentColor = isOkItem || isMatched
+              ? theme.colors.success
+              : item.difference < 0
+              ? theme.colors.danger
+              : theme.colors.warning;
 
             return (
-              <View
+              <Card
                 key={item.id}
-                style={{
-                  backgroundColor: theme.colors.cardBackground,
-                  borderRadius: 16,
-                  borderWidth: 1.5,
-                  borderColor: isOkItem || isMatched ? theme.colors.success : theme.colors.border,
-                  borderLeftWidth: 4,
-                  borderLeftColor: isOkItem
-                    ? theme.colors.success
-                    : item.difference < 0
-                    ? theme.colors.danger
-                    : theme.colors.warning,
-                  padding: 14,
-                  gap: 10,
-                }}
+                padding="m"
+                borderRadius="xl"
+                borderWidth={1}
+                style={{ gap: 8 }}
               >
-                {/* FILA 1: CÓDIGO + FRÍO + BADGE DE ESTADO */}
+                {/* FILA 1: SKU + FRÍO + ESTADO DEL ÍTEM */}
                 <View
                   style={{
                     flexDirection: 'row',
@@ -352,37 +348,19 @@ export default function ConsolidacionConteoScreen() {
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
                     <Text
-                      variant="caption"
-                      style={{
-                        fontSize: 12,
-                        fontWeight: '800',
-                        color: theme.colors.mutedForeground,
-                      }}
+                      variant="label"
+                      style={{ fontSize: 12, fontWeight: '800', color: theme.colors.mutedForeground }}
                     >
                       {item.codigo}
                     </Text>
-                    {item.isCold && (
-                      <Badge label="❄️ Frío" tone="neutral" emphasis="soft" size="sm" />
-                    )}
+                    {item.isCold && <Badge label="❄️ Frío" tone="neutral" emphasis="soft" size="sm" />}
                   </View>
 
                   <View style={{ flexShrink: 0 }}>
                     {isOkItem ? (
-                      <Badge
-                        label="✓ Conteo OK"
-                        tone="success"
-                        emphasis="soft"
-                        size="sm"
-                        icon={CheckCircle2}
-                      />
+                      <Badge label="Conteo OK" tone="success" emphasis="soft" size="sm" icon={CheckCircle2} />
                     ) : isMatched ? (
-                      <Badge
-                        label="✓ Ajustado"
-                        tone="success"
-                        emphasis="solid"
-                        size="sm"
-                        icon={CheckCircle2}
-                      />
+                      <Badge label="Ajustado" tone="success" emphasis="solid" size="sm" icon={CheckCircle2} />
                     ) : (
                       <Badge
                         label={item.difference > 0 ? `+${item.difference} Sobrante` : `${item.difference} Faltante`}
@@ -398,92 +376,62 @@ export default function ConsolidacionConteoScreen() {
                 <Text
                   variant="subtitle"
                   numberOfLines={2}
-                  style={{ fontSize: 15, fontWeight: '700', color: theme.colors.foreground }}
+                  style={{ fontSize: 14, fontWeight: '700', color: theme.colors.foreground }}
                 >
                   {item.nombre}
                 </Text>
 
-                {/* FILA 3: RESUMEN COMPARATIVO (ESPERADO VS CHOFER) */}
+                {/* FILA 3: COMPARATIVO ESPERADO VS CONTADO */}
                 <View
                   style={{
                     backgroundColor: isOkItem ? theme.colors.successSoft : theme.colors.secondary,
-                    borderRadius: 10,
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    gap: 5,
+                    borderRadius: 8,
+                    paddingHorizontal: 9,
+                    paddingVertical: 7,
+                    gap: 4,
                   }}
                 >
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
                     <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
-                      Esperado en OT:
+                      Esperado en OT
                     </Text>
                     <Text
                       variant="label"
                       numberOfLines={1}
-                      style={{ fontSize: 12, fontWeight: '700', color: theme.colors.foreground, flexShrink: 1, textAlign: 'right' }}
+                      style={{ fontSize: 12, fontWeight: '700', color: theme.colors.foreground }}
                     >
-                      {item.expectedQty} Unidades ({item.expectedBoxes} Cajas)
+                      {item.expectedQty} u. · {item.expectedBoxes} cajas
                     </Text>
                   </View>
 
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
                     <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
-                      Contado Chofer:
+                      Contado por el chofer
                     </Text>
                     <Text
                       variant="label"
                       numberOfLines={1}
-                      style={{ fontSize: 12, fontWeight: '700', color: theme.colors.foreground, flexShrink: 1, textAlign: 'right' }}
+                      style={{ fontSize: 12, fontWeight: '800', color: accentColor }}
                     >
-                      {item.driverBoxes} Cajas ({item.driverQty} u.)
-                    </Text>
-                  </View>
-
-                  <View style={{ height: 1, backgroundColor: theme.colors.border, marginVertical: 1 }} />
-
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-                    <Text
-                      variant="caption"
-                      style={{
-                        fontSize: 11,
-                        fontWeight: '700',
-                        color: isOkItem ? theme.colors.success : theme.colors.danger,
-                      }}
-                    >
-                      Estado Conteo:
-                    </Text>
-                    <Text
-                      variant="label"
-                      style={{
-                        fontSize: 12,
-                        fontWeight: '800',
-                        color: isOkItem ? theme.colors.success : theme.colors.danger,
-                      }}
-                    >
-                      {isOkItem
-                        ? '0 Diferencias (Coincidencia Exacta)'
-                        : item.difference > 0
-                        ? `+${item.difference} Unidades Sobrantes`
-                        : `${item.difference} Unidades Faltantes`}
+                      {item.driverQty} u. · {item.driverBoxes} cajas
                     </Text>
                   </View>
                 </View>
 
-                {/* FILA 4: SI EL ÍTEM TIENE DIFERENCIA, MOSTRAR CONTROLES DE AJUSTE; SI ESTÁ OK, MOSTRAR SOLO ESTADO LECTURA */}
-                {!isOkItem ? (
-                  <>
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 8,
-                        marginTop: 2,
-                      }}
-                    >
+                {/* FILA 4: CONTROLES DE CONSOLIDACIÓN (SOLO ÍTEMS CON DIFERENCIA) */}
+                {!isOkItem && (
+                  <View
+                    style={{
+                      gap: 8,
+                      paddingTop: 8,
+                      borderTopWidth: 1,
+                      borderTopColor: theme.colors.border,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <Text
                         variant="label"
-                        numberOfLines={1}
+                        numberOfLines={2}
                         style={{
                           fontSize: 12,
                           fontWeight: '700',
@@ -491,84 +439,40 @@ export default function ConsolidacionConteoScreen() {
                           flex: 1,
                         }}
                       >
-                        Cantidad Final Consolidada:
+                        Cantidad consolidada
                       </Text>
 
-                      {/* CONTROLES DE AJUSTE (- / INPUT / +) solo para ítems con diferencia */}
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <TouchableOpacity
-                          onPress={() => handleAdjustQty(item.id, -1)}
-                          style={{
-                            width: 38,
-                            height: 38,
-                            borderRadius: 8,
-                            backgroundColor: theme.colors.secondary,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            borderWidth: 1,
-                            borderColor: theme.colors.border,
-                          }}
-                        >
-                          <Minus size={18} color={theme.colors.foreground} />
-                        </TouchableOpacity>
-
-                        <TextInput
-                          value={currentCorrection}
-                          onChangeText={(val) => handleCorrectionChange(item.id, val)}
-                          keyboardType="number-pad"
-                          style={{
-                            width: 64,
-                            height: 38,
-                            paddingVertical: 0,
-                            paddingHorizontal: 0,
-                            backgroundColor: theme.colors.cardBackground,
-                            borderWidth: 1.5,
-                            borderColor: isMatched ? theme.colors.success : theme.colors.primary,
-                            borderRadius: 8,
-                            textAlign: 'center',
-                            textAlignVertical: 'center',
-                            includeFontPadding: false,
-                            fontSize: 15,
-                            fontWeight: '800',
-                            color: isMatched ? theme.colors.success : theme.colors.foreground,
-                          }}
-                        />
-
-                        <TouchableOpacity
-                          onPress={() => handleAdjustQty(item.id, 1)}
-                          style={{
-                            width: 38,
-                            height: 38,
-                            borderRadius: 8,
-                            backgroundColor: theme.colors.secondary,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            borderWidth: 1,
-                            borderColor: theme.colors.border,
-                          }}
-                        >
-                          <Plus size={18} color={theme.colors.foreground} />
-                        </TouchableOpacity>
-                      </View>
+                      <QuantityStepper
+                        value={currentCorrection}
+                        onChangeText={(val) => handleCorrectionChange(item.id, val)}
+                        onAdjust={(delta) => handleAdjustQty(item.id, delta)}
+                        accent={isMatched ? theme.colors.success : theme.colors.primary}
+                        inputWidth={56}
+                      />
                     </View>
 
-                    {/* SELECT DE TIPO DE DIFERENCIA */}
-                    <View style={{ gap: 4, marginTop: 2 }}>
-                      <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
-                        Clasificación de la Diferencia:
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text
+                        variant="label"
+                        numberOfLines={2}
+                        style={{ fontSize: 12, fontWeight: '700', color: theme.colors.foreground, flex: 1 }}
+                      >
+                        Clasificación
                       </Text>
 
                       <TouchableOpacity
                         onPress={() => setPickerState({ visible: true, activeItemId: item.id })}
                         activeOpacity={0.7}
                         style={{
+                          flex: 1.4,
                           flexDirection: 'row',
                           alignItems: 'center',
                           justifyContent: 'space-between',
+                          gap: 6,
                           backgroundColor: theme.colors.secondary,
                           borderRadius: 8,
                           paddingHorizontal: 10,
-                          paddingVertical: 8,
+                          height: 34,
                           borderWidth: 1,
                           borderColor: theme.colors.border,
                         }}
@@ -576,21 +480,16 @@ export default function ConsolidacionConteoScreen() {
                         <Text
                           variant="caption"
                           numberOfLines={1}
-                          style={{
-                            fontSize: 12,
-                            fontWeight: '600',
-                            color: theme.colors.foreground,
-                            flex: 1,
-                          }}
+                          style={{ fontSize: 12, fontWeight: '700', color: theme.colors.foreground, flex: 1 }}
                         >
                           {currentSelectedType}
                         </Text>
-                        <ChevronDown size={16} color={theme.colors.mutedForeground} />
+                        <ChevronDown size={15} color={theme.colors.mutedForeground} />
                       </TouchableOpacity>
                     </View>
-                  </>
-                ) : null}
-              </View>
+                  </View>
+                )}
+              </Card>
             );
           })}
         </View>
@@ -721,20 +620,21 @@ export default function ConsolidacionConteoScreen() {
             </View>
 
             <View style={{ gap: 8 }}>
-              {DISCREPANCY_TYPES.map((typeOption) => {
+              {DISCREPANCY_CAUSES.map((cause) => {
                 const isSelected =
-                  pickerState.activeItemId &&
-                  selectedTypes[pickerState.activeItemId] === typeOption;
+                  pickerState.activeItemId != null &&
+                  selectedTypes[pickerState.activeItemId] === cause;
 
                 return (
                   <TouchableOpacity
-                    key={typeOption}
-                    onPress={() => handleSelectType(typeOption)}
+                    key={cause}
+                    onPress={() => handleSelectType(cause)}
                     activeOpacity={0.7}
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
                       justifyContent: 'space-between',
+                      gap: 10,
                       paddingHorizontal: 12,
                       paddingVertical: 10,
                       borderRadius: 10,
@@ -744,15 +644,15 @@ export default function ConsolidacionConteoScreen() {
                     }}
                   >
                     <Text
-                      variant="caption"
+                      variant="label"
                       style={{
-                        fontSize: 13,
-                        fontWeight: isSelected ? '700' : '500',
+                        fontSize: 14,
+                        fontWeight: isSelected ? '800' : '600',
                         color: isSelected ? theme.colors.primary : theme.colors.foreground,
                         flex: 1,
                       }}
                     >
-                      {typeOption}
+                      {cause}
                     </Text>
                     {isSelected && <Check size={18} color={theme.colors.primary} />}
                   </TouchableOpacity>

@@ -20,6 +20,26 @@ export const boxUnitTotal = (value: BoxUnitValue, cajaSize: number): number => {
   return cajas * cajaSize + unidades;
 };
 
+/** Reparte un total en cajas cerradas + el resto como unidades sueltas. */
+export const splitBoxUnit = (total: number, cajaSize: number): BoxUnitValue => {
+  const safeTotal = Math.max(0, total);
+  if (cajaSize <= 0) return { cajas: '0', unidades: safeTotal.toString() };
+  return {
+    cajas: Math.floor(safeTotal / cajaSize).toString(),
+    unidades: (safeTotal % cajaSize).toString(),
+  };
+};
+
+/**
+ * Normaliza un conteo para que las unidades sueltas nunca lleguen al tamaño
+ * de la caja: 7 cajas + 12 sueltas (de 12) es 8 cajas + 0 sueltas.
+ *
+ * Sin esto el total puede cuadrar mientras el desglose describe un estado
+ * físicamente imposible.
+ */
+export const normalizeBoxUnit = (value: BoxUnitValue, cajaSize: number): BoxUnitValue =>
+  splitBoxUnit(boxUnitTotal(value, cajaSize), cajaSize);
+
 export interface BoxUnitCounterProps {
   value: BoxUnitValue;
   onChange: (next: BoxUnitValue) => void;
@@ -71,11 +91,15 @@ export const BoxUnitCounter = ({
 
       <QuantityStepper
         value={value[field]}
+        // Mientras se teclea no se normaliza, para no pelear con el usuario
+        // a mitad de un número. El acarreo se aplica al salir del input.
         onChangeText={(next) => onChange({ ...value, [field]: next })}
+        onBlur={() => onChange(normalizeBoxUnit(value, cajaSize))}
         onAdjust={(delta) => {
-          const parsed = parseInt(value[field] || '0', 10);
-          const safe = isNaN(parsed) ? 0 : parsed;
-          onChange({ ...value, [field]: Math.max(0, safe + delta).toString() });
+          // Un paso en "cajas" mueve cajaSize unidades; uno en "unidades", una.
+          const step = field === 'cajas' ? cajaSize : 1;
+          const nextTotal = boxUnitTotal(value, cajaSize) + delta * step;
+          onChange(splitBoxUnit(nextTotal, cajaSize));
         }}
       />
     </View>

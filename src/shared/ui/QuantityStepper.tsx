@@ -14,6 +14,8 @@ export interface QuantityStepperProps {
   inputWidth?: number;
   disabled?: boolean;
   placeholder?: string;
+  /** Se dispara al salir del input. Útil para normalizar lo tecleado. */
+  onBlur?: () => void;
 }
 
 const BUTTON_WIDTH = 32;
@@ -32,6 +34,7 @@ export const QuantityStepper = ({
   inputWidth,
   disabled = false,
   placeholder = '0',
+  onBlur,
 }: QuantityStepperProps) => {
   const theme = useAppTheme();
   const borderColor = accent ?? theme.colors.border;
@@ -68,6 +71,7 @@ export const QuantityStepper = ({
       <TextInput
         value={value}
         onChangeText={(text) => onChangeText(text.replace(/[^0-9]/g, ''))}
+        onBlur={onBlur}
         editable={!disabled}
         placeholder={placeholder}
         placeholderTextColor={theme.colors.mutedForeground}

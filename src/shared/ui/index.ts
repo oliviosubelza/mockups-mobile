@@ -16,6 +16,8 @@ export { QuantityStepper, type QuantityStepperProps } from './QuantityStepper';
 export {
   BoxUnitCounter,
   boxUnitTotal,
+  splitBoxUnit,
+  normalizeBoxUnit,
   EMPTY_BOX_UNIT,
   type BoxUnitCounterProps,
   type BoxUnitValue,

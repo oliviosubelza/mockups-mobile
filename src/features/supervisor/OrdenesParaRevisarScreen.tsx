@@ -10,7 +10,7 @@ import {
 } from 'lucide-react-native';
 
 import { navigateTo, findRouteById } from '@/navigation/registry';
-import { Badge, SearchField } from '@/shared/ui';
+import { Badge, SearchField, Card } from '@/shared/ui';
 import { Box, Text, useAppTheme } from '@/theme';
 
 export interface SupervisorOrder {
@@ -133,9 +133,15 @@ export default function OrdenesParaRevisarScreen() {
             >
               Consolidación de Revisiones
             </Text>
+            <Badge
+              label={`${MOCK_SUPERVISOR_ORDERS.length} OT`}
+              tone="primary"
+              emphasis="soft"
+              size="sm"
+            />
           </View>
-          <Text variant="caption" style={{ fontSize: 12, color: theme.colors.mutedForeground }}>
-            Órdenes de transporte con diferencias (faltantes y sobrantes) pendientes de tu visto bueno.
+          <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
+            Órdenes de transporte con diferencias pendientes de tu visto bueno.
           </Text>
         </View>
 
@@ -251,163 +257,135 @@ export default function OrdenesParaRevisarScreen() {
         </ScrollView>
 
         {/* LISTADO DE ÓRDENES CON SOBRANTES Y FALTANTES */}
-        <View style={{ gap: 12 }}>
-          {filteredOrders.map((order) => (
-            <View
-              key={order.id}
-              style={{
-                backgroundColor: theme.colors.cardBackground,
-                borderRadius: 16,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                padding: 14,
-                gap: 10,
-              }}
-            >
-              {/* FILA SUPERIOR: CÓDIGO + BADGES DE DIFERENCIAS (FALTANTE Y/O SOBRANTE) */}
-              <View
-                style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
-                  <Text
-                    variant="label"
-                    style={{ fontSize: 15, fontWeight: '800', color: theme.colors.foreground }}
-                  >
-                    {order.code}
-                  </Text>
-                  {order.isColdChain && (
-                    <Badge label="❄️ Frío" tone="neutral" emphasis="soft" size="sm" />
-                  )}
-                </View>
+        <View style={{ gap: 10 }}>
+          {filteredOrders.map((order) => {
+            // LA SEVERIDAD MANDA EL ACENTO: FALTANTE PESA MÁS QUE SOBRANTE
+            const isShortage = order.shortageCount > 0;
+            const accentColor = isShortage ? theme.colors.danger : theme.colors.warning;
 
-                {/* BADGES SEPARADOS PARA FALTANTES Y SOBRANTES EN LA MISMA ORDEN */}
-                <View style={{ flexDirection: 'row', gap: 4, flexShrink: 0 }}>
-                  {order.shortageCount > 0 && (
-                    <Badge
-                      label={`${order.shortageCount} Faltante${order.shortageCount > 1 ? 's' : ''}`}
-                      tone="danger"
-                      emphasis="soft"
-                      size="sm"
-                    />
-                  )}
-                  {order.surplusCount > 0 && (
-                    <Badge
-                      label={`+${order.surplusCount} Sobrante${order.surplusCount > 1 ? 's' : ''}`}
-                      tone="warning"
-                      emphasis="soft"
-                      size="sm"
-                    />
-                  )}
-                </View>
-              </View>
-
-              {/* DETALLES DE LOGÍSTICA Y PUNTOS DE ENTREGA */}
-              <View style={{ gap: 2 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <MapPin size={14} color={theme.colors.primary} />
-                  <Text
-                    variant="subtitle"
-                    numberOfLines={1}
-                    style={{ fontSize: 14, fontWeight: '700', color: theme.colors.foreground, flex: 1 }}
-                  >
-                    {order.puntosCount} Puntos de entrega
-                  </Text>
-                </View>
-
-                {/* LOGÍSTICA: CHOFER Y RUTA EN FILAS SEPARADAS */}
-                <View
-                  style={{
-                    backgroundColor: theme.colors.secondary,
-                    borderRadius: 8,
-                    padding: 8,
-                    gap: 3,
-                    marginTop: 4,
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Truck size={13} color={theme.colors.mutedForeground} />
-                    <Text variant="caption" style={{ fontSize: 11, fontWeight: '700', color: theme.colors.foreground }}>
-                      Chofer: {order.driverName}
-                    </Text>
-                  </View>
-                  <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground, marginLeft: 19 }}>
-                    Ruta: {order.zonaRuta} • {order.time}
-                  </Text>
-                </View>
-              </View>
-
-              {/* RESUMEN DE DIFERENCIA (DESGLOSE DE FALTANTE Y SOBRANTE) */}
-              <View
-                style={{
-                  backgroundColor: theme.colors.dangerSoft,
-                  borderRadius: 10,
-                  paddingHorizontal: 10,
-                  paddingVertical: 8,
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                <Text
-                  variant="caption"
-                  numberOfLines={1}
-                  style={{ fontSize: 12, color: theme.colors.foreground, flexShrink: 1, fontWeight: '600' }}
-                >
-                  {order.shortageCount > 0 && order.surplusCount > 0
-                    ? `Diferencias: ${order.shortageCount} Faltante • ${order.surplusCount} Sobrante`
-                    : order.shortageCount > 0
-                    ? `Diferencias: ${order.shortageCount} Faltante`
-                    : `Diferencias: ${order.surplusCount} Sobrante`}
-                </Text>
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                  <AlertTriangle size={13} color={theme.colors.danger} />
-                  <Text variant="caption" style={{ fontSize: 11, fontWeight: '700', color: theme.colors.danger }}>
-                    Por Consolidar
-                  </Text>
-                </View>
-              </View>
-
-              {/* BOTÓN DE ACCIÓN ROJO OUTLINE */}
-              <TouchableOpacity
+            return (
+              <Card
+                key={order.id}
                 onPress={() => {
                   const route = findRouteById('supervisor.consolidacion');
                   if (route) navigateTo(route);
                 }}
-                activeOpacity={0.8}
-                style={{
-                  backgroundColor: theme.colors.dangerSoft,
-                  borderRadius: 10,
-                  borderWidth: 1.5,
-                  borderColor: theme.colors.danger,
-                  paddingVertical: 10,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexDirection: 'row',
-                  gap: 6,
-                  marginTop: 2,
-                }}
+                padding="m"
+                borderRadius="xl"
+                borderWidth={1}
+                style={{ gap: 8 }}
               >
-                <AlertTriangle size={15} color={theme.colors.danger} />
-                <Text
+                {/* FILA 1: CÓDIGO + FRÍO + BADGES DE DIFERENCIA */}
+                <View
                   style={{
-                    color: theme.colors.danger,
-                    fontWeight: '700',
-                    fontSize: 13,
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 8,
                   }}
                 >
-                  Revisar y Consolidar Conteo
-                </Text>
-                <ChevronRight size={16} color={theme.colors.danger} />
-              </TouchableOpacity>
-            </View>
-          ))}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
+                    <Text
+                      variant="label"
+                      style={{ fontSize: 15, fontWeight: '800', color: theme.colors.foreground }}
+                    >
+                      {order.code}
+                    </Text>
+                    {order.isColdChain && <Badge label="❄️ Frío" tone="neutral" emphasis="soft" size="sm" />}
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 4, flexShrink: 0 }}>
+                    {order.shortageCount > 0 && (
+                      <Badge
+                        label={`${order.shortageCount} Faltante${order.shortageCount > 1 ? 's' : ''}`}
+                        tone="danger"
+                        emphasis="soft"
+                        size="sm"
+                      />
+                    )}
+                    {order.surplusCount > 0 && (
+                      <Badge
+                        label={`+${order.surplusCount} Sobrante${order.surplusCount > 1 ? 's' : ''}`}
+                        tone="warning"
+                        emphasis="soft"
+                        size="sm"
+                      />
+                    )}
+                  </View>
+                </View>
+
+                {/* FILA 2: BLOQUE DE LOGÍSTICA — CHOFER + HORA / RUTA / COBERTURA */}
+                <View
+                  style={{
+                    backgroundColor: theme.colors.secondary,
+                    borderRadius: 8,
+                    paddingHorizontal: 8,
+                    paddingVertical: 7,
+                    gap: 4,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Truck size={12} color={theme.colors.mutedForeground} />
+                    <Text
+                      variant="caption"
+                      numberOfLines={1}
+                      style={{ fontSize: 11, fontWeight: '700', color: theme.colors.foreground, flex: 1 }}
+                    >
+                      {order.driverName}
+                    </Text>
+                    <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
+                      {order.time}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <MapPin size={12} color={theme.colors.mutedForeground} />
+                    <Text
+                      variant="caption"
+                      numberOfLines={1}
+                      style={{ fontSize: 11, color: theme.colors.mutedForeground, flex: 1 }}
+                    >
+                      {order.zonaRuta}
+                    </Text>
+                    <Text variant="caption" style={{ fontSize: 11, fontWeight: '700', color: theme.colors.foreground }}>
+                      {order.puntosCount} puntos
+                    </Text>
+                  </View>
+                </View>
+
+                {/* FILA 3: PESO REAL DE LA DIFERENCIA SOBRE EL MANIFIESTO + CTA */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 8,
+                    paddingTop: 6,
+                    borderTopWidth: 1,
+                    borderTopColor: theme.colors.border,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 }}>
+                    <AlertTriangle size={13} color={accentColor} />
+                    <Text
+                      variant="caption"
+                      numberOfLines={1}
+                      style={{ fontSize: 11, fontWeight: '700', color: accentColor, flexShrink: 1 }}
+                    >
+                      {order.discrepancyCount} de {order.totalItems} ítems con diferencia
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
+                      Revisar y Consolidar
+                    </Text>
+                    <ChevronRight size={14} color={theme.colors.primary} />
+                  </View>
+                </View>
+              </Card>
+            );
+          })}
         </View>
       </ScrollView>
     </Box>

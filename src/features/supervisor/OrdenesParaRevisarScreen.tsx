@@ -257,7 +257,7 @@ export default function OrdenesParaRevisarScreen() {
         </ScrollView>
 
         {/* LISTADO DE ÓRDENES CON SOBRANTES Y FALTANTES */}
-        <View style={{ gap: 10 }}>
+        <View style={{ gap: 18 }}>
           {filteredOrders.map((order) => {
             // LA SEVERIDAD MANDA EL ACENTO: FALTANTE PESA MÁS QUE SOBRANTE
             const isShortage = order.shortageCount > 0;

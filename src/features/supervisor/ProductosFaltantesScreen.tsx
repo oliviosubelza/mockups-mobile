@@ -575,7 +575,7 @@ export default function ProductosFaltantesScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={{ gap: 10 }}>
+          <View style={{ gap: 18 }}>
             {filteredDiscrepancies.map((item) => {
               const isShortage = item.difference < 0;
               const accentColor = isShortage
@@ -861,15 +861,15 @@ export default function ProductosFaltantesScreen() {
                   </View>
 
                   {/* FILA 6: OBSERVACIÓN DEL SUPERVISOR + ACCESO AL DETALLE */}
+                  {/* Se separa con aire, no con línea: la única división de la
+                      card marca el paso de lectura a edición. */}
                   <View
                     style={{
                       flexDirection: "row",
                       justifyContent: "space-between",
                       alignItems: "center",
                       gap: 8,
-                      paddingTop: 6,
-                      borderTopWidth: 1,
-                      borderTopColor: theme.colors.border,
+                      marginTop: 2,
                     }}
                   >
                     <TouchableOpacity

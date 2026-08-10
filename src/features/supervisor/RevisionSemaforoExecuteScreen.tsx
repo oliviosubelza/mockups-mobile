@@ -370,7 +370,7 @@ export default function RevisionSemaforoExecuteScreen() {
         </View>
 
         {/* LISTA COMPLETA DE PRODUCTOS DEL MANIFIESTO */}
-        <View style={{ gap: 10 }}>
+        <View style={{ gap: 18 }}>
           {filteredProducts.length === 0 ? (
             <View
               style={{
@@ -425,7 +425,7 @@ export default function RevisionSemaforoExecuteScreen() {
                   borderWidth={isHighlighted ? 2 : 1}
                   padding="m"
                   borderRadius="xl"
-                  style={{ gap: 10 }}
+                  style={{ gap: 8 }}
                 >
                   {/* FILA 1: IDENTIFICACIÓN DEL PRODUCTO + ESTADO */}
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>

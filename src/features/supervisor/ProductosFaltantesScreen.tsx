@@ -1,12 +1,9 @@
 import {
   ArrowRight,
-  Calendar as CalendarIcon,
   Check,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   FileText,
-  RotateCcw,
+  PackageSearch,
   StickyNote,
   X
 } from "lucide-react-native";
@@ -188,15 +185,6 @@ const FLAT_MOCK_DISCREPANCIES: FlatMissingProductItem[] = [
   },
 ];
 
-const DATES_WITH_REPORTS = [
-  "2026-08-05",
-  "2026-08-04",
-  "2026-08-01",
-  "2026-07-28",
-];
-
-export type DateFilterMode = "ALL" | "RANGE";
-
 export default function ProductosFaltantesScreen() {
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
@@ -205,16 +193,6 @@ export default function ProductosFaltantesScreen() {
   const [activeTypeFilter, setActiveTypeFilter] = useState<
     "all" | "shortage" | "surplus" | "cold"
   >("all");
-
-  // ESTADO DE FILTRADO POR FECHA (VÍA CALENDARIO)
-  const [dateMode, setDateMode] = useState<DateFilterMode>("ALL");
-  const [selectedStartDate, setSelectedStartDate] =
-    useState<string>("2026-08-05");
-  const [selectedEndDate, setSelectedEndDate] = useState<string>("2026-08-05");
-  const [isCalendarModalVisible, setIsCalendarModalVisible] = useState(false);
-
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [currentMonth, setCurrentMonth] = useState(7); // Agosto (0-indexed)
 
   // CANTIDAD CONSOLIDADA POR ÍTEM EN CAJAS + UNIDADES (ARRANCA CON LO CONTADO POR EL CHOFER)
   const [corrections, setCorrections] = useState<Record<string, BoxUnitValue>>(
@@ -298,58 +276,8 @@ export default function ProductosFaltantesScreen() {
     closeNoteModal();
   };
 
-  const isDateInActiveFilter = (dateStr: string): boolean => {
-    if (dateMode === "ALL") return true;
-    if (dateMode === "RANGE") {
-      const minDate =
-        selectedStartDate < selectedEndDate
-          ? selectedStartDate
-          : selectedEndDate;
-      const maxDate =
-        selectedStartDate < selectedEndDate
-          ? selectedEndDate
-          : selectedStartDate;
-      return dateStr >= minDate && dateStr <= maxDate;
-    }
-    return true;
-  };
-
-  const getDateFilterTitle = (): string => {
-    if (dateMode === "ALL") return "Todas las Fechas";
-    if (selectedStartDate === selectedEndDate) {
-      const parts = selectedStartDate.split("-");
-      return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    }
-    const startP = selectedStartDate.split("-");
-    const endP = selectedEndDate.split("-");
-    return `${startP[2]}/${startP[1]} - ${endP[2]}/${endP[1]}`;
-  };
-
-  const handleCalendarDayPress = (formattedDateStr: string) => {
-    if (
-      dateMode !== "RANGE" ||
-      (selectedStartDate &&
-        selectedEndDate &&
-        selectedStartDate !== selectedEndDate)
-    ) {
-      setDateMode("RANGE");
-      setSelectedStartDate(formattedDateStr);
-      setSelectedEndDate(formattedDateStr);
-    } else {
-      if (formattedDateStr < selectedStartDate) {
-        setSelectedEndDate(selectedStartDate);
-        setSelectedStartDate(formattedDateStr);
-      } else {
-        setSelectedEndDate(formattedDateStr);
-      }
-    }
-  };
-
   // FILTRADO PLANO DE ÍTEMS DE DISCREPANCIA (CADA OCURRENCIA POR SEPARADO)
   const filteredDiscrepancies = FLAT_MOCK_DISCREPANCIES.filter((item) => {
-    // Filtro por fecha
-    if (!isDateInActiveFilter(item.date)) return false;
-
     // Filtro por búsqueda
     const matchesSearch =
       item.codigo.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -388,211 +316,6 @@ export default function ProductosFaltantesScreen() {
     if (route) {
       navigateTo(route);
     }
-  };
-
-  // GRID INTERACTIVA DE CALENDARIO VISUAL
-  const renderCalendarGrid = () => {
-    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-    const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay();
-
-    const monthNames = [
-      "Enero",
-      "Febrero",
-      "Marzo",
-      "Abril",
-      "Mayo",
-      "Junio",
-      "Julio",
-      "Agosto",
-      "Septiembre",
-      "Octubre",
-      "Noviembre",
-      "Diciembre",
-    ];
-
-    const cells = [];
-    for (let i = 0; i < firstDayIndex; i++) {
-      cells.push({ dayNumber: null, key: `empty-prev-${i}` });
-    }
-
-    for (let day = 1; day <= daysInMonth; day++) {
-      const monthStr = (currentMonth + 1).toString().padStart(2, "0");
-      const dayStr = day.toString().padStart(2, "0");
-      const fullDateStr = `${currentYear}-${monthStr}-${dayStr}`;
-
-      cells.push({
-        dayNumber: day,
-        dateStr: fullDateStr,
-        key: fullDateStr,
-        hasReport: DATES_WITH_REPORTS.includes(fullDateStr),
-      });
-    }
-
-    const minSel =
-      selectedStartDate < selectedEndDate ? selectedStartDate : selectedEndDate;
-    const maxSel =
-      selectedStartDate < selectedEndDate ? selectedEndDate : selectedStartDate;
-
-    return (
-      <View style={{ gap: 12 }}>
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <TouchableOpacity
-            onPress={() => {
-              if (currentMonth === 0) {
-                setCurrentMonth(11);
-                setCurrentYear(currentYear - 1);
-              } else {
-                setCurrentMonth(currentMonth - 1);
-              }
-            }}
-            style={{
-              padding: 6,
-              borderRadius: 8,
-              backgroundColor: theme.colors.secondary,
-            }}
-          >
-            <ChevronLeft size={20} color={theme.colors.foreground} />
-          </TouchableOpacity>
-
-          <Text
-            variant="label"
-            style={{
-              fontSize: 16,
-              fontWeight: "800",
-              color: theme.colors.foreground,
-            }}
-          >
-            {monthNames[currentMonth]} {currentYear}
-          </Text>
-
-          <TouchableOpacity
-            onPress={() => {
-              if (currentMonth === 11) {
-                setCurrentMonth(0);
-                setCurrentYear(currentYear + 1);
-              } else {
-                setCurrentMonth(currentMonth + 1);
-              }
-            }}
-            style={{
-              padding: 6,
-              borderRadius: 8,
-              backgroundColor: theme.colors.secondary,
-            }}
-          >
-            <ChevronRight size={20} color={theme.colors.foreground} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
-          {["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"].map(
-            (dayName, idx) => (
-              <View key={idx} style={{ width: 38, alignItems: "center" }}>
-                <Text
-                  variant="caption"
-                  style={{
-                    fontSize: 11,
-                    fontWeight: "700",
-                    color:
-                      idx === 0 || idx === 6
-                        ? theme.colors.primary
-                        : theme.colors.mutedForeground,
-                  }}
-                >
-                  {dayName}
-                </Text>
-              </View>
-            ),
-          )}
-        </View>
-
-        <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-          {cells.map((cell) => {
-            if (!cell.dayNumber) {
-              return (
-                <View
-                  key={cell.key}
-                  style={{ width: `${100 / 7}%`, height: 42 }}
-                />
-              );
-            }
-
-            const isSelected =
-              dateMode === "RANGE" &&
-              cell.dateStr >= minSel &&
-              cell.dateStr <= maxSel;
-            const isToday = cell.dateStr === "2026-08-05";
-
-            return (
-              <TouchableOpacity
-                key={cell.key}
-                onPress={() => handleCalendarDayPress(cell.dateStr!)}
-                activeOpacity={0.7}
-                style={{
-                  width: `${100 / 7}%`,
-                  height: 42,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginVertical: 2,
-                }}
-              >
-                <View
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
-                    backgroundColor: isSelected
-                      ? theme.colors.primary
-                      : isToday
-                        ? theme.colors.primarySoft
-                        : "transparent",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderWidth: isToday && !isSelected ? 1.5 : 0,
-                    borderColor: theme.colors.primary,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: isSelected || isToday ? "800" : "500",
-                      color: isSelected
-                        ? "#ffffff"
-                        : isToday
-                          ? theme.colors.primary
-                          : theme.colors.foreground,
-                    }}
-                  >
-                    {cell.dayNumber}
-                  </Text>
-
-                  {cell.hasReport && (
-                    <View
-                      style={{
-                        position: "absolute",
-                        bottom: 3,
-                        width: 5,
-                        height: 5,
-                        borderRadius: 2.5,
-                        backgroundColor: isSelected
-                          ? "#ffffff"
-                          : theme.colors.danger,
-                      }}
-                    />
-                  )}
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-    );
   };
 
   return (
@@ -659,21 +382,18 @@ export default function ProductosFaltantesScreen() {
         >
           {/* 1. TODOS */}
           <TouchableOpacity
-            onPress={() => {
-              setActiveTypeFilter("all");
-              setDateMode("ALL");
-            }}
+            onPress={() => setActiveTypeFilter("all")}
             style={{
               paddingHorizontal: 13,
               paddingVertical: 6,
               borderRadius: 20,
               backgroundColor:
-                activeTypeFilter === "all" && dateMode === "ALL"
+                activeTypeFilter === "all"
                   ? theme.colors.primary
                   : theme.colors.cardBackground,
               borderWidth: 1,
               borderColor:
-                activeTypeFilter === "all" && dateMode === "ALL"
+                activeTypeFilter === "all"
                   ? theme.colors.primary
                   : theme.colors.border,
             }}
@@ -684,7 +404,7 @@ export default function ProductosFaltantesScreen() {
                 fontSize: 12,
                 fontWeight: "700",
                 color:
-                  activeTypeFilter === "all" && dateMode === "ALL"
+                  activeTypeFilter === "all"
                     ? "#ffffff"
                     : theme.colors.foreground,
               }}
@@ -693,42 +413,7 @@ export default function ProductosFaltantesScreen() {
             </Text>
           </TouchableOpacity>
 
-          {/* 2. CALENDARIO */}
-          <TouchableOpacity
-            onPress={() => setIsCalendarModalVisible(true)}
-            style={{
-              paddingHorizontal: 13,
-              paddingVertical: 6,
-              borderRadius: 20,
-              backgroundColor:
-                dateMode !== "ALL"
-                  ? theme.colors.primary
-                  : theme.colors.cardBackground,
-              borderWidth: 1,
-              borderColor:
-                dateMode !== "ALL" ? theme.colors.primary : theme.colors.border,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 5,
-            }}
-          >
-            <CalendarIcon
-              size={14}
-              color={dateMode !== "ALL" ? "#ffffff" : theme.colors.primary}
-            />
-            <Text
-              variant="caption"
-              style={{
-                fontSize: 12,
-                fontWeight: "700",
-                color: dateMode !== "ALL" ? "#ffffff" : theme.colors.foreground,
-              }}
-            >
-              {dateMode !== "ALL" ? `📅 ${getDateFilterTitle()}` : "Calendario"}
-            </Text>
-          </TouchableOpacity>
-
-          {/* 3. FALTANTES */}
+          {/* 2. FALTANTES */}
           <TouchableOpacity
             onPress={() => setActiveTypeFilter("shortage")}
             style={{
@@ -761,7 +446,7 @@ export default function ProductosFaltantesScreen() {
             </Text>
           </TouchableOpacity>
 
-          {/* 4. SOBRANTES */}
+          {/* 3. SOBRANTES */}
           <TouchableOpacity
             onPress={() => setActiveTypeFilter("surplus")}
             style={{
@@ -794,7 +479,7 @@ export default function ProductosFaltantesScreen() {
             </Text>
           </TouchableOpacity>
 
-          {/* 5. CADENA DE FRÍO */}
+          {/* 4. CADENA DE FRÍO */}
           <TouchableOpacity
             onPress={() => setActiveTypeFilter("cold")}
             style={{
@@ -828,54 +513,6 @@ export default function ProductosFaltantesScreen() {
           </TouchableOpacity>
         </ScrollView>
 
-        {/* ETIQUETA INFORMATIVA SI EL FILTRO DE FECHA ESTÁ ACTIVO */}
-        {dateMode !== "ALL" && (
-          <View
-            style={{
-              backgroundColor: theme.colors.primarySoft,
-              borderRadius: 8,
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
-            >
-              <CalendarIcon size={13} color={theme.colors.primary} />
-              <Text
-                variant="caption"
-                style={{
-                  fontSize: 11,
-                  fontWeight: "700",
-                  color: theme.colors.primary,
-                }}
-              >
-                Filtrado por fecha: {getDateFilterTitle()}
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              onPress={() => setDateMode("ALL")}
-              style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
-            >
-              <RotateCcw size={12} color={theme.colors.primary} />
-              <Text
-                variant="caption"
-                style={{
-                  fontSize: 11,
-                  fontWeight: "700",
-                  color: theme.colors.primary,
-                }}
-              >
-                Limpiar
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
         {/* LISTADO PLANO Y COMPACTO DE ÍTEMS CON DIFERENCIA */}
         {filteredDiscrepancies.length === 0 ? (
           <View
@@ -891,7 +528,7 @@ export default function ProductosFaltantesScreen() {
               marginVertical: 16,
             }}
           >
-            <CalendarIcon size={36} color={theme.colors.mutedForeground} />
+            <PackageSearch size={36} color={theme.colors.mutedForeground} />
             <Text
               variant="label"
               style={{
@@ -915,7 +552,6 @@ export default function ProductosFaltantesScreen() {
             </Text>
             <TouchableOpacity
               onPress={() => {
-                setDateMode("ALL");
                 setActiveTypeFilter("all");
                 setSearchQuery("");
               }}
@@ -1595,116 +1231,6 @@ export default function ProductosFaltantesScreen() {
         </View>
       </Modal>
 
-      {/* MODAL INTERACTIVO DE CALENDARIO VISUAL */}
-      <Modal
-        visible={isCalendarModalVisible}
-        transparent
-        animationType="slide"
-        statusBarTranslucent
-        onRequestClose={() => setIsCalendarModalVisible(false)}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.6)",
-            justifyContent: "flex-end",
-          }}
-        >
-          <View
-            style={{
-              width: "100%",
-              backgroundColor: theme.colors.cardBackground,
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
-              padding: 20,
-              paddingBottom: Math.max(20, insets.bottom + 12),
-              gap: 16,
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: -4 },
-              shadowOpacity: 0.2,
-              shadowRadius: 10,
-              elevation: 10,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
-              >
-                <View
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
-                    backgroundColor: theme.colors.primarySoft,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <CalendarIcon size={20} color={theme.colors.primary} />
-                </View>
-                <View>
-                  <Text
-                    variant="label"
-                    style={{
-                      fontSize: 16,
-                      fontWeight: "800",
-                      color: theme.colors.foreground,
-                    }}
-                  >
-                    Calendario de Faltantes
-                  </Text>
-                  <Text
-                    variant="caption"
-                    style={{
-                      fontSize: 11,
-                      color: theme.colors.mutedForeground,
-                    }}
-                  >
-                    Toca un día o rango de días en el calendario
-                  </Text>
-                </View>
-              </View>
-
-              <TouchableOpacity
-                onPress={() => setIsCalendarModalVisible(false)}
-                style={{ padding: 4 }}
-              >
-                <X size={22} color={theme.colors.mutedForeground} />
-              </TouchableOpacity>
-            </View>
-
-            {renderCalendarGrid()}
-
-            <TouchableOpacity
-              onPress={() => setIsCalendarModalVisible(false)}
-              activeOpacity={0.8}
-              style={{
-                backgroundColor: theme.colors.primary,
-                borderRadius: 12,
-                paddingVertical: 12,
-                alignItems: "center",
-                justifyContent: "center",
-                flexDirection: "row",
-                gap: 8,
-                marginTop: 4,
-              }}
-            >
-              <Check size={18} color="#ffffff" />
-              <Text
-                style={{ color: "#ffffff", fontSize: 14, fontWeight: "800" }}
-              >
-                Aplicar Rango ({getDateFilterTitle()})
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </Box>
   );
 }

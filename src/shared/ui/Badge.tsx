@@ -61,6 +61,7 @@ type Props = {
   icon?: LucideIcon;
   /** `pill` is fully rounded (default); `rounded` uses the control radius. */
   shape?: 'pill' | 'rounded';
+  style?: any;
 };
 
 /**
@@ -77,6 +78,7 @@ export function Badge({
   size = 'md',
   icon: Icon,
   shape = 'pill',
+  style: styleProp,
 }: Props) {
   const theme = useAppTheme();
   const spec = theme.badgeSizes[size];
@@ -94,7 +96,8 @@ export function Badge({
       flexDirection="row"
       alignItems="center"
       justifyContent="center"
-      alignSelf="flex-start"
+      alignSelf="center"
+      style={styleProp}
     >
       {Icon ? (
         <Icon size={spec.iconSize} color={theme.colors[style.foreground]} strokeWidth={2.25} />

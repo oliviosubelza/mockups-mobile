@@ -40,9 +40,9 @@ export function DeliveryScreen() {
     message: '',
   });
 
-  // FILTRAR ÚNICAMENTE LAS ÓRDENES CON ESTADO "aprobado"
+  // FILTRAR ÚNICAMENTE LAS ÓRDENES CON ESTADO "finalizado"
   const ordenesAprobadas = useMemo(() => {
-    return despachos.filter((d) => d.estado === 'aprobado');
+    return despachos.filter((d) => d.estado === 'finalizado');
   }, [despachos]);
 
   // FILTRAR POR BÚSQUEDA
@@ -82,10 +82,10 @@ export function DeliveryScreen() {
           >
             Mis Entregas
           </Text>
-          <Badge label="Solo Aprobadas" tone="success" emphasis="soft" size="sm" icon={ShieldCheck} />
+          <Badge label="Solo Finalizadas" tone="success" emphasis="soft" size="sm" icon={ShieldCheck} />
         </View>
         <Text variant="caption" style={{ color: theme.colors.mutedForeground }}>
-          Órdenes de transporte revisadas y aprobadas por el supervisor listas para entrega.
+          Órdenes de transporte finalizadas y listas para entrega.
         </Text>
       </View>
 

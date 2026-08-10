@@ -1,6 +1,11 @@
 import type { ChipTone } from '@/shared/ui';
 
-export type EstadoDespacho = 'pendiente' | 'cargado' | 'aprobado';
+export type EstadoDespacho =
+  | 'pendiente'
+  | 'en_conteo'
+  | 'diferencia'
+  | 'validando_supervisor'
+  | 'finalizado';
 
 export type Despacho = {
   id: string;
@@ -22,7 +27,9 @@ export const ESTADO_META: Record<
   EstadoDespacho,
   { label: string; tone: ChipTone }
 > = {
-  pendiente: { label: 'Pendiente', tone: 'warning' },
-  cargado: { label: 'Cargado', tone: 'primary' },
-  aprobado: { label: 'Aprobado', tone: 'success' },
+  pendiente: { label: 'Pendiente', tone: 'neutral' },
+  en_conteo: { label: 'Inicio de conteo', tone: 'primary' },
+  diferencia: { label: 'Diferencia', tone: 'danger' },
+  validando_supervisor: { label: 'Validando Supervisor', tone: 'warning' },
+  finalizado: { label: 'Finalizado', tone: 'success' },
 };

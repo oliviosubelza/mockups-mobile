@@ -3,9 +3,11 @@ import { ScrollView, View, TouchableOpacity } from "react-native";
 import {
   PackageOpen,
   Layers,
-  Truck,
   CheckCircle2,
   Clock,
+  PlayCircle,
+  AlertTriangle,
+  ShieldAlert,
 } from "lucide-react-native";
 
 import { findRouteById, navigateTo } from "@/navigation/registry";
@@ -33,11 +35,13 @@ export default function DespachosScreen() {
   }, []);
 
   const statusCounts = useMemo(() => {
-    const counts = {
+    const counts: Record<"todos" | EstadoDespacho, number> = {
       todos: despachos.length,
       pendiente: 0,
-      cargado: 0,
-      aprobado: 0,
+      en_conteo: 0,
+      diferencia: 0,
+      validando_supervisor: 0,
+      finalizado: 0,
     };
     despachos.forEach((d) => {
       if (d.estado in counts) {
@@ -65,17 +69,17 @@ export default function DespachosScreen() {
         label: "Pendientes",
         icon: Clock,
         count: statusCounts.pendiente,
-        activeBgColor: "#fef3c7",
-        activeTextColor: "#92400e",
-        activeBorderColor: "#f59e0b",
-        badgeActiveBg: "#fde68a",
-        badgeActiveText: "#78350f",
+        activeBgColor: "#f3f4f6",
+        activeTextColor: "#374151",
+        activeBorderColor: "#9ca3af",
+        badgeActiveBg: "#e5e7eb",
+        badgeActiveText: "#1f2937",
       },
       {
-        id: "cargado",
-        label: "Cargados",
-        icon: Truck,
-        count: statusCounts.cargado,
+        id: "en_conteo",
+        label: "Inicio de conteo",
+        icon: PlayCircle,
+        count: statusCounts.en_conteo,
         activeBgColor: "#dbeafe",
         activeTextColor: "#1e40af",
         activeBorderColor: "#3b82f6",
@@ -83,10 +87,32 @@ export default function DespachosScreen() {
         badgeActiveText: "#1e3a8a",
       },
       {
-        id: "aprobado",
-        label: "Aprobados",
+        id: "diferencia",
+        label: "Diferencias",
+        icon: AlertTriangle,
+        count: statusCounts.diferencia,
+        activeBgColor: "#fee2e2",
+        activeTextColor: "#991b1b",
+        activeBorderColor: "#ef4444",
+        badgeActiveBg: "#fca5a5",
+        badgeActiveText: "#7f1d1d",
+      },
+      {
+        id: "validando_supervisor",
+        label: "Validando Supervisor",
+        icon: ShieldAlert,
+        count: statusCounts.validando_supervisor,
+        activeBgColor: "#fef3c7",
+        activeTextColor: "#92400e",
+        activeBorderColor: "#f59e0b",
+        badgeActiveBg: "#fde68a",
+        badgeActiveText: "#78350f",
+      },
+      {
+        id: "finalizado",
+        label: "Finalizados",
         icon: CheckCircle2,
-        count: statusCounts.aprobado,
+        count: statusCounts.finalizado,
         activeBgColor: "#dcfce7",
         activeTextColor: "#166534",
         activeBorderColor: "#22c55e",

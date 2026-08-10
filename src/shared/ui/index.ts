@@ -6,12 +6,14 @@ export {
   type BadgeTone,
 } from './Badge';
 export { Button, type ButtonSize, type ButtonVariant } from './Button';
-export { Card } from './Card';
+export { Card, type CardAccentTone } from './Card';
 export { CardMenu } from './CardMenu';
 export { Chip, type ChipTone } from './Chip';
 export { Divider } from './Divider';
 export { Input } from './Input';
 export { SearchField } from './SearchField';
+export { QuantityStepper, type QuantityStepperProps } from './QuantityStepper';
+export { CountProgressHeader, type CountProgressHeaderProps } from './CountProgressHeader';
 export { FilterChips, type FilterChipOption } from './FilterChips';
 export { FloatingActionButton } from './FloatingActionButton';
 export { SwipeableItem } from './SwipeableItem';

@@ -1,12 +1,10 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, ScrollView, TextInput, TouchableOpacity, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  Search,
   Package,
   Layers,
   X,
-  Bookmark,
   CheckCircle2,
   XCircle,
   Snowflake,
@@ -18,13 +16,23 @@ import {
   Minus,
   Plus,
   CheckCheck,
+  Check,
 } from 'lucide-react-native';
 
 import { findRouteById, navigateTo } from '@/navigation/registry';
-import { Badge, Button, AppDialog } from '@/shared/ui';
-import { Box, Text, useAppTheme } from '@/theme';
+import {
+  Badge,
+  Button,
+  AppDialog,
+  SearchField,
+  QuantityStepper,
+  Card,
+  CountProgressHeader,
+  type DialogType,
+} from '@/shared/ui';
+import { Text, useAppTheme } from '@/theme';
 
-// CATALOGO DE PRODUCTOS DISPONIBLES EN LA OT-4892 PARA EL BUSCADOR
+// MANIFIESTO COMPLETO DE LA OT-4892 QUE EL SUPERVISOR DEBE AUDITAR
 const MOCK_OT_PRODUCTS = [
   {
     id: 1,
@@ -68,6 +76,8 @@ const MOCK_OT_PRODUCTS = [
   },
 ];
 
+const MAX_RECOUNTS = 2;
+
 export interface CountedAuditRecord {
   id: string;
   codigo: string;
@@ -80,21 +90,30 @@ export interface CountedAuditRecord {
   expectedQty: number;
 }
 
+interface DraftCount {
+  cajas: string;
+  unidades: string;
+}
+
+const EMPTY_DRAFT: DraftCount = { cajas: '', unidades: '' };
+
 export default function RevisionSemaforoExecuteScreen() {
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
 
-  // ESTADOS DEL FORMULARIO DE CONTEO A CIEGAS
-  const [productoTexto, setProductoTexto] = useState('');
-  const [productoSeleccionado, setProductoSeleccionado] = useState<any>(null);
-  const [cantCajas, setCantCajas] = useState('');
-  const [cantUnidades, setCantUnidades] = useState('');
+  // FILTRO DE LA LISTA COMPLETA DEL MANIFIESTO
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // BORRADOR DE CONTEO POR PRODUCTO (AÚN NO REGISTRADO, NO REVELA LO ESPERADO)
+  const [draftCounts, setDraftCounts] = useState<Record<string, DraftCount>>({});
+
+  // REGISTROS YA CONFIRMADOS POR EL SUPERVISOR
   const [itemsAuditados, setItemsAuditados] = useState<CountedAuditRecord[]>([]);
 
   // CONTADOR DE RE-CONTEOS POR CÓDIGO DE PRODUCTO (MÁXIMO 2 INTENTOS PERMITIDOS)
   const [recountAttempts, setRecountAttempts] = useState<Record<string, number>>({});
 
-  // ESTADO DEL MODAL IN-SITU DE RE-CONTEO RÁPIDO DIRECTO EN LA TARJETA
+  // ESTADO DEL MODAL IN-SITU DE RE-CONTEO RÁPIDO
   const [isRecountModalVisible, setIsRecountModalVisible] = useState(false);
   const [modalItem, setModalItem] = useState<CountedAuditRecord | null>(null);
   const [modalCajas, setModalCajas] = useState('0');
@@ -102,76 +121,86 @@ export default function RevisionSemaforoExecuteScreen() {
 
   // ESTADO DEL ESCÁNER DE CÓDIGO DE BARRAS POR CÁMARA
   const [isBarcodeScannerVisible, setIsBarcodeScannerVisible] = useState(false);
+  const [highlightedCode, setHighlightedCode] = useState<string | null>(null);
 
-  // FOCUS Y SUGERENCIAS
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const [isCajasFocused, setIsCajasFocused] = useState(false);
-  const [isUnidadesFocused, setIsUnidadesFocused] = useState(false);
-  const [sugerencias, setSugerencias] = useState<any[]>([]);
-  const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
+  // DIÁLOGO DE CIERRE DE AUDITORÍA
+  const [dialogConfig, setDialogConfig] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: DialogType;
+    onConfirm?: () => void;
+    onCancel?: () => void;
+    cancelText?: string;
+    buttonText?: string;
+  }>({ visible: false, title: '', message: '', type: 'info' });
 
-  const cajasInputRef = useRef<TextInput>(null);
-  const unidadesInputRef = useRef<TextInput>(null);
-
-  const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
-
-  // Excluir productos ya agregados del buscador
-  const codigosAgregados = useMemo(() => {
-    return new Set(itemsAuditados.map((item) => item.codigo));
+  // ÍNDICE DE REGISTROS CONFIRMADOS POR CÓDIGO
+  const registradosPorCodigo = useMemo(() => {
+    const map: Record<string, CountedAuditRecord> = {};
+    itemsAuditados.forEach((item) => {
+      map[item.codigo] = item;
+    });
+    return map;
   }, [itemsAuditados]);
 
-  const handleSearchChange = (text: string) => {
-    setProductoTexto(text);
-    setProductoSeleccionado(null);
+  const getDraft = (codigo: string): DraftCount => draftCounts[codigo] ?? EMPTY_DRAFT;
 
-    if (text.trim().length > 0) {
-      const query = text.toLowerCase();
-      const filtrados = MOCK_OT_PRODUCTS.filter(
-        (p) =>
-          !codigosAgregados.has(p.codigo) &&
-          (p.codigo.toLowerCase().includes(query) || p.nombre.toLowerCase().includes(query))
-      ).slice(0, 5);
-
-      setSugerencias(filtrados);
-      setMostrarSugerencias(true);
-    } else {
-      setSugerencias([]);
-      setMostrarSugerencias(false);
-    }
+  const setDraftField = (codigo: string, field: keyof DraftCount, value: string) => {
+    const sanitized = value.replace(/[^0-9]/g, '');
+    setDraftCounts((prev) => ({
+      ...prev,
+      [codigo]: { ...(prev[codigo] ?? EMPTY_DRAFT), [field]: sanitized },
+    }));
   };
 
-  const seleccionarProducto = (producto: any) => {
-    setProductoSeleccionado(producto);
-    setProductoTexto(`${producto.codigo} - ${producto.nombre}`);
-    setMostrarSugerencias(false);
-    unidadesInputRef.current?.focus();
+  const adjustDraftField = (codigo: string, field: keyof DraftCount, delta: number) => {
+    setDraftCounts((prev) => {
+      const draft = prev[codigo] ?? EMPTY_DRAFT;
+      const parsed = parseInt(draft[field] || '0', 10);
+      const safe = isNaN(parsed) ? 0 : parsed;
+      return {
+        ...prev,
+        [codigo]: { ...draft, [field]: Math.max(0, safe + delta).toString() },
+      };
+    });
   };
 
-  const limpiarBuscador = () => {
-    setProductoTexto('');
-    setProductoSeleccionado(null);
-    setCantCajas('');
-    setCantUnidades('');
-    setMostrarSugerencias(false);
+  // REGISTRAR EL CONTEO DE UNA FILA: RECIÉN AQUÍ SE REVELA LA CANTIDAD ESPERADA
+  const handleRegisterRow = (producto: (typeof MOCK_OT_PRODUCTS)[number]) => {
+    const draft = getDraft(producto.codigo);
+    const numCajas = parseInt(draft.cajas || '0', 10) || 0;
+    const numUnidades = parseInt(draft.unidades || '0', 10) || 0;
+    const totalContado = numCajas * producto.cajaSize + numUnidades;
+
+    const nuevoRegistro: CountedAuditRecord = {
+      id: `audit-${producto.codigo}`,
+      codigo: producto.codigo,
+      nombre: producto.nombre,
+      numCajas,
+      numUnidades,
+      totalContado,
+      cajaSize: producto.cajaSize,
+      isCold: producto.isCold,
+      expectedQty: producto.expectedQty,
+    };
+
+    setItemsAuditados((prev) => [...prev, nuevoRegistro]);
+    setHighlightedCode(null);
   };
 
-  // MANEJO DE CÓDIGO DE BARRAS ESCANEADO
+  // MANEJO DE CÓDIGO DE BARRAS ESCANEADO: FILTRA Y RESALTA LA FILA
   const handleBarcodeScanned = (scannedCode: string) => {
     setIsBarcodeScannerVisible(false);
-
     const found = MOCK_OT_PRODUCTS.find((p) => p.codigo === scannedCode || scannedCode.includes(p.codigo));
-    if (found) {
-      seleccionarProducto(found);
-    } else {
-      setProductoTexto(scannedCode);
-      handleSearchChange(scannedCode);
-    }
+    setSearchQuery(found ? found.codigo : scannedCode);
+    setHighlightedCode(found ? found.codigo : null);
   };
 
   // ABRIR MODAL SHEET FLOTANTE IN-SITU DE RE-CONTEO
   const openRecountModal = (item: CountedAuditRecord) => {
     const attempts = recountAttempts[item.codigo] || 0;
-    if (attempts >= 2) return;
+    if (attempts >= MAX_RECOUNTS) return;
 
     setModalItem(item);
     setModalCajas(item.numCajas.toString());
@@ -183,25 +212,18 @@ export default function RevisionSemaforoExecuteScreen() {
   const saveRecountFromModal = () => {
     if (!modalItem) return;
 
-    const numCjas = parseInt(modalCajas || '0', 10);
-    const numUnids = parseInt(modalUnidades || '0', 10);
+    const numCjas = parseInt(modalCajas || '0', 10) || 0;
+    const numUnids = parseInt(modalUnidades || '0', 10) || 0;
     const totalContadoCalculado = numCjas * modalItem.cajaSize + numUnids;
 
-    // Actualizar registro sobre el mismo producto sin duplicar
     setItemsAuditados((prev) =>
       prev.map((rec) =>
         rec.codigo === modalItem.codigo
-          ? {
-              ...rec,
-              numCajas: numCjas,
-              numUnidades: numUnids,
-              totalContado: totalContadoCalculado,
-            }
+          ? { ...rec, numCajas: numCjas, numUnidades: numUnids, totalContado: totalContadoCalculado }
           : rec
       )
     );
 
-    // Incrementar contador de re-conteos
     setRecountAttempts((prev) => ({
       ...prev,
       [modalItem.codigo]: (prev[modalItem.codigo] || 0) + 1,
@@ -211,66 +233,7 @@ export default function RevisionSemaforoExecuteScreen() {
     setModalItem(null);
   };
 
-  const numCajas = parseInt(cantCajas || '0', 10);
-  const numUnidades = parseInt(cantUnidades || '0', 10);
-  const cajaSize = productoSeleccionado?.cajaSize ?? 1;
-  const totalContadoCalculado = numCajas * cajaSize + numUnidades;
-
-  const canAdd =
-    productoSeleccionado !== null &&
-    (cantCajas.trim().length > 0 || cantUnidades.trim().length > 0) &&
-    totalContadoCalculado > 0;
-
-  // AGREGAR O ACTUALIZAR PRODUCTO EN LUGAR DE DUPLICAR
-  const handleAddItem = () => {
-    if (!canAdd || !productoSeleccionado) return;
-
-    const existingIndex = itemsAuditados.findIndex((item) => item.codigo === productoSeleccionado.codigo);
-
-    if (existingIndex !== -1) {
-      // ACTUALIZAR EL MISMO PRODUCTO
-      setItemsAuditados((prev) =>
-        prev.map((item, idx) =>
-          idx === existingIndex
-            ? {
-                ...item,
-                numCajas,
-                numUnidades,
-                totalContado: totalContadoCalculado,
-              }
-            : item
-        )
-      );
-    } else {
-      // INSERTAR NUEVO PRODUCTO
-      const newItem: CountedAuditRecord = {
-        id: `audit-${Date.now()}`,
-        codigo: productoSeleccionado.codigo,
-        nombre: productoSeleccionado.nombre,
-        numCajas,
-        numUnidades,
-        totalContado: totalContadoCalculado,
-        cajaSize,
-        isCold: productoSeleccionado.isCold,
-        expectedQty: productoSeleccionado.expectedQty,
-      };
-      setItemsAuditados((prev) => [...prev, newItem]);
-    }
-
-    limpiarBuscador();
-  };
-
-  const handleFinishAudit = () => {
-    setIsSuccessDialogOpen(true);
-  };
-
-  const handleRedirectToList = () => {
-    setIsSuccessDialogOpen(false);
-    const route = findRouteById('supervisor.semaforo');
-    if (route) navigateTo(route);
-  };
-
-  // MÉTIRICAS EN TIEMPO REAL
+  // MÉTRICAS EN TIEMPO REAL SOBRE EL MANIFIESTO COMPLETO
   const stats = useMemo(() => {
     let matches = 0;
     let mismatches = 0;
@@ -278,48 +241,126 @@ export default function RevisionSemaforoExecuteScreen() {
       if (item.totalContado === item.expectedQty) matches++;
       else mismatches++;
     });
-    return { total: itemsAuditados.length, matches, mismatches };
+    return {
+      contados: itemsAuditados.length,
+      total: MOCK_OT_PRODUCTS.length,
+      pendientes: MOCK_OT_PRODUCTS.length - itemsAuditados.length,
+      matches,
+      mismatches,
+    };
   }, [itemsAuditados]);
 
+  const closeDialog = () => setDialogConfig((prev) => ({ ...prev, visible: false }));
+
+  const handleRedirectToList = () => {
+    closeDialog();
+    const route = findRouteById('supervisor.semaforo');
+    if (route) navigateTo(route);
+  };
+
+  const confirmFinishAudit = () => {
+    setDialogConfig({
+      visible: true,
+      title: '¡Auditoría Semáforo Guardada!',
+      message: `Se ha registrado la auditoría a ciegas de ${stats.contados} de ${stats.total} productos en la Orden OT-4892.`,
+      type: 'success',
+      onConfirm: handleRedirectToList,
+    });
+  };
+
+  // SI QUEDAN PRODUCTOS SIN CONTAR, PEDIR CONFIRMACIÓN EXPLÍCITA ANTES DE CERRAR
+  const handleFinishAudit = () => {
+    if (stats.pendientes > 0) {
+      setDialogConfig({
+        visible: true,
+        title: 'Quedan productos sin contar',
+        message: `Todavía hay ${stats.pendientes} de ${stats.total} productos sin registrar. Si finalizas ahora, quedarán fuera de la auditoría.`,
+        type: 'warning',
+        buttonText: 'Finalizar igual',
+        cancelText: 'Seguir contando',
+        onCancel: closeDialog,
+        onConfirm: confirmFinishAudit,
+      });
+      return;
+    }
+    confirmFinishAudit();
+  };
+
+  // FILTRADO DEL MANIFIESTO POR CÓDIGO O NOMBRE
+  const filteredProducts = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return MOCK_OT_PRODUCTS;
+    return MOCK_OT_PRODUCTS.filter(
+      (p) => p.codigo.toLowerCase().includes(query) || p.nombre.toLowerCase().includes(query)
+    );
+  }, [searchQuery]);
+
   // CÁLCULOS DEL MODAL DE RE-CONTEO
-  const modalCjasNum = parseInt(modalCajas || '0', 10);
-  const modalUnidsNum = parseInt(modalUnidades || '0', 10);
+  const modalCjasNum = parseInt(modalCajas || '0', 10) || 0;
+  const modalUnidsNum = parseInt(modalUnidades || '0', 10) || 0;
   const modalCajaSize = modalItem?.cajaSize || 12;
   const modalTotalCalc = modalCjasNum * modalCajaSize + modalUnidsNum;
+
+  // CAMPO DE CANTIDAD CON ETIQUETA, SOBRE EL STEPPER ESTÁNDAR COMPARTIDO
+  const renderStepperField = (
+    codigo: string,
+    field: keyof DraftCount,
+    label: string,
+    hint: string | null,
+    icon: React.ReactNode
+  ) => (
+    <View style={{ flex: 1, gap: 4 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        {icon}
+        <Text variant="label" style={{ fontSize: 12, color: theme.colors.foreground }}>
+          {label}
+        </Text>
+        {hint && (
+          <Text variant="caption" style={{ fontSize: 10, color: theme.colors.mutedForeground }}>
+            {hint}
+          </Text>
+        )}
+      </View>
+
+      <QuantityStepper
+        value={getDraft(codigo)[field]}
+        onChangeText={(val) => setDraftField(codigo, field, val)}
+        onAdjust={(delta) => adjustDraftField(codigo, field, delta)}
+      />
+    </View>
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.mainBackground }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 90, gap: 14 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 100, gap: 14 }}
         keyboardShouldPersistTaps="handled"
       >
-        {/* HEADER DE CONTEXTO SIN BOTÓN ARRIBA */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <View style={{ gap: 2, flex: 1 }}>
-            <Text
-              variant="caption"
-              style={{
-                color: theme.colors.mutedForeground,
-                textTransform: 'uppercase',
-                letterSpacing: 1,
-              }}
-            >
-              Revisión Semáforo • OT-4892
+        {/* HEADER DE CONTEXTO */}
+        <View style={{ gap: 2 }}>
+          <Text
+            variant="caption"
+            style={{
+              color: theme.colors.mutedForeground,
+              textTransform: 'uppercase',
+              letterSpacing: 1,
+            }}
+          >
+            Revisión Semáforo • OT-4892
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text variant="header" style={{ color: theme.colors.foreground, fontSize: 18, fontWeight: '800' }}>
+              Conteo a Ciegas
             </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text variant="header" style={{ color: theme.colors.foreground, fontSize: 18, fontWeight: '800' }}>
-                Conteo a Ciegas
-              </Text>
-              {itemsAuditados.length > 0 && (
-                <View style={{ flexDirection: 'row', gap: 4 }}>
-                  <Badge label={`${stats.matches} ok`} tone="success" emphasis="soft" size="sm" />
-                  {stats.mismatches > 0 && (
-                    <Badge label={`${stats.mismatches} diff`} tone="danger" emphasis="soft" size="sm" />
-                  )}
-                </View>
-              )}
-            </View>
+            {stats.contados > 0 && (
+              <View style={{ flexDirection: 'row', gap: 4 }}>
+                <Badge label={`${stats.matches} ok`} tone="success" emphasis="soft" size="sm" />
+                {stats.mismatches > 0 && (
+                  <Badge label={`${stats.mismatches} diff`} tone="danger" emphasis="soft" size="sm" />
+                )}
+              </View>
+            )}
           </View>
         </View>
 
@@ -336,416 +377,203 @@ export default function RevisionSemaforoExecuteScreen() {
         >
           <ShieldAlert size={16} color={theme.colors.primary} />
           <Text variant="caption" style={{ color: theme.colors.primary, fontSize: 11, fontWeight: '600', flex: 1 }}>
-            Modo Auditoría: Busca el producto e ingresa las Cajas y Unidades contadas físicamente.
+            Modo Auditoría: la cantidad esperada permanece oculta hasta que registres el conteo de cada producto.
           </Text>
         </View>
 
-        {/* CARD DEL FORMULARIO COMPACTO DE REGISTRO DE CONTEO */}
-        <View
-          style={{
-            backgroundColor: theme.colors.cardBackground,
-            borderColor: theme.colors.border,
-            borderWidth: 1,
-            padding: 16,
-            borderRadius: 16,
-            elevation: 2,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.05,
-            shadowRadius: 8,
-            zIndex: 50,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 6,
-            }}
-          >
-            <Text variant="label" style={{ fontSize: 14 }}>
-              {productoSeleccionado ? 'Producto Seleccionado' : 'Buscar Producto'}
-            </Text>
-            {canAdd && (
-              <Badge
-                label={`Total: ${totalContadoCalculado} unids`}
-                tone="primary"
-                emphasis="outline"
-                size="sm"
-                icon={Package}
-              />
-            )}
-          </View>
+        {/* AVANCE DEL MANIFIESTO (MISMO PATRÓN QUE LA VISTA DE CONTEO DEL CHOFER) */}
+        <CountProgressHeader
+          title="Manifiesto de la OT"
+          counted={stats.contados}
+          total={stats.total}
+        />
 
-          {/* BUSCADOR CON BOTÓN DE ESCÁNER DE CÓDIGO DE BARRAS INTEGRADO */}
-          <View style={{ position: 'relative', zIndex: 100, marginBottom: 12, height: 44 }}>
-            {productoSeleccionado ? (
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  backgroundColor: theme.colors.successSoft,
-                  borderRadius: 10,
-                  borderWidth: 1.5,
-                  borderColor: theme.colors.success,
-                  paddingHorizontal: 12,
-                  height: 44,
-                }}
-              >
-                <View
-                  style={{
-                    backgroundColor: theme.colors.success,
-                    paddingHorizontal: 8,
-                    paddingVertical: 2,
-                    borderRadius: 6,
-                    marginRight: 8,
-                  }}
-                >
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#ffffff' }}>
-                    {productoSeleccionado.codigo}
-                  </Text>
-                </View>
-
-                <Text
-                  style={{
-                    flex: 1,
-                    fontSize: 13,
-                    fontWeight: '600',
-                    color: theme.colors.foreground,
-                  }}
-                  numberOfLines={1}
-                >
-                  {productoSeleccionado.nombre}
-                </Text>
-
-                <TouchableOpacity onPress={limpiarBuscador} style={{ padding: 6 }}>
-                  <X color={theme.colors.mutedForeground} size={18} />
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                {/* INPUT DE BÚSQUEDA POR TEXTO O CÓDIGO */}
-                <View
-                  style={{
-                    flex: 1,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: isSearchFocused ? theme.colors.cardBackground : theme.colors.secondary,
-                    borderRadius: 10,
-                    borderWidth: 1.5,
-                    borderColor: isSearchFocused ? theme.colors.primary : theme.colors.border,
-                    height: 44,
-                  }}
-                >
-                  <Search
-                    color={isSearchFocused ? theme.colors.primary : theme.colors.mutedForeground}
-                    size={18}
-                    style={{ marginLeft: 12 }}
-                  />
-                  <TextInput
-                    value={productoTexto}
-                    onChangeText={handleSearchChange}
-                    onFocus={() => setIsSearchFocused(true)}
-                    onBlur={() => setIsSearchFocused(false)}
-                    placeholder="Ej. PROD-005 o Ketchup..."
-                    placeholderTextColor={theme.colors.mutedForeground}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 8,
-                      paddingHorizontal: 8,
-                      fontSize: 14,
-                      color: theme.colors.foreground,
-                    }}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  {productoTexto.length > 0 && (
-                    <TouchableOpacity onPress={limpiarBuscador} style={{ padding: 10 }}>
-                      <X color={theme.colors.mutedForeground} size={18} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-
-                {/* BOTÓN LECTOR DE CÓDIGO DE BARRAS */}
-                <TouchableOpacity
-                  onPress={() => setIsBarcodeScannerVisible(true)}
-                  activeOpacity={0.8}
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 10,
-                    backgroundColor: theme.colors.primarySoft,
-                    borderWidth: 1.5,
-                    borderColor: theme.colors.primary,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <QrCode size={20} color={theme.colors.primary} />
-                </TouchableOpacity>
-
-                {/* MENÚ FLOTANTE DE SUGERENCIAS */}
-                {mostrarSugerencias && (
-                  <View
-                    style={{
-                      position: 'absolute',
-                      top: 46,
-                      left: 0,
-                      right: 52,
-                      backgroundColor: theme.colors.cardBackground,
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: theme.colors.border,
-                      elevation: 10,
-                      shadowColor: '#000',
-                      shadowOffset: { width: 0, height: 4 },
-                      shadowOpacity: 0.15,
-                      shadowRadius: 12,
-                      zIndex: 999,
-                    }}
-                  >
-                    {sugerencias.length > 0 ? (
-                      sugerencias.map((prod, index) => (
-                        <TouchableOpacity
-                          key={prod.id}
-                          onPress={() => seleccionarProducto(prod)}
-                          style={{
-                            paddingVertical: 12,
-                            paddingHorizontal: 14,
-                            borderBottomWidth: index === sugerencias.length - 1 ? 0 : 1,
-                            borderBottomColor: theme.colors.border,
-                          }}
-                        >
-                          <Text variant="caption" style={{ color: theme.colors.foreground, fontSize: 13 }}>
-                            <Text style={{ fontWeight: '800' }}>{prod.codigo}</Text> - {prod.nombre}
-                          </Text>
-                        </TouchableOpacity>
-                      ))
-                    ) : (
-                      <View style={{ padding: 14, alignItems: 'center' }}>
-                        <Text variant="caption" style={{ color: theme.colors.mutedForeground, textAlign: 'center' }}>
-                          No hay productos disponibles o ya fueron ingresados.
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
-
-          {/* INPUTS: UNIDADES Y CAJAS */}
-          <View
-            style={{
-              flexDirection: 'row',
-              gap: 12,
-              marginBottom: 14,
-              zIndex: 10,
-            }}
-          >
-            {/* UNIDADES SUELTAS */}
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                <Package size={14} color={theme.colors.primary} />
-                <Text variant="label" style={{ fontSize: 13 }}>
-                  Unidades
-                </Text>
-              </View>
-              <TextInput
-                ref={unidadesInputRef}
-                value={cantUnidades}
-                onChangeText={setCantUnidades}
-                onFocus={() => setIsUnidadesFocused(true)}
-                onBlur={() => setIsUnidadesFocused(false)}
-                placeholder="0"
-                placeholderTextColor={theme.colors.mutedForeground}
-                keyboardType="numeric"
-                style={{
-                  backgroundColor: isUnidadesFocused ? theme.colors.cardBackground : theme.colors.secondary,
-                  paddingVertical: 8,
-                  paddingHorizontal: 10,
-                  height: 44,
-                  borderRadius: 10,
-                  fontSize: 16,
-                  fontWeight: '700',
-                  borderWidth: 1.5,
-                  borderColor: isUnidadesFocused ? theme.colors.primary : theme.colors.border,
-                  textAlign: 'center',
-                  color: theme.colors.foreground,
-                }}
-              />
-            </View>
-
-            {/* CAJAS */}
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                <Layers size={14} color={theme.colors.primary} />
-                <Text variant="label" style={{ fontSize: 13 }}>
-                  Cajas
-                </Text>
-                {productoSeleccionado && (
-                  <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
-                    ({productoSeleccionado.cajaSize} u/cj)
-                  </Text>
-                )}
-              </View>
-              <TextInput
-                ref={cajasInputRef}
-                value={cantCajas}
-                onChangeText={setCantCajas}
-                onFocus={() => setIsCajasFocused(true)}
-                onBlur={() => setIsCajasFocused(false)}
-                placeholder="0"
-                placeholderTextColor={theme.colors.mutedForeground}
-                keyboardType="numeric"
-                style={{
-                  backgroundColor: isCajasFocused ? theme.colors.cardBackground : theme.colors.secondary,
-                  paddingVertical: 8,
-                  paddingHorizontal: 10,
-                  height: 44,
-                  borderRadius: 10,
-                  fontSize: 16,
-                  fontWeight: '700',
-                  borderWidth: 1.5,
-                  borderColor: isCajasFocused ? theme.colors.primary : theme.colors.border,
-                  textAlign: 'center',
-                  color: theme.colors.foreground,
-                }}
-              />
-            </View>
-          </View>
-
-          {/* BOTÓN DE REGISTRO CON TOTAL INTEGRADO */}
-          <Button
-            label={canAdd ? `Registrar ${totalContadoCalculado} Unidades` : 'Registrar Ítem'}
-            variant={canAdd ? 'primary' : 'secondary'}
-            disabled={!canAdd}
-            onPress={handleAddItem}
-            endIcon={Bookmark}
-            fullWidth
-            size="md"
-          />
-        </View>
-
-        {/* LISTA DE REGISTROS INGRESADOS EN ESTA AUDITORÍA SEMÁFORO */}
-        <View style={{ gap: 10, zIndex: 1, marginTop: 4 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text variant="label" style={{ fontSize: 15, fontWeight: '800' }}>
-              Registro de Auditoría Semáforo
-            </Text>
-            <Badge
-              label={`${itemsAuditados.length} ítems`}
-              tone={itemsAuditados.length > 0 ? 'primary' : 'neutral'}
-              emphasis="soft"
-              size="sm"
+        {/* BUSCADOR DE FILTRADO + ESCÁNER */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <SearchField
+              value={searchQuery}
+              onChangeText={(text) => {
+                setSearchQuery(text);
+                setHighlightedCode(null);
+              }}
+              onClear={() => {
+                setSearchQuery('');
+                setHighlightedCode(null);
+              }}
+              placeholder="Filtrar por SKU o nombre..."
             />
           </View>
 
-          {itemsAuditados.length === 0 ? (
-            <Text
-              variant="caption"
-              style={{
-                color: theme.colors.mutedForeground,
-                textAlign: 'center',
-                marginVertical: 24,
-                fontSize: 12,
-              }}
-            >
-              Busca y selecciona un producto para comenzar el registro de auditoría a ciegas.
-            </Text>
-          ) : (
+          <TouchableOpacity
+            onPress={() => setIsBarcodeScannerVisible(true)}
+            activeOpacity={0.8}
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 10,
+              backgroundColor: theme.colors.primarySoft,
+              borderWidth: 1.5,
+              borderColor: theme.colors.primary,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <QrCode size={20} color={theme.colors.primary} />
+          </TouchableOpacity>
+        </View>
+
+        {/* LISTA COMPLETA DE PRODUCTOS DEL MANIFIESTO */}
+        <View style={{ gap: 10 }}>
+          {filteredProducts.length === 0 ? (
             <View
               style={{
                 backgroundColor: theme.colors.cardBackground,
                 borderRadius: 14,
                 borderWidth: 1,
                 borderColor: theme.colors.border,
-                overflow: 'hidden',
+                padding: 20,
+                alignItems: 'center',
+                gap: 8,
               }}
             >
-              {itemsAuditados.map((item, index) => {
-                const isLast = index === itemsAuditados.length - 1;
-                const esMatch = item.totalContado === item.expectedQty;
-                const diff = item.totalContado - item.expectedQty;
-                const diffText = diff > 0 ? `+${diff} (sobran)` : `${diff} (faltan)`;
+              <Package size={32} color={theme.colors.mutedForeground} />
+              <Text variant="caption" style={{ fontSize: 12, color: theme.colors.mutedForeground, textAlign: 'center' }}>
+                Ningún producto del manifiesto coincide con "{searchQuery}".
+              </Text>
+              <TouchableOpacity
+                onPress={() => setSearchQuery('')}
+                style={{
+                  backgroundColor: theme.colors.primarySoft,
+                  paddingHorizontal: 14,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                }}
+              >
+                <Text style={{ color: theme.colors.primary, fontWeight: '700', fontSize: 12 }}>
+                  Limpiar filtro
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            filteredProducts.map((producto) => {
+              const registro = registradosPorCodigo[producto.codigo];
+              const isRegistrado = registro !== undefined;
+              const isHighlighted = highlightedCode === producto.codigo;
 
-                const attempts = recountAttempts[item.codigo] || 0;
-                const remainingAttempts = 2 - attempts;
+              const draft = getDraft(producto.codigo);
+              const draftCajas = parseInt(draft.cajas || '0', 10) || 0;
+              const draftUnidades = parseInt(draft.unidades || '0', 10) || 0;
+              const draftTotal = draftCajas * producto.cajaSize + draftUnidades;
+              const puedeRegistrar = draft.cajas.trim().length > 0 || draft.unidades.trim().length > 0;
 
-                return (
-                  <View
-                    key={item.id}
-                    style={{
-                      backgroundColor: theme.colors.cardBackground,
-                      paddingVertical: 10,
-                      paddingHorizontal: 12,
-                      borderBottomWidth: isLast ? 0 : 1,
-                      borderBottomColor: theme.colors.border,
-                      gap: 4,
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      {esMatch ? (
+              const esMatch = isRegistrado && registro.totalContado === registro.expectedQty;
+              const diff = isRegistrado ? registro.totalContado - registro.expectedQty : 0;
+              const diffText = diff > 0 ? `+${diff} (sobran)` : `${diff} (faltan)`;
+
+              const attempts = recountAttempts[producto.codigo] || 0;
+              const remainingAttempts = MAX_RECOUNTS - attempts;
+
+              return (
+                <Card
+                  key={producto.id}
+                  borderColor={isHighlighted ? 'primary' : 'border'}
+                  borderWidth={isHighlighted ? 2 : 1}
+                  padding="m"
+                  borderRadius="xl"
+                  style={{ gap: 10 }}
+                >
+                  {/* FILA 1: IDENTIFICACIÓN DEL PRODUCTO + ESTADO */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {isRegistrado ? (
+                      esMatch ? (
                         <CheckCircle2 size={16} color={theme.colors.success} style={{ flexShrink: 0 }} />
                       ) : (
                         <XCircle size={16} color={theme.colors.danger} style={{ flexShrink: 0 }} />
-                      )}
+                      )
+                    ) : (
+                      <Package size={16} color={theme.colors.mutedForeground} style={{ flexShrink: 0 }} />
+                    )}
 
-                      <Text variant="label" style={{ fontSize: 12, color: theme.colors.foreground, fontWeight: '800' }}>
-                        {item.codigo}
-                      </Text>
-                      <Text style={{ fontSize: 11, color: theme.colors.mutedForeground }}>•</Text>
-                      <Text
-                        variant="caption"
-                        style={{ fontSize: 12, color: theme.colors.foreground, flex: 1, fontWeight: '600' }}
-                        numberOfLines={1}
-                      >
-                        {item.nombre}
-                      </Text>
+                    <Text variant="label" style={{ fontSize: 12, fontWeight: '800', color: theme.colors.foreground }}>
+                      {producto.codigo}
+                    </Text>
 
-                      {item.isCold && <Snowflake size={13} color={theme.colors.primary} />}
+                    {producto.isCold && <Snowflake size={13} color={theme.colors.primary} />}
 
-                      <View
-                        style={{
-                          backgroundColor: theme.colors.primarySoft,
-                          paddingHorizontal: 8,
-                          paddingVertical: 2,
-                          borderRadius: 6,
-                          borderWidth: 1,
-                          borderColor: theme.colors.primary,
-                        }}
-                      >
-                        <Text style={{ fontSize: 11, fontWeight: '800', color: theme.colors.primary }}>
-                          {item.totalContado} u.
+                    <View style={{ flex: 1 }} />
+
+                    {isRegistrado ? (
+                      <Badge
+                        label={esMatch ? '✓ Conforme' : 'Con diferencia'}
+                        tone={esMatch ? 'success' : 'danger'}
+                        emphasis="soft"
+                        size="sm"
+                      />
+                    ) : (
+                      <Badge label="Pendiente" tone="neutral" emphasis="soft" size="sm" />
+                    )}
+                  </View>
+
+                  {/* FILA 2: NOMBRE DEL PRODUCTO */}
+                  <Text
+                    variant="subtitle"
+                    numberOfLines={2}
+                    style={{ fontSize: 14, fontWeight: '700', color: theme.colors.foreground }}
+                  >
+                    {producto.nombre}
+                  </Text>
+
+                  {isRegistrado ? (
+                    /* BLOQUE REVELADO: RECIÉN AQUÍ SE MUESTRA LA CANTIDAD ESPERADA */
+                    <View
+                      style={{
+                        backgroundColor: esMatch ? theme.colors.successSoft : theme.colors.secondary,
+                        borderRadius: 10,
+                        padding: 10,
+                        gap: 5,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                        <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
+                          Contado por el supervisor:
+                        </Text>
+                        <Text
+                          variant="label"
+                          style={{ fontSize: 12, fontWeight: '800', color: theme.colors.foreground }}
+                        >
+                          {registro.numCajas} Cajas + {registro.numUnidades} u. = {registro.totalContado} u.
                         </Text>
                       </View>
-                    </View>
 
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingLeft: 22 }}>
-                      <Text style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
-                        Ingresado: {item.numCajas > 0 ? `${item.numCajas} Cajas ` : ''}
-                        {item.numCajas > 0 && item.numUnidades > 0 ? '+ ' : ''}
-                        {item.numUnidades > 0 || item.numCajas === 0 ? `${item.numUnidades} Unids.` : ''}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                        <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
+                          Esperado en OT:
+                        </Text>
+                        <Text
+                          variant="label"
+                          style={{ fontSize: 12, fontWeight: '700', color: theme.colors.foreground }}
+                        >
+                          {registro.expectedQty} u.
+                        </Text>
+                      </View>
+
+                      <View style={{ height: 1, backgroundColor: theme.colors.border, marginVertical: 1 }} />
+
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: '800',
+                          color: esMatch ? theme.colors.success : theme.colors.danger,
+                        }}
+                      >
+                        {esMatch ? '✓ Conteo conforme' : `Diferencia: ${diffText}`}
                       </Text>
 
-                      {esMatch && (
-                        <Text style={{ fontSize: 11, color: theme.colors.success, fontWeight: '700' }}>
-                          ✓ Conforme ({item.expectedQty} u.)
-                        </Text>
-                      )}
-                    </View>
-
-                    {!esMatch && (
-                      <View style={{ paddingLeft: 22, marginTop: 2, gap: 4 }}>
-                        <Text style={{ fontSize: 11, color: theme.colors.danger, fontWeight: '700' }}>
-                          Diferencia: {diffText} (Esperado: {item.expectedQty} u.)
-                        </Text>
-
-                        {/* BOTÓN DE RE-CONTEO QUE ABRE MODAL SHEET IN-SITU SIN SCROLLING */}
-                        {remainingAttempts > 0 ? (
+                      {!esMatch &&
+                        (remainingAttempts > 0 ? (
                           <TouchableOpacity
-                            onPress={() => openRecountModal(item)}
+                            onPress={() => openRecountModal(registro)}
                             activeOpacity={0.7}
                             style={{
                               backgroundColor: theme.colors.primarySoft,
@@ -763,7 +591,8 @@ export default function RevisionSemaforoExecuteScreen() {
                           >
                             <RotateCcw size={12} color={theme.colors.primary} />
                             <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
-                              Recontar producto ({remainingAttempts} {remainingAttempts === 1 ? 'intento restante' : 'intentos restantes'})
+                              Recontar producto ({remainingAttempts}{' '}
+                              {remainingAttempts === 1 ? 'intento restante' : 'intentos restantes'})
                             </Text>
                           </TouchableOpacity>
                         ) : (
@@ -780,16 +609,81 @@ export default function RevisionSemaforoExecuteScreen() {
                             }}
                           >
                             <Text style={{ fontSize: 10, fontWeight: '700', color: theme.colors.mutedForeground }}>
-                              🔒 Máximo de 2 re-conteos alcanzado (Bloqueado)
+                              🔒 Máximo de {MAX_RECOUNTS} re-conteos alcanzado (Bloqueado)
                             </Text>
                           </View>
+                        ))}
+                    </View>
+                  ) : (
+                    /* BLOQUE DE CAPTURA: SIN NINGUNA PISTA DE LA CANTIDAD ESPERADA */
+                    <>
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        {renderStepperField(
+                          producto.codigo,
+                          'cajas',
+                          'Cajas',
+                          `(${producto.cajaSize} u/cj)`,
+                          <Layers size={13} color={theme.colors.primary} />
+                        )}
+                        {renderStepperField(
+                          producto.codigo,
+                          'unidades',
+                          'Unidades',
+                          null,
+                          <Package size={13} color={theme.colors.primary} />
                         )}
                       </View>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
+
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <Text
+                          variant="label"
+                          style={{
+                            fontSize: 12,
+                            fontWeight: '800',
+                            color: puedeRegistrar ? theme.colors.primary : theme.colors.mutedForeground,
+                            flex: 1,
+                          }}
+                        >
+                          Total: {draftTotal} u.
+                        </Text>
+
+                        <TouchableOpacity
+                          onPress={() => handleRegisterRow(producto)}
+                          disabled={!puedeRegistrar}
+                          activeOpacity={0.8}
+                          style={{
+                            backgroundColor: puedeRegistrar ? theme.colors.primary : theme.colors.secondary,
+                            borderRadius: 10,
+                            paddingHorizontal: 14,
+                            paddingVertical: 9,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 6,
+                            borderWidth: 1,
+                            borderColor: puedeRegistrar ? theme.colors.primary : theme.colors.border,
+                          }}
+                        >
+                          <Check
+                            size={15}
+                            strokeWidth={3}
+                            color={puedeRegistrar ? '#ffffff' : theme.colors.mutedForeground}
+                          />
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: '800',
+                              color: puedeRegistrar ? '#ffffff' : theme.colors.mutedForeground,
+                            }}
+                          >
+                            Registrar
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+                </Card>
+              );
+            })
           )}
         </View>
       </ScrollView>
@@ -885,9 +779,12 @@ export default function RevisionSemaforoExecuteScreen() {
                       justifyContent: 'space-between',
                     }}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 }}>
                       <QrCode size={16} color={theme.colors.primary} />
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: theme.colors.foreground }}>
+                      <Text
+                        numberOfLines={1}
+                        style={{ fontSize: 12, fontWeight: '700', color: theme.colors.foreground, flexShrink: 1 }}
+                      >
                         {prod.codigo} - {prod.nombre}
                       </Text>
                     </View>
@@ -929,6 +826,7 @@ export default function RevisionSemaforoExecuteScreen() {
               borderTopLeftRadius: 24,
               borderTopRightRadius: 24,
               padding: 20,
+              paddingBottom: Math.max(20, insets.bottom + 12),
               gap: 16,
               elevation: 20,
             }}
@@ -941,7 +839,7 @@ export default function RevisionSemaforoExecuteScreen() {
                   </Text>
                   {modalItem && (
                     <Badge
-                      label={`Intento ${(recountAttempts[modalItem.codigo] || 0) + 1} de 2`}
+                      label={`Intento ${(recountAttempts[modalItem.codigo] || 0) + 1} de ${MAX_RECOUNTS}`}
                       tone="warning"
                       emphasis="soft"
                       size="sm"
@@ -992,7 +890,7 @@ export default function RevisionSemaforoExecuteScreen() {
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <TouchableOpacity
                     onPress={() => {
-                      const val = Math.max(0, parseInt(modalCajas || '0', 10) - 1);
+                      const val = Math.max(0, (parseInt(modalCajas || '0', 10) || 0) - 1);
                       setModalCajas(val.toString());
                     }}
                     style={{
@@ -1011,8 +909,8 @@ export default function RevisionSemaforoExecuteScreen() {
 
                   <TextInput
                     value={modalCajas}
-                    onChangeText={setModalCajas}
-                    keyboardType="numeric"
+                    onChangeText={(val) => setModalCajas(val.replace(/[^0-9]/g, ''))}
+                    keyboardType="number-pad"
                     style={{
                       width: 58,
                       height: 44,
@@ -1033,7 +931,7 @@ export default function RevisionSemaforoExecuteScreen() {
 
                   <TouchableOpacity
                     onPress={() => {
-                      const val = parseInt(modalCajas || '0', 10) + 1;
+                      const val = (parseInt(modalCajas || '0', 10) || 0) + 1;
                       setModalCajas(val.toString());
                     }}
                     style={{
@@ -1075,7 +973,7 @@ export default function RevisionSemaforoExecuteScreen() {
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <TouchableOpacity
                     onPress={() => {
-                      const val = Math.max(0, parseInt(modalUnidades || '0', 10) - 1);
+                      const val = Math.max(0, (parseInt(modalUnidades || '0', 10) || 0) - 1);
                       setModalUnidades(val.toString());
                     }}
                     style={{
@@ -1094,8 +992,8 @@ export default function RevisionSemaforoExecuteScreen() {
 
                   <TextInput
                     value={modalUnidades}
-                    onChangeText={setModalUnidades}
-                    keyboardType="numeric"
+                    onChangeText={(val) => setModalUnidades(val.replace(/[^0-9]/g, ''))}
+                    keyboardType="number-pad"
                     style={{
                       width: 58,
                       height: 44,
@@ -1116,7 +1014,7 @@ export default function RevisionSemaforoExecuteScreen() {
 
                   <TouchableOpacity
                     onPress={() => {
-                      const val = parseInt(modalUnidades || '0', 10) + 1;
+                      const val = (parseInt(modalUnidades || '0', 10) || 0) + 1;
                       setModalUnidades(val.toString());
                     }}
                     style={{
@@ -1189,73 +1087,84 @@ export default function RevisionSemaforoExecuteScreen() {
         </View>
       </Modal>
 
-      {/* DOCK FLOTANTE OPCIÓN 1 ORIGINAL AL PIE DE PANTALLA */}
-      {itemsAuditados.length > 0 && (
-        <View
+      {/* DOCK FLOTANTE DE PROGRESO Y CIERRE DE AUDITORÍA */}
+      <View
+        style={{
+          position: 'absolute',
+          bottom: Math.max(16, insets.bottom + 8),
+          left: 16,
+          right: 16,
+          backgroundColor: theme.colors.cardBackground,
+          borderRadius: 30,
+          borderWidth: 1.5,
+          borderColor: theme.colors.primary,
+          paddingVertical: 8,
+          paddingHorizontal: 14,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10,
+          elevation: 12,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.18,
+          shadowRadius: 10,
+        }}
+      >
+        <View style={{ gap: 3, flexShrink: 1 }}>
+          <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.foreground }}>
+            {stats.contados} de {stats.total} contados
+          </Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {stats.matches > 0 && <Badge label={`${stats.matches} ok`} tone="success" emphasis="soft" size="sm" />}
+            {stats.mismatches > 0 && (
+              <Badge label={`${stats.mismatches} diff`} tone="danger" emphasis="soft" size="sm" />
+            )}
+            {stats.pendientes > 0 && (
+              <Badge label={`${stats.pendientes} pend.`} tone="neutral" emphasis="soft" size="sm" />
+            )}
+          </View>
+        </View>
+
+        <TouchableOpacity
+          onPress={handleFinishAudit}
+          disabled={stats.contados === 0}
+          activeOpacity={0.85}
           style={{
-            position: 'absolute',
-            bottom: 16,
-            left: 16,
-            right: 16,
-            backgroundColor: theme.colors.cardBackground,
-            borderRadius: 30,
-            borderWidth: 1.5,
-            borderColor: theme.colors.primary,
-            paddingVertical: 8,
-            paddingHorizontal: 14,
+            backgroundColor: stats.contados === 0 ? theme.colors.secondary : theme.colors.primary,
+            borderRadius: 22,
+            paddingVertical: 10,
+            paddingHorizontal: 16,
             flexDirection: 'row',
             alignItems: 'center',
-            justifyContent: 'space-between',
-            elevation: 12,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 6 },
-            shadowOpacity: 0.18,
-            shadowRadius: 10,
+            gap: 8,
           }}
         >
-          <View style={{ gap: 3, flexShrink: 1 }}>
-            <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.foreground }}>
-              {itemsAuditados.length}{' '}
-              {itemsAuditados.length === 1 ? 'Producto registrado' : 'Productos registrados'}
-            </Text>
-
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Badge label={`${stats.matches} ok`} tone="success" emphasis="soft" size="sm" />
-              {stats.mismatches > 0 && (
-                <Badge label={`${stats.mismatches} diff`} tone="danger" emphasis="soft" size="sm" />
-              )}
-            </View>
-          </View>
-
-          <TouchableOpacity
-            onPress={handleFinishAudit}
-            activeOpacity={0.85}
+          <CheckCheck size={18} color={stats.contados === 0 ? theme.colors.mutedForeground : '#ffffff'} />
+          <Text
             style={{
-              backgroundColor: theme.colors.primary,
-              borderRadius: 22,
-              paddingVertical: 10,
-              paddingHorizontal: 16,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
+              color: stats.contados === 0 ? theme.colors.mutedForeground : '#ffffff',
+              fontWeight: '800',
+              fontSize: 13,
             }}
           >
-            <CheckCheck size={18} color="#ffffff" />
-            <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13 }}>
-              Finalizar
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+            Finalizar
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-      {/* DIÁLOGO PERSONALIZADO DE ÉXITO AL FINALIZAR */}
+      {/* DIÁLOGO DE CIERRE DE AUDITORÍA */}
       <AppDialog
-        visible={isSuccessDialogOpen}
-        onClose={handleRedirectToList}
-        title="¡Auditoría Semáforo Guardada!"
-        message={`Se ha registrado la auditoría a ciegas con ${itemsAuditados.length} productos en la Orden OT-4892.`}
-        type="success"
-        onConfirm={handleRedirectToList}
+        visible={dialogConfig.visible}
+        onClose={closeDialog}
+        title={dialogConfig.title}
+        message={dialogConfig.message}
+        type={dialogConfig.type}
+        buttonText={dialogConfig.buttonText}
+        cancelText={dialogConfig.cancelText}
+        onCancel={dialogConfig.onCancel}
+        onConfirm={dialogConfig.onConfirm}
       />
     </View>
   );

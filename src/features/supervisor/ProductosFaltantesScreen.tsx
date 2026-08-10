@@ -16,7 +16,15 @@ import {
 } from 'lucide-react-native';
 
 import { navigateTo, findRouteById } from '@/navigation/registry';
-import { Badge, SearchField, QuantityStepper, Card } from '@/shared/ui';
+import {
+  Badge,
+  SearchField,
+  Card,
+  BoxUnitCounter,
+  boxUnitTotal,
+  EMPTY_BOX_UNIT,
+  type BoxUnitValue,
+} from '@/shared/ui';
 import { Box, Text, useAppTheme } from '@/theme';
 
 import { DISCREPANCY_CAUSES } from './ConsolidacionConteoScreen';
@@ -35,6 +43,8 @@ export interface FlatMissingProductItem {
   isColdChain: boolean;
   expectedQty: number;
   expectedBoxes: number;
+  cajaSize: number; // unidades por caja
+
   countedQty: number;
   countedBoxes: number;
   countedUnits: number;
@@ -58,6 +68,7 @@ const FLAT_MOCK_DISCREPANCIES: FlatMissingProductItem[] = [
     isColdChain: false,
     expectedQty: 96,
     expectedBoxes: 8,
+    cajaSize: 12,
     countedQty: 93,
     countedBoxes: 7,
     countedUnits: 9,
@@ -78,6 +89,7 @@ const FLAT_MOCK_DISCREPANCIES: FlatMissingProductItem[] = [
     isColdChain: false,
     expectedQty: 48,
     expectedBoxes: 4,
+    cajaSize: 12,
     countedQty: 46,
     countedBoxes: 3,
     countedUnits: 10,
@@ -98,6 +110,7 @@ const FLAT_MOCK_DISCREPANCIES: FlatMissingProductItem[] = [
     isColdChain: true,
     expectedQty: 144,
     expectedBoxes: 12,
+    cajaSize: 12,
     countedQty: 146,
     countedBoxes: 12,
     countedUnits: 2,
@@ -118,6 +131,7 @@ const FLAT_MOCK_DISCREPANCIES: FlatMissingProductItem[] = [
     isColdChain: false,
     expectedQty: 120,
     expectedBoxes: 10,
+    cajaSize: 12,
     countedQty: 116,
     countedBoxes: 9,
     countedUnits: 8,
@@ -138,6 +152,7 @@ const FLAT_MOCK_DISCREPANCIES: FlatMissingProductItem[] = [
     isColdChain: true,
     expectedQty: 60,
     expectedBoxes: 5,
+    cajaSize: 12,
     countedQty: 57,
     countedBoxes: 4,
     countedUnits: 9,
@@ -158,6 +173,7 @@ const FLAT_MOCK_DISCREPANCIES: FlatMissingProductItem[] = [
     isColdChain: false,
     expectedQty: 50,
     expectedBoxes: 5,
+    cajaSize: 10,
     countedQty: 49,
     countedBoxes: 4,
     countedUnits: 9,
@@ -186,9 +202,14 @@ export default function ProductosFaltantesScreen() {
   const [currentYear, setCurrentYear] = useState(2026);
   const [currentMonth, setCurrentMonth] = useState(7); // Agosto (0-indexed)
 
-  // CANTIDAD CONSOLIDADA POR ÍTEM (ARRANCA CON LO CONTADO POR EL CHOFER)
-  const [corrections, setCorrections] = useState<Record<string, string>>(() =>
-    Object.fromEntries(FLAT_MOCK_DISCREPANCIES.map((item) => [item.id, item.countedQty.toString()]))
+  // CANTIDAD CONSOLIDADA POR ÍTEM EN CAJAS + UNIDADES (ARRANCA CON LO CONTADO POR EL CHOFER)
+  const [corrections, setCorrections] = useState<Record<string, BoxUnitValue>>(() =>
+    Object.fromEntries(
+      FLAT_MOCK_DISCREPANCIES.map((item) => [
+        item.id,
+        { cajas: item.countedBoxes.toString(), unidades: item.countedUnits.toString() },
+      ])
+    )
   );
 
   // CLASIFICACIÓN DE LA DIFERENCIA POR ÍTEM
@@ -210,16 +231,8 @@ export default function ProductosFaltantesScreen() {
   });
   const [noteDraft, setNoteDraft] = useState('');
 
-  const handleCorrectionChange = (itemId: string, val: string) => {
-    setCorrections((prev) => ({ ...prev, [itemId]: val.replace(/[^0-9]/g, '') }));
-  };
-
-  const handleAdjustQty = (itemId: string, delta: number) => {
-    setCorrections((prev) => {
-      const currentVal = parseInt(prev[itemId] || '0', 10);
-      const safeVal = isNaN(currentVal) ? 0 : currentVal;
-      return { ...prev, [itemId]: Math.max(0, safeVal + delta).toString() };
-    });
+  const handleCorrectionChange = (itemId: string, next: BoxUnitValue) => {
+    setCorrections((prev) => ({ ...prev, [itemId]: next }));
   };
 
   const handleSelectType = (type: string) => {
@@ -765,9 +778,8 @@ export default function ProductosFaltantesScreen() {
             {filteredDiscrepancies.map((item) => {
               const isShortage = item.difference < 0;
               const accentColor = isShortage ? theme.colors.danger : theme.colors.warning;
-              const currentCorrection = corrections[item.id] ?? '';
-              const currentCorrectionNum = parseInt(currentCorrection || '0', 10);
-              const isMatched = !isNaN(currentCorrectionNum) && currentCorrectionNum === item.expectedQty;
+              const currentCorrection = corrections[item.id] ?? EMPTY_BOX_UNIT;
+              const isMatched = boxUnitTotal(currentCorrection, item.cajaSize) === item.expectedQty;
               const currentSelectedType = selectedTypes[item.id] || item.differenceType;
               const hasNote = (observations[item.id] ?? '').trim().length > 0;
 
@@ -872,28 +884,13 @@ export default function ProductosFaltantesScreen() {
                       borderTopColor: theme.colors.border,
                     }}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text
-                        variant="label"
-                        numberOfLines={2}
-                        style={{
-                          fontSize: 12,
-                          fontWeight: '700',
-                          color: isMatched ? theme.colors.success : theme.colors.foreground,
-                          flex: 1,
-                        }}
-                      >
-                        Cantidad consolidada
-                      </Text>
-
-                      <QuantityStepper
-                        value={currentCorrection}
-                        onChangeText={(val) => handleCorrectionChange(item.id, val)}
-                        onAdjust={(delta) => handleAdjustQty(item.id, delta)}
-                        accent={isMatched ? theme.colors.success : theme.colors.primary}
-                        inputWidth={56}
-                      />
-                    </View>
+                    <BoxUnitCounter
+                      value={currentCorrection}
+                      onChange={(next) => handleCorrectionChange(item.id, next)}
+                      cajaSize={item.cajaSize}
+                      totalLabel="Total consolidado"
+                      targetQty={item.expectedQty}
+                    />
 
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <Text

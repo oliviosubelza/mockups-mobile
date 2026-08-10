@@ -12,7 +12,16 @@ import {
 } from 'lucide-react-native';
 
 import { goBackOrNavigate } from '@/navigation/registry';
-import { Badge, AppDialog, QuantityStepper, Card, type DialogType } from '@/shared/ui';
+import {
+  Badge,
+  AppDialog,
+  Card,
+  BoxUnitCounter,
+  boxUnitTotal,
+  EMPTY_BOX_UNIT,
+  type BoxUnitValue,
+  type DialogType,
+} from '@/shared/ui';
 import { Box, Text, useAppTheme } from '@/theme';
 
 export interface OrderProductItem {
@@ -22,6 +31,7 @@ export interface OrderProductItem {
   isCold: boolean;
   expectedQty: number; // En unidades esperadas
   expectedBoxes: number;
+  cajaSize: number; // unidades por caja
   driverQty: number; // En unidades contadas por el chofer
   driverBoxes: number;
   driverUnits: number;
@@ -48,6 +58,7 @@ const MOCK_ORDER_MANIFEST: OrderProductItem[] = [
     isCold: true,
     expectedQty: 144,
     expectedBoxes: 12,
+    cajaSize: 12,
     driverQty: 146,
     driverBoxes: 12,
     driverUnits: 2,
@@ -61,6 +72,7 @@ const MOCK_ORDER_MANIFEST: OrderProductItem[] = [
     isCold: false,
     expectedQty: 96,
     expectedBoxes: 8,
+    cajaSize: 12,
     driverQty: 93,
     driverBoxes: 7,
     driverUnits: 9,
@@ -74,6 +86,7 @@ const MOCK_ORDER_MANIFEST: OrderProductItem[] = [
     isCold: false,
     expectedQty: 120,
     expectedBoxes: 10,
+    cajaSize: 12,
     driverQty: 120,
     driverBoxes: 10,
     driverUnits: 0,
@@ -87,6 +100,7 @@ const MOCK_ORDER_MANIFEST: OrderProductItem[] = [
     isCold: true,
     expectedQty: 48,
     expectedBoxes: 4,
+    cajaSize: 12,
     driverQty: 48,
     driverBoxes: 4,
     driverUnits: 0,
@@ -102,13 +116,15 @@ export default function ConsolidacionConteoScreen() {
   // FILTRO RÁPIDO DE LA LISTA: TODOS / CON DIFERENCIA / CONTEO OK
   const [manifestFilter, setManifestFilter] = useState<'ALL' | 'DISCREPANCY' | 'OK'>('ALL');
 
-  // ESTADO DE CORRECCIÓN POR ÍTEM (INICIALMENTE MUESTRA LO CONTADO POR EL CHOFER)
-  const [corrections, setCorrections] = useState<Record<string, string>>({
-    'disc-1': '146',
-    'disc-2': '93',
-    'disc-3': '120',
-    'disc-4': '48',
-  });
+  // CORRECCIÓN POR ÍTEM EN CAJAS + UNIDADES (ARRANCA CON LO CONTADO POR EL CHOFER)
+  const [corrections, setCorrections] = useState<Record<string, BoxUnitValue>>(() =>
+    Object.fromEntries(
+      MOCK_ORDER_MANIFEST.map((item) => [
+        item.id,
+        { cajas: item.driverBoxes.toString(), unidades: item.driverUnits.toString() },
+      ])
+    )
+  );
 
   // SELECT DE TIPO DE DIFERENCIA POR ÍTEM
   const [selectedTypes, setSelectedTypes] = useState<Record<string, string>>({
@@ -141,14 +157,8 @@ export default function ConsolidacionConteoScreen() {
     type: 'info',
   });
 
-  const handleCorrectionChange = (itemId: string, val: string) => {
-    setCorrections((prev) => ({ ...prev, [itemId]: val }));
-  };
-
-  const handleAdjustQty = (itemId: string, delta: number) => {
-    const currentVal = parseInt(corrections[itemId] || '0', 10);
-    const newVal = Math.max(0, currentVal + delta);
-    setCorrections((prev) => ({ ...prev, [itemId]: newVal.toString() }));
+  const handleCorrectionChange = (itemId: string, next: BoxUnitValue) => {
+    setCorrections((prev) => ({ ...prev, [itemId]: next }));
   };
 
   const handleSelectType = (type: string) => {
@@ -315,10 +325,9 @@ export default function ConsolidacionConteoScreen() {
         {/* LISTADO DE TODOS LOS PRODUCTOS DEL MANIFIESTO */}
         <View style={{ gap: 10 }}>
           {filteredManifest.map((item) => {
-            const currentCorrection = corrections[item.id] || '';
-            const currentCorrectionNum = parseInt(currentCorrection || '0', 10);
+            const currentCorrection = corrections[item.id] ?? EMPTY_BOX_UNIT;
             const isOkItem = item.difference === 0;
-            const isMatched = !isNaN(currentCorrectionNum) && currentCorrectionNum === item.expectedQty;
+            const isMatched = boxUnitTotal(currentCorrection, item.cajaSize) === item.expectedQty;
             const currentSelectedType =
               selectedTypes[item.id] || (isOkItem ? COUNT_OK_LABEL : DISCREPANCY_CAUSES[1]);
 
@@ -428,28 +437,13 @@ export default function ConsolidacionConteoScreen() {
                       borderTopColor: theme.colors.border,
                     }}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text
-                        variant="label"
-                        numberOfLines={2}
-                        style={{
-                          fontSize: 12,
-                          fontWeight: '700',
-                          color: isMatched ? theme.colors.success : theme.colors.foreground,
-                          flex: 1,
-                        }}
-                      >
-                        Cantidad consolidada
-                      </Text>
-
-                      <QuantityStepper
-                        value={currentCorrection}
-                        onChangeText={(val) => handleCorrectionChange(item.id, val)}
-                        onAdjust={(delta) => handleAdjustQty(item.id, delta)}
-                        accent={isMatched ? theme.colors.success : theme.colors.primary}
-                        inputWidth={56}
-                      />
-                    </View>
+                    <BoxUnitCounter
+                      value={currentCorrection}
+                      onChange={(next) => handleCorrectionChange(item.id, next)}
+                      cajaSize={item.cajaSize}
+                      totalLabel="Total consolidado"
+                      targetQty={item.expectedQty}
+                    />
 
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <Text

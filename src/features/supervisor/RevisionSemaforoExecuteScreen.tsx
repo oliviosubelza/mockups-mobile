@@ -3,7 +3,6 @@ import { View, ScrollView, TextInput, TouchableOpacity, Modal } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Package,
-  Layers,
   X,
   CheckCircle2,
   XCircle,
@@ -25,8 +24,11 @@ import {
   Button,
   AppDialog,
   SearchField,
-  QuantityStepper,
   Card,
+  BoxUnitCounter,
+  EMPTY_BOX_UNIT,
+  boxUnitTotal,
+  type BoxUnitValue,
   CountProgressHeader,
   type DialogType,
 } from '@/shared/ui';
@@ -90,13 +92,6 @@ export interface CountedAuditRecord {
   expectedQty: number;
 }
 
-interface DraftCount {
-  cajas: string;
-  unidades: string;
-}
-
-const EMPTY_DRAFT: DraftCount = { cajas: '', unidades: '' };
-
 export default function RevisionSemaforoExecuteScreen() {
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
@@ -105,7 +100,7 @@ export default function RevisionSemaforoExecuteScreen() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // BORRADOR DE CONTEO POR PRODUCTO (AÚN NO REGISTRADO, NO REVELA LO ESPERADO)
-  const [draftCounts, setDraftCounts] = useState<Record<string, DraftCount>>({});
+  const [draftCounts, setDraftCounts] = useState<Record<string, BoxUnitValue>>({});
 
   // REGISTROS YA CONFIRMADOS POR EL SUPERVISOR
   const [itemsAuditados, setItemsAuditados] = useState<CountedAuditRecord[]>([]);
@@ -144,34 +139,14 @@ export default function RevisionSemaforoExecuteScreen() {
     return map;
   }, [itemsAuditados]);
 
-  const getDraft = (codigo: string): DraftCount => draftCounts[codigo] ?? EMPTY_DRAFT;
-
-  const setDraftField = (codigo: string, field: keyof DraftCount, value: string) => {
-    const sanitized = value.replace(/[^0-9]/g, '');
-    setDraftCounts((prev) => ({
-      ...prev,
-      [codigo]: { ...(prev[codigo] ?? EMPTY_DRAFT), [field]: sanitized },
-    }));
-  };
-
-  const adjustDraftField = (codigo: string, field: keyof DraftCount, delta: number) => {
-    setDraftCounts((prev) => {
-      const draft = prev[codigo] ?? EMPTY_DRAFT;
-      const parsed = parseInt(draft[field] || '0', 10);
-      const safe = isNaN(parsed) ? 0 : parsed;
-      return {
-        ...prev,
-        [codigo]: { ...draft, [field]: Math.max(0, safe + delta).toString() },
-      };
-    });
-  };
+  const getDraft = (codigo: string): BoxUnitValue => draftCounts[codigo] ?? EMPTY_BOX_UNIT;
 
   // REGISTRAR EL CONTEO DE UNA FILA: RECIÉN AQUÍ SE REVELA LA CANTIDAD ESPERADA
   const handleRegisterRow = (producto: (typeof MOCK_OT_PRODUCTS)[number]) => {
     const draft = getDraft(producto.codigo);
     const numCajas = parseInt(draft.cajas || '0', 10) || 0;
     const numUnidades = parseInt(draft.unidades || '0', 10) || 0;
-    const totalContado = numCajas * producto.cajaSize + numUnidades;
+    const totalContado = boxUnitTotal(draft, producto.cajaSize);
 
     const nuevoRegistro: CountedAuditRecord = {
       id: `audit-${producto.codigo}`,
@@ -300,35 +275,6 @@ export default function RevisionSemaforoExecuteScreen() {
   const modalUnidsNum = parseInt(modalUnidades || '0', 10) || 0;
   const modalCajaSize = modalItem?.cajaSize || 12;
   const modalTotalCalc = modalCjasNum * modalCajaSize + modalUnidsNum;
-
-  // CAMPO DE CANTIDAD CON ETIQUETA, SOBRE EL STEPPER ESTÁNDAR COMPARTIDO
-  const renderStepperField = (
-    codigo: string,
-    field: keyof DraftCount,
-    label: string,
-    hint: string | null,
-    icon: React.ReactNode
-  ) => (
-    <View style={{ flex: 1, gap: 4 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-        {icon}
-        <Text variant="label" style={{ fontSize: 12, color: theme.colors.foreground }}>
-          {label}
-        </Text>
-        {hint && (
-          <Text variant="caption" style={{ fontSize: 10, color: theme.colors.mutedForeground }}>
-            {hint}
-          </Text>
-        )}
-      </View>
-
-      <QuantityStepper
-        value={getDraft(codigo)[field]}
-        onChangeText={(val) => setDraftField(codigo, field, val)}
-        onAdjust={(delta) => adjustDraftField(codigo, field, delta)}
-      />
-    </View>
-  );
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.mainBackground }}>
@@ -462,9 +408,7 @@ export default function RevisionSemaforoExecuteScreen() {
               const isHighlighted = highlightedCode === producto.codigo;
 
               const draft = getDraft(producto.codigo);
-              const draftCajas = parseInt(draft.cajas || '0', 10) || 0;
-              const draftUnidades = parseInt(draft.unidades || '0', 10) || 0;
-              const draftTotal = draftCajas * producto.cajaSize + draftUnidades;
+              const draftTotal = boxUnitTotal(draft, producto.cajaSize);
               const puedeRegistrar = draft.cajas.trim().length > 0 || draft.unidades.trim().length > 0;
 
               const esMatch = isRegistrado && registro.totalContado === registro.expectedQty;
@@ -617,22 +561,13 @@ export default function RevisionSemaforoExecuteScreen() {
                   ) : (
                     /* BLOQUE DE CAPTURA: SIN NINGUNA PISTA DE LA CANTIDAD ESPERADA */
                     <>
-                      <View style={{ flexDirection: 'row', gap: 10 }}>
-                        {renderStepperField(
-                          producto.codigo,
-                          'cajas',
-                          'Cajas',
-                          `(${producto.cajaSize} u/cj)`,
-                          <Layers size={13} color={theme.colors.primary} />
-                        )}
-                        {renderStepperField(
-                          producto.codigo,
-                          'unidades',
-                          'Unidades',
-                          null,
-                          <Package size={13} color={theme.colors.primary} />
-                        )}
-                      </View>
+                      <BoxUnitCounter
+                        value={draft}
+                        onChange={(next) =>
+                          setDraftCounts((prev) => ({ ...prev, [producto.codigo]: next }))
+                        }
+                        cajaSize={producto.cajaSize}
+                      />
 
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                         <Text

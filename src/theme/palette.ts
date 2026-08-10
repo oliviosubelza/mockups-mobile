@@ -13,6 +13,7 @@ export const palette = {
   ink: 'hsl(222, 84%, 5%)',
   slate50: 'hsl(210, 40%, 96%)',
   slate100: 'hsl(220, 13%, 91%)',
+  slate200: 'hsl(220, 13%, 84%)',
   slate400: 'hsl(215, 20%, 65%)',
   slate500: 'hsl(215, 16%, 47%)',
   slate900: 'hsl(222, 47%, 11%)',
@@ -25,6 +26,7 @@ export const palette = {
   gray800: 'hsl(220, 13%, 18%)',
   gray750: 'hsl(220, 13%, 20%)',
   gray700: 'hsl(220, 16%, 22%)',
+  gray650: 'hsl(220, 16%, 29%)',
 
   // Feedback
   danger: 'hsl(0, 84%, 60%)',

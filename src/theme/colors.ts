@@ -21,6 +21,8 @@ export const lightColors = {
   accent: palette.slate50,
 
   border: palette.slate100,
+  /** Un paso más visible que `border`: separadores de listas y divisores de sección. */
+  borderStrong: palette.slate200,
   ring: palette.cobalt,
 
   danger: palette.danger,
@@ -59,6 +61,7 @@ export const darkColors: typeof lightColors = {
   accent: palette.gray750,
 
   border: palette.gray700,
+  borderStrong: palette.gray650,
   ring: palette.cobaltBright,
 
   danger: palette.dangerBright,

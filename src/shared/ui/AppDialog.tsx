@@ -19,6 +19,9 @@ export interface AppDialogProps {
   type?: DialogType;
   buttonText?: string;
   onConfirm?: () => void;
+  /** Cuando se define, el diálogo se muestra en modo confirmación con dos acciones. */
+  onCancel?: () => void;
+  cancelText?: string;
 }
 
 /**
@@ -34,6 +37,8 @@ export const AppDialog = ({
   type = 'success',
   buttonText = 'Entendido',
   onConfirm,
+  onCancel,
+  cancelText = 'Cancelar',
 }: AppDialogProps) => {
   const theme = useAppTheme();
 
@@ -41,6 +46,11 @@ export const AppDialog = ({
     if (onConfirm) {
       onConfirm();
     }
+    onClose();
+  };
+
+  const handleCancel = () => {
+    onCancel?.();
     onClose();
   };
 
@@ -156,15 +166,28 @@ export const AppDialog = ({
             {message}
           </Text>
 
-          {/* Botón de Acción */}
-          <View style={{ width: '100%' }}>
-            <Button
-              label={buttonText}
-              variant={config.buttonVariant}
-              size="md"
-              fullWidth
-              onPress={handlePress}
-            />
+          {/* Acciones: una sola confirmación o par cancelar/confirmar */}
+          <View style={{ width: '100%', flexDirection: 'row', gap: 10 }}>
+            {onCancel && (
+              <View style={{ flex: 1 }}>
+                <Button
+                  label={cancelText}
+                  variant="secondary"
+                  size="md"
+                  fullWidth
+                  onPress={handleCancel}
+                />
+              </View>
+            )}
+            <View style={{ flex: onCancel ? 1.2 : 1 }}>
+              <Button
+                label={buttonText}
+                variant={config.buttonVariant}
+                size="md"
+                fullWidth
+                onPress={handlePress}
+              />
+            </View>
           </View>
         </View>
       </View>

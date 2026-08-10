@@ -18,6 +18,7 @@ import {
   Card,
   BoxUnitCounter,
   boxUnitTotal,
+  formatBoxUnit,
   EMPTY_BOX_UNIT,
   type BoxUnitValue,
   type DialogType,
@@ -409,7 +410,7 @@ export default function ConsolidacionConteoScreen() {
                       numberOfLines={1}
                       style={{ fontSize: 12, fontWeight: '700', color: theme.colors.foreground }}
                     >
-                      {item.expectedQty} u. · {item.expectedBoxes} cajas
+                      {formatBoxUnit(item.expectedBoxes, item.expectedQty - item.expectedBoxes * item.cajaSize, item.expectedQty)}
                     </Text>
                   </View>
 
@@ -422,7 +423,7 @@ export default function ConsolidacionConteoScreen() {
                       numberOfLines={1}
                       style={{ fontSize: 12, fontWeight: '800', color: accentColor }}
                     >
-                      {item.driverQty} u. · {item.driverBoxes} cajas
+                      {formatBoxUnit(item.driverBoxes, item.driverUnits, item.driverQty)}
                     </Text>
                   </View>
                 </View>

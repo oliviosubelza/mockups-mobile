@@ -40,6 +40,18 @@ export const splitBoxUnit = (total: number, cajaSize: number): BoxUnitValue => {
 export const normalizeBoxUnit = (value: BoxUnitValue, cajaSize: number): BoxUnitValue =>
   splitBoxUnit(boxUnitTotal(value, cajaSize), cajaSize);
 
+/**
+ * Describe un conteo dejando explícita la equivalencia: "7 cajas + 9 u. = 93 u.".
+ *
+ * Escribir "93 u. · 7 cajas" se lee como dos exigencias distintas (93 unidades
+ * Y ADEMÁS 8 cajas) en vez de la misma cantidad expresada de dos formas, y
+ * además esconde las unidades sueltas.
+ */
+export const formatBoxUnit = (boxes: number, loose: number, total: number): string => {
+  const cajas = `${boxes} ${boxes === 1 ? 'caja' : 'cajas'}`;
+  return loose > 0 ? `${cajas} + ${loose} u. = ${total} u.` : `${cajas} = ${total} u.`;
+};
+
 export interface BoxUnitCounterProps {
   value: BoxUnitValue;
   onChange: (next: BoxUnitValue) => void;
@@ -129,7 +141,7 @@ export const BoxUnitCounter = ({
               color: isMatched ? theme.colors.success : theme.colors.foreground,
             }}
           >
-            {total} u.
+            {targetQty === undefined ? `${total} u.` : `${total} / ${targetQty} u.`}
           </Text>
         </View>
       )}

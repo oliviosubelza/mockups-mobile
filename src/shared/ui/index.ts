@@ -13,6 +13,13 @@ export { Divider } from './Divider';
 export { Input } from './Input';
 export { SearchField } from './SearchField';
 export { QuantityStepper, type QuantityStepperProps } from './QuantityStepper';
+export {
+  BoxUnitCounter,
+  boxUnitTotal,
+  EMPTY_BOX_UNIT,
+  type BoxUnitCounterProps,
+  type BoxUnitValue,
+} from './BoxUnitCounter';
 export { CountProgressHeader, type CountProgressHeaderProps } from './CountProgressHeader';
 export { FilterChips, type FilterChipOption } from './FilterChips';
 export { FloatingActionButton } from './FloatingActionButton';

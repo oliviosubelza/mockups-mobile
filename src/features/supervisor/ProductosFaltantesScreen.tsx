@@ -822,28 +822,28 @@ export default function ProductosFaltantesScreen() {
                       cajaSize={item.cajaSize}
                       totalLabel="Total consolidado"
                       targetQty={item.expectedQty}
+                      /* El botón comparte la fila del total en vez de gastar
+                         una propia, y el hueco reserva su alto siempre para
+                         que la card no crezca al aparecer. */
+                      action={
+                        <View
+                          style={{
+                            minHeight: theme.controlSizes.xs.height,
+                            justifyContent: "center",
+                          }}
+                        >
+                          {correccionSucia && (
+                            <Button
+                              label="Guardar corrección"
+                              icon={Check}
+                              variant="primary"
+                              size="xs"
+                              onPress={() => commitCorrection(item.id)}
+                            />
+                          )}
+                        </View>
+                      }
                     />
-                  </View>
-
-                  {/* FILA 5: CONFIRMACIÓN.
-                      La fila reserva su alto aunque el botón no esté: si
-                      apareciera de la nada, la card crecería y empujaría todo
-                      lo de abajo justo mientras se está tecleando. */}
-                  <View
-                    style={{
-                      minHeight: theme.controlSizes.xs.height,
-                      justifyContent: "center",
-                    }}
-                  >
-                    {correccionSucia && (
-                      <Button
-                        label="Guardar corrección"
-                        icon={Check}
-                        variant="primary"
-                        size="xs"
-                        onPress={() => commitCorrection(item.id)}
-                      />
-                    )}
                   </View>
                 </Card>
               );

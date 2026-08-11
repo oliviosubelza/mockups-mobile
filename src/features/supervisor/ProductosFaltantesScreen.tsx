@@ -825,17 +825,26 @@ export default function ProductosFaltantesScreen() {
                     />
                   </View>
 
-                  {/* FILA 5: CONFIRMACIÓN. Sólo existe mientras haya algo
-                      distinto que guardar; una card intacta no la muestra. */}
-                  {correccionSucia && (
-                    <Button
-                      label="Guardar corrección"
-                      icon={Check}
-                      variant="primary"
-                      size="xs"
-                      onPress={() => commitCorrection(item.id)}
-                    />
-                  )}
+                  {/* FILA 5: CONFIRMACIÓN.
+                      La fila reserva su alto aunque el botón no esté: si
+                      apareciera de la nada, la card crecería y empujaría todo
+                      lo de abajo justo mientras se está tecleando. */}
+                  <View
+                    style={{
+                      minHeight: theme.controlSizes.xs.height,
+                      justifyContent: "center",
+                    }}
+                  >
+                    {correccionSucia && (
+                      <Button
+                        label="Guardar corrección"
+                        icon={Check}
+                        variant="primary"
+                        size="xs"
+                        onPress={() => commitCorrection(item.id)}
+                      />
+                    )}
+                  </View>
                 </Card>
               );
             })}

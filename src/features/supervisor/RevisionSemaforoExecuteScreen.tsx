@@ -590,6 +590,9 @@ export default function RevisionSemaforoExecuteScreen() {
                           corrección cambió algo, y no tiene tope: el supervisor
                           insiste hasta dar con el número y sólo consolidar
                           cierra la puerta. */}
+                      {/* Reserva el alto del botón aunque no esté: si creciera
+                          al aparecer, la fila empujaría todo lo de abajo justo
+                          mientras se está tecleando la corrección. */}
                       <View
                         style={{
                           flexDirection: 'row',
@@ -597,6 +600,7 @@ export default function RevisionSemaforoExecuteScreen() {
                           gap: 12,
                           flexWrap: 'wrap',
                           marginTop: 2,
+                          minHeight: theme.controlSizes.xs.height,
                         }}
                       >
                         {puedeEditar && editSucio && (

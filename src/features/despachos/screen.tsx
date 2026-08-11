@@ -197,11 +197,10 @@ export default function DespachosScreen() {
             </View>
           ) : (
             <View style={{ gap: 8 }}>
-              {despachosFiltrados.map((despacho, index) => (
+              {despachosFiltrados.map((despacho) => (
                 <DespachoCard
                   key={despacho.id}
                   despacho={despacho}
-                  sequence={index + 1}
                   onPress={() => openChequeo(despacho)}
                 />
               ))}

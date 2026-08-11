@@ -10,7 +10,6 @@ import { PlateChip } from "./PlateChip";
 
 type Props = {
   despacho: Despacho;
-  sequence: number;
   onPress: () => void;
 };
 
@@ -22,11 +21,10 @@ type Props = {
  * the internal dispatch id is not shown at all — the OT code already identifies
  * the order, and a database key earns no room on a driver's card.
  */
-export function DespachoCard({ despacho, sequence, onPress }: Props) {
+export function DespachoCard({ despacho, onPress }: Props) {
   const theme = useAppTheme();
   const meta = ESTADO_META[despacho.estado];
   const ocupacion = calcularOcupacion(despacho);
-  const badgeSize = theme.controlSizes.sm.height;
 
   return (
     <TouchableOpacity activeOpacity={0.7} onPress={onPress}>
@@ -40,22 +38,6 @@ export function DespachoCard({ despacho, sequence, onPress }: Props) {
         borderRadius="xl"
         padding="m"
       >
-        {/* LEADING: sequence within the current (filtered) list */}
-        <Box
-          backgroundColor="secondary"
-          borderRadius="full"
-          width={badgeSize}
-          height={badgeSize}
-          alignItems="center"
-          justifyContent="center"
-        >
-          {/* Montserrat ships one family per weight: the weight comes from
-              fontFamily, not fontWeight, which RN would only fake. */}
-          <Text variant="label" fontFamily="Montserrat_600SemiBold">
-            {sequence}
-          </Text>
-        </Box>
-
         <Box flex={1} gap="s">
           {/* Row 1: what the order is */}
           <Box

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { View, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -14,6 +14,8 @@ import {
   RotateCcw,
   CheckCheck,
   Check,
+  StickyNote,
+  Lock,
 } from 'lucide-react-native';
 
 import { findRouteById, navigateTo } from '@/navigation/registry';
@@ -32,6 +34,8 @@ import {
   type DialogType,
 } from '@/shared/ui';
 import { Text, useAppTheme } from '@/theme';
+
+import { ObservationSheet } from './components/ObservationSheet';
 
 // MANIFIESTO COMPLETO DE LA OT-4892 QUE EL SUPERVISOR DEBE AUDITAR
 const MOCK_OT_PRODUCTS = [
@@ -77,7 +81,6 @@ const MOCK_OT_PRODUCTS = [
   },
 ];
 
-const MAX_RECOUNTS = 2;
 
 export interface CountedAuditRecord {
   id: string;
@@ -104,8 +107,16 @@ export default function RevisionSemaforoExecuteScreen() {
   // REGISTROS YA CONFIRMADOS POR EL SUPERVISOR
   const [itemsAuditados, setItemsAuditados] = useState<CountedAuditRecord[]>([]);
 
-  // CONTADOR DE RE-CONTEOS POR CÓDIGO DE PRODUCTO (MÁXIMO 2 INTENTOS PERMITIDOS)
-  const [recountAttempts, setRecountAttempts] = useState<Record<string, number>>({});
+  /**
+   * Una auditoría consolidada queda cerrada para todos. Hasta ese momento el
+   * supervisor corrige cuantas veces necesite: la revisión espejo existe para
+   * llegar al número correcto, no para gastar intentos.
+   */
+  const [consolidado, setConsolidado] = useState(false);
+
+  // OBSERVACIÓN DEL SUPERVISOR POR PRODUCTO
+  const [observations, setObservations] = useState<Record<string, string>>({});
+  const [noteCodigo, setNoteCodigo] = useState<string | null>(null);
 
   // ESTADO DEL MODAL IN-SITU DE RE-CONTEO RÁPIDO
   const [isRecountModalVisible, setIsRecountModalVisible] = useState(false);
@@ -117,7 +128,7 @@ export default function RevisionSemaforoExecuteScreen() {
   const [highlightedCode, setHighlightedCode] = useState<string | null>(null);
 
   // DIÁLOGO DE CIERRE DE AUDITORÍA
-  const [dialogConfig, setDialogConfig] = useState<{
+  type DialogConfig = {
     visible: boolean;
     title: string;
     message: string;
@@ -126,7 +137,20 @@ export default function RevisionSemaforoExecuteScreen() {
     onCancel?: () => void;
     cancelText?: string;
     buttonText?: string;
-  }>({ visible: false, title: '', message: '', type: 'info' });
+  };
+  const [dialogConfig, setDialogConfig] = useState<DialogConfig>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'info',
+  });
+
+  /**
+   * AppDialog invoca `onClose` siempre después de confirmar, así que un diálogo
+   * que abre otro se cerraría solo. El siguiente paso se encola acá y lo monta
+   * el propio `onClose` en lugar de cerrar.
+   */
+  const dialogSiguiente = useRef<DialogConfig | null>(null);
 
   // ÍNDICE DE REGISTROS CONFIRMADOS POR CÓDIGO
   const registradosPorCodigo = useMemo(() => {
@@ -174,8 +198,7 @@ export default function RevisionSemaforoExecuteScreen() {
 
   // ABRIR MODAL SHEET FLOTANTE IN-SITU DE RE-CONTEO
   const openRecountModal = (item: CountedAuditRecord) => {
-    const attempts = recountAttempts[item.codigo] || 0;
-    if (attempts >= MAX_RECOUNTS) return;
+    if (consolidado) return;
 
     setModalItem(item);
     setModalCount({
@@ -204,13 +227,20 @@ export default function RevisionSemaforoExecuteScreen() {
       )
     );
 
-    setRecountAttempts((prev) => ({
-      ...prev,
-      [modalItem.codigo]: (prev[modalItem.codigo] || 0) + 1,
-    }));
-
     setIsRecountModalVisible(false);
     setModalItem(null);
+  };
+
+  // GUARDA LA OBSERVACIÓN; SI QUEDA VACÍA, LA ELIMINA DEL REGISTRO
+  const handleSaveNote = (text: string) => {
+    if (!noteCodigo) return;
+    setObservations((prev) => {
+      const next = { ...prev };
+      if (text.length === 0) delete next[noteCodigo];
+      else next[noteCodigo] = text;
+      return next;
+    });
+    setNoteCodigo(null);
   };
 
   // MÉTRICAS EN TIEMPO REAL SOBRE EL MANIFIESTO COMPLETO
@@ -238,32 +268,50 @@ export default function RevisionSemaforoExecuteScreen() {
     if (route) navigateTo(route);
   };
 
-  const confirmFinishAudit = () => {
-    setDialogConfig({
-      visible: true,
-      title: '¡Auditoría Semáforo Guardada!',
-      message: `Se ha registrado la auditoría a ciegas de ${stats.contados} de ${stats.total} productos en la Orden OT-4892.`,
-      type: 'success',
-      onConfirm: handleRedirectToList,
-    });
-  };
-
-  // SI QUEDAN PRODUCTOS SIN CONTAR, PEDIR CONFIRMACIÓN EXPLÍCITA ANTES DE CERRAR
-  const handleFinishAudit = () => {
-    if (stats.pendientes > 0) {
-      setDialogConfig({
-        visible: true,
-        title: 'Quedan productos sin contar',
-        message: `Todavía hay ${stats.pendientes} de ${stats.total} productos sin registrar. Si finalizas ahora, quedarán fuera de la auditoría.`,
-        type: 'warning',
-        buttonText: 'Finalizar igual',
-        cancelText: 'Seguir contando',
-        onCancel: closeDialog,
-        onConfirm: confirmFinishAudit,
-      });
+  const handleDialogClose = () => {
+    if (dialogSiguiente.current) {
+      setDialogConfig(dialogSiguiente.current);
+      dialogSiguiente.current = null;
       return;
     }
-    confirmFinishAudit();
+    closeDialog();
+  };
+
+  // CIERRA LA AUDITORÍA: A PARTIR DE ACÁ NADIE PUEDE TOCARLA
+  const confirmarConsolidacion = () => {
+    setConsolidado(true);
+    dialogSiguiente.current = {
+      visible: true,
+      title: 'Auditoría consolidada',
+      message: `Se consolidó la revisión de ${stats.contados} de ${stats.total} productos en la Orden OT-4892. El conteo queda cerrado y ya no admite cambios.`,
+      type: 'success',
+      onConfirm: handleRedirectToList,
+    };
+  };
+
+  /**
+   * Consolidar es irreversible, así que se confirma siempre — y si además
+   * quedan productos sin registrar, se dice en el mismo aviso en lugar de
+   * encadenar dos preguntas.
+   */
+  const handleConsolidar = () => {
+    if (consolidado) return;
+
+    const pendientes =
+      stats.pendientes > 0
+        ? `Quedan ${stats.pendientes} de ${stats.total} productos sin registrar y quedarán fuera de la auditoría. `
+        : '';
+
+    setDialogConfig({
+      visible: true,
+      title: 'Consolidar auditoría',
+      message: `${pendientes}Al consolidar, el conteo queda cerrado: ni vos ni nadie podrá corregirlo después.`,
+      type: 'warning',
+      buttonText: 'Consolidar',
+      cancelText: 'Seguir revisando',
+      onCancel: closeDialog,
+      onConfirm: confirmarConsolidacion,
+    });
   };
 
   // FILTRADO DEL MANIFIESTO POR CÓDIGO O NOMBRE
@@ -414,8 +462,8 @@ export default function RevisionSemaforoExecuteScreen() {
               const diff = isRegistrado ? registro.totalContado - registro.expectedQty : 0;
               const diffText = diff > 0 ? `+${diff} (sobran)` : `${diff} (faltan)`;
 
-              const attempts = recountAttempts[producto.codigo] || 0;
-              const remainingAttempts = MAX_RECOUNTS - attempts;
+              const nota = observations[producto.codigo] ?? '';
+              const tieneNota = nota.length > 0;
 
               return (
                 <Card
@@ -512,49 +560,72 @@ export default function RevisionSemaforoExecuteScreen() {
                         {esMatch ? '✓ Conteo conforme' : `Diferencia: ${diffText}`}
                       </Text>
 
-                      {!esMatch &&
-                        (remainingAttempts > 0 ? (
+                      {/* ACCIONES DEL REGISTRO. Recontar está disponible en
+                          cualquier ítem y sin tope: el supervisor corrige hasta
+                          dar con el número, y sólo consolidar cierra la puerta. */}
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 12,
+                          flexWrap: 'wrap',
+                          marginTop: 2,
+                        }}
+                      >
+                        {!consolidado && (
                           <TouchableOpacity
                             onPress={() => openRecountModal(registro)}
                             activeOpacity={0.7}
-                            style={{
-                              backgroundColor: theme.colors.primarySoft,
-                              borderRadius: 6,
-                              paddingHorizontal: 8,
-                              paddingVertical: 5,
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: 5,
-                              alignSelf: 'flex-start',
-                              borderWidth: 1,
-                              borderColor: theme.colors.primary,
-                              marginTop: 2,
-                            }}
+                            hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
                           >
-                            <RotateCcw size={12} color={theme.colors.primary} />
+                            <RotateCcw size={13} color={theme.colors.primary} />
                             <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
-                              Recontar producto ({remainingAttempts}{' '}
-                              {remainingAttempts === 1 ? 'intento restante' : 'intentos restantes'})
+                              Recontar
                             </Text>
                           </TouchableOpacity>
-                        ) : (
-                          <View
-                            style={{
-                              backgroundColor: theme.colors.secondary,
-                              borderRadius: 6,
-                              paddingHorizontal: 8,
-                              paddingVertical: 4,
-                              alignSelf: 'flex-start',
-                              borderWidth: 1,
-                              borderColor: theme.colors.border,
-                              marginTop: 2,
-                            }}
+                        )}
+
+                        {consolidado && !tieneNota ? null : (
+                          <TouchableOpacity
+                            onPress={() => setNoteCodigo(producto.codigo)}
+                            activeOpacity={0.7}
+                            hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }}
                           >
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: theme.colors.mutedForeground }}>
-                              🔒 Máximo de {MAX_RECOUNTS} re-conteos alcanzado (Bloqueado)
+                            <StickyNote
+                              size={13}
+                              color={tieneNota ? theme.colors.primary : theme.colors.mutedForeground}
+                            />
+                            <Text
+                              numberOfLines={1}
+                              style={{
+                                fontSize: 11,
+                                fontWeight: '700',
+                                color: tieneNota ? theme.colors.primary : theme.colors.mutedForeground,
+                                flexShrink: 1,
+                              }}
+                            >
+                              {tieneNota ? 'Ver observación' : 'Agregar observación'}
                             </Text>
-                          </View>
-                        ))}
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  ) : consolidado ? (
+                    /* CONSOLIDADA: lo que no se registró ya no se puede contar */
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        marginTop: 2,
+                      }}
+                    >
+                      <Lock size={13} color={theme.colors.mutedForeground} />
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.mutedForeground }}>
+                        Quedó sin registrar. La auditoría ya fue consolidada.
+                      </Text>
                     </View>
                   ) : (
                     /* BLOQUE DE CAPTURA: SIN NINGUNA PISTA DE LA CANTIDAD ESPERADA */
@@ -766,18 +837,9 @@ export default function RevisionSemaforoExecuteScreen() {
           >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ gap: 2, flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text variant="header" style={{ fontSize: 16, fontWeight: '800', color: theme.colors.foreground }}>
-                    Re-conteo en Sitio
-                  </Text>
-                  {modalItem && (
-                    <Badge
-                      label={`Intento ${(recountAttempts[modalItem.codigo] || 0) + 1} de ${MAX_RECOUNTS}`}
-                      tone="warning"
-                      size="sm"
-                    />
-                  )}
-                </View>
+                <Text variant="header" style={{ fontSize: 16, fontWeight: '800', color: theme.colors.foreground }}>
+                  Re-conteo en Sitio
+                </Text>
                 <Text variant="caption" style={{ fontSize: 12, color: theme.colors.mutedForeground }} numberOfLines={1}>
                   {modalItem ? `${modalItem.codigo} - ${modalItem.nombre}` : ''}
                 </Text>
@@ -848,10 +910,11 @@ export default function RevisionSemaforoExecuteScreen() {
 
       {/* BARRA DE ACCIÓN ANCLADA (hermana del ScrollView, no flotante) */}
       <ScreenActionBar
-        actionLabel="Finalizar"
-        actionIcon={CheckCheck}
-        onAction={handleFinishAudit}
-        actionDisabled={stats.contados === 0}
+        actionLabel={consolidado ? 'Consolidada' : 'Consolidar'}
+        actionIcon={consolidado ? Lock : CheckCheck}
+        tone={consolidado ? 'success' : 'primary'}
+        onAction={handleConsolidar}
+        actionDisabled={consolidado || stats.contados === 0}
       >
         <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.foreground }}>
           {stats.contados} de {stats.total} contados
@@ -870,10 +933,20 @@ export default function RevisionSemaforoExecuteScreen() {
         </View>
       </ScreenActionBar>
 
+      {/* OBSERVACIÓN DEL SUPERVISOR SOBRE UN PRODUCTO AUDITADO */}
+      <ObservationSheet
+        visible={noteCodigo !== null}
+        subtitle={noteCodigo ? `${noteCodigo} · OT-4892` : ''}
+        value={noteCodigo ? (observations[noteCodigo] ?? '') : ''}
+        readOnly={consolidado}
+        onSave={handleSaveNote}
+        onClose={() => setNoteCodigo(null)}
+      />
+
       {/* DIÁLOGO DE CIERRE DE AUDITORÍA */}
       <AppDialog
         visible={dialogConfig.visible}
-        onClose={closeDialog}
+        onClose={handleDialogClose}
         title={dialogConfig.title}
         message={dialogConfig.message}
         type={dialogConfig.type}

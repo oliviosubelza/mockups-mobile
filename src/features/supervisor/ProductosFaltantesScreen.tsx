@@ -4,14 +4,12 @@ import {
   ChevronDown,
   FileText,
   PackageSearch,
-  StickyNote,
   X
 } from "lucide-react-native";
 import React, { useState } from "react";
 import {
   Modal,
   ScrollView,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -225,17 +223,6 @@ export default function ProductosFaltantesScreen() {
     activeItemId: null,
   });
 
-  // OBSERVACIÓN DEL SUPERVISOR POR ÍTEM
-  const [observations, setObservations] = useState<Record<string, string>>({});
-  const [noteState, setNoteState] = useState<{
-    visible: boolean;
-    activeItemId: string | null;
-  }>({
-    visible: false,
-    activeItemId: null,
-  });
-  const [noteDraft, setNoteDraft] = useState("");
-
   const handleCorrectionChange = (itemId: string, next: BoxUnitValue) => {
     setCorrections((prev) => ({ ...prev, [itemId]: next }));
   };
@@ -248,32 +235,6 @@ export default function ProductosFaltantesScreen() {
       }));
     }
     setPickerState({ visible: false, activeItemId: null });
-  };
-
-  const openNoteModal = (itemId: string) => {
-    setNoteDraft(observations[itemId] ?? "");
-    setNoteState({ visible: true, activeItemId: itemId });
-  };
-
-  const closeNoteModal = () => {
-    setNoteState({ visible: false, activeItemId: null });
-    setNoteDraft("");
-  };
-
-  // GUARDA LA OBSERVACIÓN; SI QUEDA VACÍA, LA ELIMINA DEL REGISTRO
-  const handleSaveNote = () => {
-    const { activeItemId } = noteState;
-    if (!activeItemId) return;
-
-    const trimmed = noteDraft.trim();
-    setObservations((prev) => {
-      const next = { ...prev };
-      if (trimmed.length === 0) delete next[activeItemId];
-      else next[activeItemId] = trimmed;
-      return next;
-    });
-
-    closeNoteModal();
   };
 
   // FILTRADO PLANO DE ÍTEMS DE DISCREPANCIA (CADA OCURRENCIA POR SEPARADO)
@@ -295,11 +256,6 @@ export default function ProductosFaltantesScreen() {
 
     return true;
   });
-
-  // ÍTEM ACTIVO DEL MODAL DE OBSERVACIÓN
-  const noteItem =
-    FLAT_MOCK_DISCREPANCIES.find((i) => i.id === noteState.activeItemId) ??
-    null;
 
   const totalShortageCount = FLAT_MOCK_DISCREPANCIES.filter(
     (p) => p.difference < 0,
@@ -587,7 +543,6 @@ export default function ProductosFaltantesScreen() {
                 item.expectedQty;
               const currentSelectedType =
                 selectedTypes[item.id] || item.differenceType;
-              const hasNote = (observations[item.id] ?? "").trim().length > 0;
 
               return (
                 <Card
@@ -858,81 +813,28 @@ export default function ProductosFaltantesScreen() {
                     </View>
                   </View>
 
-                  {/* FILA 6: OBSERVACIÓN DEL SUPERVISOR + ACCESO AL DETALLE */}
+                  {/* FILA 6: ACCESO AL DETALLE */}
                   {/* Se separa con aire, no con línea: la única división de la
                       card marca el paso de lectura a edición. */}
                   <View
                     style={{
                       flexDirection: "row",
-                      justifyContent: "space-between",
+                      justifyContent: "flex-end",
                       alignItems: "center",
-                      gap: 8,
+                      gap: 3,
                       marginTop: 2,
                     }}
                   >
-                    <TouchableOpacity
-                      onPress={() => openNoteModal(item.id)}
-                      activeOpacity={0.7}
-                      hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }}
+                    <Text
                       style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 4,
-                        flexShrink: 1,
+                        fontSize: 11,
+                        fontWeight: "700",
+                        color: theme.colors.primary,
                       }}
                     >
-                      <StickyNote
-                        size={13}
-                        color={
-                          hasNote
-                            ? theme.colors.primary
-                            : theme.colors.mutedForeground
-                        }
-                      />
-                      <Text
-                        numberOfLines={1}
-                        style={{
-                          fontSize: 11,
-                          fontWeight: "700",
-                          color: hasNote
-                            ? theme.colors.primary
-                            : theme.colors.mutedForeground,
-                          flexShrink: 1,
-                        }}
-                      >
-                        {hasNote ? "Ver observación" : "Agregar observación"}
-                      </Text>
-                      {hasNote && (
-                        <View
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: 3,
-                            backgroundColor: theme.colors.primary,
-                          }}
-                        />
-                      )}
-                    </TouchableOpacity>
-
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 3,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          fontWeight: "700",
-                          color: theme.colors.primary,
-                        }}
-                      >
-                        Ver detalle
-                      </Text>
-                      <ArrowRight size={13} color={theme.colors.primary} />
-                    </View>
+                      Ver detalle
+                    </Text>
+                    <ArrowRight size={13} color={theme.colors.primary} />
                   </View>
                 </Card>
               );
@@ -940,179 +842,6 @@ export default function ProductosFaltantesScreen() {
           </View>
         )}
       </ScrollView>
-
-      {/* MODAL SHEET DE OBSERVACIÓN DEL SUPERVISOR */}
-      <Modal
-        visible={noteState.visible}
-        transparent
-        animationType="slide"
-        statusBarTranslucent
-        onRequestClose={closeNoteModal}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.6)",
-            justifyContent: "flex-end",
-          }}
-        >
-          <View
-            style={{
-              width: "100%",
-              backgroundColor: theme.colors.cardBackground,
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
-              padding: 20,
-              paddingBottom: Math.max(20, insets.bottom + 12),
-              gap: 14,
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: -4 },
-              shadowOpacity: 0.2,
-              shadowRadius: 10,
-              elevation: 10,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 10,
-              }}
-            >
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 10,
-                  flexShrink: 1,
-                }}
-              >
-                <View
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
-                    backgroundColor: theme.colors.primarySoft,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <StickyNote size={20} color={theme.colors.primary} />
-                </View>
-                <View style={{ flexShrink: 1 }}>
-                  <Text
-                    variant="label"
-                    style={{
-                      fontSize: 16,
-                      fontWeight: "800",
-                      color: theme.colors.foreground,
-                    }}
-                  >
-                    Observación
-                  </Text>
-                  <Text
-                    variant="caption"
-                    numberOfLines={1}
-                    style={{
-                      fontSize: 11,
-                      color: theme.colors.mutedForeground,
-                    }}
-                  >
-                    {noteItem
-                      ? `${noteItem.codigo} · ${noteItem.orderCode}`
-                      : ""}
-                  </Text>
-                </View>
-              </View>
-
-              <TouchableOpacity onPress={closeNoteModal} style={{ padding: 4 }}>
-                <X size={22} color={theme.colors.mutedForeground} />
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              value={noteDraft}
-              onChangeText={setNoteDraft}
-              placeholder="Ej. Se verificó con el chofer, faltaban 3 unidades desde el despacho."
-              placeholderTextColor={theme.colors.mutedForeground}
-              multiline
-              textAlignVertical="top"
-              maxLength={280}
-              style={{
-                minHeight: 110,
-                backgroundColor: theme.colors.secondary,
-                borderRadius: 12,
-                borderWidth: 1.5,
-                borderColor: theme.colors.border,
-                padding: 12,
-                fontSize: 13,
-                color: theme.colors.foreground,
-              }}
-            />
-
-            <Text
-              variant="caption"
-              style={{
-                fontSize: 11,
-                color: theme.colors.mutedForeground,
-                textAlign: "right",
-              }}
-            >
-              {noteDraft.length}/280
-            </Text>
-
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <TouchableOpacity
-                onPress={closeNoteModal}
-                activeOpacity={0.8}
-                style={{
-                  flex: 1,
-                  paddingVertical: 12,
-                  borderRadius: 12,
-                  backgroundColor: theme.colors.secondary,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: "700",
-                    color: theme.colors.foreground,
-                  }}
-                >
-                  Cancelar
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={handleSaveNote}
-                activeOpacity={0.8}
-                style={{
-                  flex: 1.5,
-                  paddingVertical: 12,
-                  borderRadius: 12,
-                  backgroundColor: theme.colors.primary,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexDirection: "row",
-                  gap: 6,
-                }}
-              >
-                <Check size={16} strokeWidth={3} color="#ffffff" />
-                <Text
-                  style={{ fontSize: 13, fontWeight: "800", color: "#ffffff" }}
-                >
-                  Guardar Observación
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* MODAL SELECTOR DE TIPO DE DIFERENCIA */}
       <Modal

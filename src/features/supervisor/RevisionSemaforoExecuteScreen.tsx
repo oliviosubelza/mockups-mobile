@@ -11,7 +11,6 @@ import {
   QrCode,
   Camera,
   ScanLine,
-  RotateCcw,
   CheckCheck,
   Check,
   StickyNote,
@@ -118,10 +117,16 @@ export default function RevisionSemaforoExecuteScreen() {
   const [observations, setObservations] = useState<Record<string, string>>({});
   const [noteCodigo, setNoteCodigo] = useState<string | null>(null);
 
-  // ESTADO DEL MODAL IN-SITU DE RE-CONTEO RÁPIDO
-  const [isRecountModalVisible, setIsRecountModalVisible] = useState(false);
-  const [modalItem, setModalItem] = useState<CountedAuditRecord | null>(null);
-  const [modalCount, setModalCount] = useState<BoxUnitValue>(EMPTY_BOX_UNIT);
+  /**
+   * Corrección en curso por producto, sin confirmar todavía.
+   *
+   * La corrección se edita en la propia fila: el modal existía para que gastar
+   * uno de los dos intentos fuera un acto deliberado, y sin tope esa ceremonia
+   * era fricción sin nada que proteger. Igual se confirma con un botón — un
+   * conteo corregido es un hecho a registrar, no un campo que va cambiando
+   * mientras se teclea.
+   */
+  const [editDrafts, setEditDrafts] = useState<Record<string, BoxUnitValue>>({});
 
   // ESTADO DEL ESCÁNER DE CÓDIGO DE BARRAS POR CÁMARA
   const [isBarcodeScannerVisible, setIsBarcodeScannerVisible] = useState(false);
@@ -196,39 +201,40 @@ export default function RevisionSemaforoExecuteScreen() {
     setHighlightedCode(found ? found.codigo : null);
   };
 
-  // ABRIR MODAL SHEET FLOTANTE IN-SITU DE RE-CONTEO
-  const openRecountModal = (item: CountedAuditRecord) => {
-    if (consolidado) return;
+  /** Lo tecleado para un registro, o su valor confirmado si aún no se tocó. */
+  const getEditValue = (registro: CountedAuditRecord): BoxUnitValue =>
+    editDrafts[registro.codigo] ?? {
+      cajas: registro.numCajas.toString(),
+      unidades: registro.numUnidades.toString(),
+    };
 
-    setModalItem(item);
-    setModalCount({
-      cajas: item.numCajas.toString(),
-      unidades: item.numUnidades.toString(),
-    });
-    setIsRecountModalVisible(true);
-  };
+  const setEditValue = (codigo: string, next: BoxUnitValue) =>
+    setEditDrafts((prev) => ({ ...prev, [codigo]: next }));
 
-  // GUARDAR AJUSTE DE RE-CONTEO DESDE EL MODAL SHEET IN-SITU
-  const saveRecountFromModal = () => {
-    if (!modalItem) return;
-
-    const totalContadoCalculado = boxUnitTotal(modalCount, modalItem.cajaSize);
+  // CONFIRMA LA CORRECCIÓN TECLEADA EN LA FILA
+  const commitEdit = (registro: CountedAuditRecord) => {
+    const draft = editDrafts[registro.codigo];
+    if (!draft || consolidado) return;
 
     setItemsAuditados((prev) =>
       prev.map((rec) =>
-        rec.codigo === modalItem.codigo
+        rec.codigo === registro.codigo
           ? {
               ...rec,
-              numCajas: parseInt(modalCount.cajas || '0', 10) || 0,
-              numUnidades: parseInt(modalCount.unidades || '0', 10) || 0,
-              totalContado: totalContadoCalculado,
+              numCajas: parseInt(draft.cajas || '0', 10) || 0,
+              numUnidades: parseInt(draft.unidades || '0', 10) || 0,
+              totalContado: boxUnitTotal(draft, registro.cajaSize),
             }
-          : rec
-      )
+          : rec,
+      ),
     );
 
-    setIsRecountModalVisible(false);
-    setModalItem(null);
+    // El borrador se descarta: a partir de acá la fila vuelve a leer del registro.
+    setEditDrafts((prev) => {
+      const next = { ...prev };
+      delete next[registro.codigo];
+      return next;
+    });
   };
 
   // GUARDA LA OBSERVACIÓN; SI QUEDA VACÍA, LA ELIMINA DEL REGISTRO
@@ -465,6 +471,14 @@ export default function RevisionSemaforoExecuteScreen() {
               const nota = observations[producto.codigo] ?? '';
               const tieneNota = nota.length > 0;
 
+              // Sólo hay algo que corregir donde el conteo no cerró.
+              const puedeEditar = isRegistrado && !esMatch && !consolidado;
+              const editValue = isRegistrado ? getEditValue(registro) : EMPTY_BOX_UNIT;
+              const editSucio =
+                isRegistrado &&
+                (editValue.cajas !== registro.numCajas.toString() ||
+                  editValue.unidades !== registro.numUnidades.toString());
+
               return (
                 <Card
                   key={producto.id}
@@ -524,17 +538,29 @@ export default function RevisionSemaforoExecuteScreen() {
                         gap: 5,
                       }}
                     >
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-                        <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
-                          Contado por el supervisor:
-                        </Text>
-                        <Text
-                          variant="label"
-                          style={{ fontSize: 12, fontWeight: '800', color: theme.colors.foreground }}
-                        >
-                          {registro.numCajas} Cajas + {registro.numUnidades} u. = {registro.totalContado} u.
-                        </Text>
-                      </View>
+                      {/* La corrección se teclea acá mismo. Donde ya no hay
+                          nada que corregir, la misma línea se lee estática. */}
+                      {puedeEditar ? (
+                        <BoxUnitCounter
+                          value={editValue}
+                          onChange={(next) => setEditValue(producto.codigo, next)}
+                          cajaSize={registro.cajaSize}
+                          totalLabel="Contado por el supervisor"
+                          targetQty={registro.expectedQty}
+                        />
+                      ) : (
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                          <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
+                            Contado por el supervisor:
+                          </Text>
+                          <Text
+                            variant="label"
+                            style={{ fontSize: 12, fontWeight: '800', color: theme.colors.foreground }}
+                          >
+                            {registro.numCajas} Cajas + {registro.numUnidades} u. = {registro.totalContado} u.
+                          </Text>
+                        </View>
+                      )}
 
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
                         <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
@@ -560,10 +586,10 @@ export default function RevisionSemaforoExecuteScreen() {
                         {esMatch ? '✓ Conteo conforme' : `Diferencia: ${diffText}`}
                       </Text>
 
-                      {/* ACCIONES DEL REGISTRO. Recontar sale sólo donde hay
-                          algo que corregir, pero sin tope de intentos: el
-                          supervisor insiste hasta dar con el número y sólo
-                          consolidar cierra la puerta. */}
+                      {/* ACCIONES DEL REGISTRO. Guardar sólo aparece cuando la
+                          corrección cambió algo, y no tiene tope: el supervisor
+                          insiste hasta dar con el número y sólo consolidar
+                          cierra la puerta. */}
                       <View
                         style={{
                           flexDirection: 'row',
@@ -573,16 +599,16 @@ export default function RevisionSemaforoExecuteScreen() {
                           marginTop: 2,
                         }}
                       >
-                        {!esMatch && !consolidado && (
+                        {puedeEditar && editSucio && (
                           <TouchableOpacity
-                            onPress={() => openRecountModal(registro)}
+                            onPress={() => commitEdit(registro)}
                             activeOpacity={0.7}
                             hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }}
                             style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
                           >
-                            <RotateCcw size={13} color={theme.colors.primary} />
+                            <Check size={13} strokeWidth={3} color={theme.colors.primary} />
                             <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
-                              Recontar
+                              Guardar corrección
                             </Text>
                           </TouchableOpacity>
                         )}
@@ -806,105 +832,6 @@ export default function RevisionSemaforoExecuteScreen() {
               fullWidth
               size="md"
             />
-          </View>
-        </View>
-      </Modal>
-
-      {/* MODAL SHEET FLOTANTE DE RE-CONTEO RÁPIDO (IN-SITU) */}
-      <Modal
-        visible={isRecountModalVisible}
-        transparent
-        animationType="slide"
-        statusBarTranslucent
-        onRequestClose={() => setIsRecountModalVisible(false)}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.6)',
-            justifyContent: 'flex-end',
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: theme.colors.cardBackground,
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
-              padding: 20,
-              paddingBottom: Math.max(20, insets.bottom + 12),
-              gap: 16,
-              elevation: 20,
-            }}
-          >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View style={{ gap: 2, flex: 1 }}>
-                <Text variant="header" style={{ fontSize: 16, fontWeight: '800', color: theme.colors.foreground }}>
-                  Re-conteo en Sitio
-                </Text>
-                <Text variant="caption" style={{ fontSize: 12, color: theme.colors.mutedForeground }} numberOfLines={1}>
-                  {modalItem ? `${modalItem.codigo} - ${modalItem.nombre}` : ''}
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                onPress={() => setIsRecountModalVisible(false)}
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 16,
-                  backgroundColor: theme.colors.secondary,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <X size={18} color={theme.colors.mutedForeground} />
-              </TouchableOpacity>
-            </View>
-
-            {/* MISMO CONTROL QUE LA CARD: acarrea sueltas a cajas */}
-            <BoxUnitCounter
-              value={modalCount}
-              onChange={setModalCount}
-              cajaSize={modalItem?.cajaSize ?? 1}
-              totalLabel="Total recontado"
-              targetQty={modalItem?.expectedQty}
-            />
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-              <TouchableOpacity
-                onPress={() => setIsRecountModalVisible(false)}
-                style={{
-                  flex: 1,
-                  paddingVertical: 12,
-                  borderRadius: 12,
-                  backgroundColor: theme.colors.secondary,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                }}
-              >
-                <Text style={{ fontWeight: '700', color: theme.colors.foreground, fontSize: 13 }}>
-                  Cancelar
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={saveRecountFromModal}
-                style={{
-                  flex: 1.5,
-                  paddingVertical: 12,
-                  borderRadius: 12,
-                  backgroundColor: theme.colors.primary,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text style={{ fontWeight: '800', color: '#ffffff', fontSize: 13 }}>
-                  Guardar Re-conteo
-                </Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </Modal>

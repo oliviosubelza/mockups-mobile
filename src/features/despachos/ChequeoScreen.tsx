@@ -437,16 +437,10 @@ export default function ChequeoScreen({ despachoId }: Props) {
           buttonText: "Ver el detalle",
         }
       : {
-          /*
-           * Sin cuerpo: el título es la pregunta entera. El único dato que no
-           * se puede perder es cuántos ítems quedan sin contar, porque se
-           * cierran en 0 y pasan a ser diferencia del chofer — así que ese
-           * dato viaja EN el título en vez de en una descripción aparte.
-           */
-          title:
-            totalEsperado - contados > 0
-              ? `¿Confirmar con ${totalEsperado - contados} ítems sin contar?`
-              : "¿Confirmar el conteo?",
+          // Sin cuerpo y sin datos: el título es toda la pregunta.
+          title: "Confirmar registro",
+          // El tono sigue distinguiendo un cierre completo de uno con ítems
+          // sin contar, ya sin decirlo con palabras.
           type: avanceCompleto ? "info" : "warning",
           buttonText: "Confirmar conteo",
           cancelText: "Seguir contando",

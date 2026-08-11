@@ -1,12 +1,4 @@
-import {
-  CheckCircle2,
-  ChevronRight,
-  Clock,
-  FileText,
-  ShieldAlert,
-  Snowflake,
-  Truck,
-} from "lucide-react-native";
+import { ShieldAlert, Snowflake } from "lucide-react-native";
 import React, { useState } from "react";
 import { ScrollView, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +6,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { findRouteById, navigateTo } from "@/navigation/registry";
 import { Badge, SearchField } from "@/shared/ui";
 import { Box, Text, useAppTheme } from "@/theme";
+
+import { SemaforoOrderCard } from "./components/SemaforoOrderCard";
 
 export interface SemaforoAuditItem {
   id: string;
@@ -317,189 +311,13 @@ export default function RevisionSemaforoListScreen() {
 
         {/* LISTADO DE ORDENES DE TRANSPORTE PARA REVISIÓN SEMÁFORO */}
         <View style={{ gap: 18 }}>
-          {filteredOrders.map((order) => {
-            return (
-              <View
-                key={order.id}
-                style={{
-                  backgroundColor: theme.colors.cardBackground,
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  padding: 14,
-                  gap: 10,
-                }}
-              >
-                {/* FILA 1: CÓDIGO DE OT + BADGES DE PRODUCTOS Y FRÍO */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <FileText size={16} color={theme.colors.primary} />
-                    <Text
-                      variant="header"
-                      style={{
-                        fontSize: 16,
-                        fontWeight: "800",
-                        color: theme.colors.foreground,
-                      }}
-                    >
-                      {order.orderCode}
-                    </Text>
-                    {order.isColdChain && (
-                      <Badge
-                        label="❄️ Frío"
-                        tone="neutral"
-                        size="sm"
-                      />
-                    )}
-                  </View>
-
-                  <Badge
-                    label={`${order.totalProducts} Productos`}
-                    tone="neutral"
-                    size="sm"
-                  />
-                </View>
-
-                {/* FILA 2: DATOS DEL CHOFER Y RUTA EN FILAS SEPARADAS */}
-                <View
-                  style={{
-                    backgroundColor: theme.colors.secondary,
-                    borderRadius: 10,
-                    padding: 8,
-                    gap: 4,
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <Truck size={13} color={theme.colors.mutedForeground} />
-                    <Text
-                      variant="caption"
-                      style={{
-                        fontSize: 11,
-                        fontWeight: "700",
-                        color: theme.colors.foreground,
-                      }}
-                    >
-                      Chofer: {order.driverName}
-                    </Text>
-                  </View>
-                  <Text
-                    variant="caption"
-                    style={{
-                      fontSize: 11,
-                      color: theme.colors.mutedForeground,
-                      marginLeft: 19,
-                    }}
-                  >
-                    Ruta: {order.zonaRuta}
-                  </Text>
-                </View>
-
-                {/* FILA 3: HISTORIAL DE INSPECCIÓN MULTI-USUARIO */}
-                <View style={{ gap: 4 }}>
-                  <Text
-                    variant="caption"
-                    style={{
-                      fontSize: 11,
-                      fontWeight: "700",
-                      color: theme.colors.mutedForeground,
-                    }}
-                  >
-                    Historial de Conteo a Ciegas:
-                  </Text>
-
-                  <View style={{ gap: 4, paddingLeft: 4 }}>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 6,
-                      }}
-                    >
-                      <CheckCircle2 size={12} color={theme.colors.success} />
-                      <Text
-                        variant="caption"
-                        style={{ fontSize: 11, color: theme.colors.foreground }}
-                      >
-                        <Text style={{ fontWeight: "700" }}>1º Chofer:</Text>{" "}
-                        {order.counts.driver.user} ({order.counts.driver.time})
-                      </Text>
-                    </View>
-
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 6,
-                      }}
-                    >
-                      {order.counts.consolidator.status === "COMPLETED" ? (
-                        <CheckCircle2 size={12} color={theme.colors.success} />
-                      ) : (
-                        <Clock size={12} color={theme.colors.mutedForeground} />
-                      )}
-                      <Text
-                        variant="caption"
-                        style={{ fontSize: 11, color: theme.colors.foreground }}
-                      >
-                        <Text style={{ fontWeight: "700" }}>
-                          2º Supervisor Consolidador:
-                        </Text>{" "}
-                        {order.counts.consolidator.user ||
-                          "Pendiente de consolidación"}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-
-                {/* BOTÓN DE ACCIÓN PRINCIPAL */}
-                <TouchableOpacity
-                  onPress={() => handleStartSemaforoExecute(order.orderCode)}
-                  activeOpacity={0.8}
-                  style={{
-                    backgroundColor: theme.colors.primary,
-                    borderRadius: 10,
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    marginTop: 2,
-                  }}
-                >
-                  <ShieldAlert size={16} color="#ffffff" />
-                  <Text
-                    style={{
-                      color: "#ffffff",
-                      fontWeight: "800",
-                      fontSize: 13,
-                    }}
-                  >
-                    Iniciar Conteo a Ciegas Semáforo
-                  </Text>
-                  <ChevronRight size={16} color="#ffffff" />
-                </TouchableOpacity>
-              </View>
-            );
-          })}
+          {filteredOrders.map((order) => (
+            <SemaforoOrderCard
+              key={order.id}
+              order={order}
+              onStart={() => handleStartSemaforoExecute(order.orderCode)}
+            />
+          ))}
         </View>
       </ScrollView>
     </Box>

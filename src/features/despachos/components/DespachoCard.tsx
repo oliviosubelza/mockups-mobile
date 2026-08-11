@@ -1,17 +1,12 @@
 import { TouchableOpacity } from "react-native";
-import {
-  ChevronRight,
-  Hash,
-  ListOrdered,
-  MapPin,
-  RectangleHorizontal,
-} from "lucide-react-native";
+import { ChevronRight, MapPin } from "lucide-react-native";
 
 import { Badge } from "@/shared/ui";
 import { Box, Text, useAppTheme } from "@/theme";
 import { calcularOcupacion } from "../ocupacion";
 import { ESTADO_META, type Despacho } from "../types";
 import { CapacityBar } from "./CapacityBar";
+import { PlateChip } from "./PlateChip";
 
 type Props = {
   despacho: Despacho;
@@ -19,25 +14,14 @@ type Props = {
   onPress: () => void;
 };
 
-/** One metadata chip in the footer row: icon + short value. */
-function MetaItem({
-  icon: Icon,
-  value,
-}: {
-  icon: typeof Hash;
-  value: string;
-}) {
-  const theme = useAppTheme();
-
-  return (
-    <Box flexDirection="row" alignItems="center" gap="xxs">
-      <Icon color={theme.colors.mutedForeground} size={theme.iconSizes.xs} />
-      <Text variant="caption">{value}</Text>
-    </Box>
-  );
-}
-
-/** Transport-order list tile. Shows only fields that exist on `Despacho`. */
+/**
+ * Transport-order list tile, in three rows: what the order is, where it goes,
+ * how full the truck is.
+ *
+ * The stop count rides on the route line rather than carrying its own icon, and
+ * the internal dispatch id is not shown at all — the OT code already identifies
+ * the order, and a database key earns no room on a driver's card.
+ */
 export function DespachoCard({ despacho, sequence, onPress }: Props) {
   const theme = useAppTheme();
   const meta = ESTADO_META[despacho.estado];
@@ -72,8 +56,8 @@ export function DespachoCard({ despacho, sequence, onPress }: Props) {
           </Text>
         </Box>
 
-        <Box flex={1} gap="xs">
-          {/* Row 1: OT code + status */}
+        <Box flex={1} gap="s">
+          {/* Row 1: what the order is */}
           <Box
             flexDirection="row"
             justifyContent="space-between"
@@ -86,30 +70,25 @@ export function DespachoCard({ despacho, sequence, onPress }: Props) {
             <Badge label={meta.label} tone={meta.tone} size="sm" />
           </Box>
 
-          {/* Row 2: route */}
-          <Box flexDirection="row" alignItems="center" gap="xs">
-            <MapPin
-              color={theme.colors.mutedForeground}
-              size={theme.iconSizes.sm}
-            />
-            <Text variant="bodySmall" color="mutedForeground" numberOfLines={1}>
-              {despacho.zonaRuta}
-            </Text>
+          {/* Row 2: where it goes, and which truck takes it */}
+          <Box flexDirection="row" alignItems="center" gap="s">
+            <Box flexDirection="row" alignItems="center" gap="xs" flex={1}>
+              <MapPin
+                color={theme.colors.mutedForeground}
+                size={theme.iconSizes.sm}
+              />
+              <Text
+                variant="bodySmall"
+                color="mutedForeground"
+                numberOfLines={1}
+              >
+                {despacho.zonaRuta} · {despacho.puntosCount} paradas
+              </Text>
+            </Box>
+            <PlateChip placa={despacho.placa} />
           </Box>
 
-          {/* Row 3: identifiers and counts */}
-          <Box flexDirection="row" alignItems="center" gap="m" flexWrap="wrap">
-            <MetaItem
-              icon={ListOrdered}
-              value={`${despacho.puntosCount} paradas`}
-            />
-            {/* Truck belongs to the occupancy row below; the plate takes the
-                glyph that matches its actual shape. */}
-            <MetaItem icon={RectangleHorizontal} value={despacho.placa} />
-            <MetaItem icon={Hash} value={despacho.id} />
-          </Box>
-
-          {/* Row 4: how full the truck is */}
+          {/* Row 3: how full the truck is */}
           <CapacityBar ocupacion={ocupacion} />
         </Box>
 

@@ -104,6 +104,9 @@ export default function DespachosScreen() {
         !query ||
         d.codigo.toLowerCase().includes(query) ||
         d.zonaRuta.toLowerCase().includes(query) ||
+        d.placa.toLowerCase().includes(query) ||
+        // The card no longer prints the internal id, but keeping it searchable
+        // costs nothing and back-office users still quote it.
         d.id.toLowerCase().includes(query);
 
       const matchesStatus =
@@ -135,7 +138,7 @@ export default function DespachosScreen() {
           <SearchField
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Buscar por OT, ID o Ruta..."
+            placeholder="Buscar por OT, placa o ruta..."
           />
 
           {/* COMPONENTE REUTILIZABLE DE CHIPS DE FILTRO */}

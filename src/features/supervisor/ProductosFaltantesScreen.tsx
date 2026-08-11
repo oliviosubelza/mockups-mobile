@@ -4,6 +4,7 @@ import {
   ChevronDown,
   FileText,
   PackageSearch,
+  User,
   X
 } from "lucide-react-native";
 import React, { useState } from "react";
@@ -295,6 +296,30 @@ export default function ProductosFaltantesScreen() {
     return true;
   });
 
+  /**
+   * Las diferencias se leen por chofer, no por ítem suelto: la pregunta de esta
+   * pantalla es a quién reclamarle, y un mismo chofer arrastra varias OT.
+   * Ordena por cantidad de diferencias para que el caso más pesado quede arriba.
+   */
+  const discrepanciasPorChofer = (() => {
+    const porChofer = new Map<string, FlatMissingProductItem[]>();
+    filteredDiscrepancies.forEach((item) => {
+      const items = porChofer.get(item.driverName) ?? [];
+      items.push(item);
+      porChofer.set(item.driverName, items);
+    });
+
+    return [...porChofer.entries()]
+      .map(([driverName, items]) => ({
+        driverName,
+        items,
+        faltantes: items.filter((i) => i.difference < 0).length,
+        sobrantes: items.filter((i) => i.difference > 0).length,
+        ordenes: new Set(items.map((i) => i.orderCode)).size,
+      }))
+      .sort((a, b) => b.items.length - a.items.length);
+  })();
+
   const totalShortageCount = FLAT_MOCK_DISCREPANCIES.filter(
     (p) => p.difference < 0,
   ).length;
@@ -364,7 +389,7 @@ export default function ProductosFaltantesScreen() {
         <SearchField
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="Buscar por SKU, producto u orden (OT)..."
+          placeholder="Buscar por chofer, SKU, producto u orden (OT)..."
         />
 
         {/* BARRA DE FILTROS SOLICITADA POR KEY USERS */}
@@ -569,8 +594,62 @@ export default function ProductosFaltantesScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={{ gap: 18 }}>
-            {filteredDiscrepancies.map((item) => {
+          <View style={{ gap: 22 }}>
+            {discrepanciasPorChofer.map((grupo) => (
+              <View key={grupo.driverName} style={{ gap: 10 }}>
+                {/* CABECERA DEL CHOFER */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      backgroundColor: theme.colors.secondary,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <User size={16} color={theme.colors.mutedForeground} />
+                  </View>
+
+                  <View style={{ flex: 1, gap: 1 }}>
+                    <Text variant="subtitle" numberOfLines={1}>
+                      {grupo.driverName}
+                    </Text>
+                    <Text variant="caption">
+                      {grupo.items.length}{" "}
+                      {grupo.items.length === 1 ? "producto" : "productos"} ·{" "}
+                      {grupo.ordenes}{" "}
+                      {grupo.ordenes === 1 ? "orden" : "órdenes"}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: "row", gap: 4 }}>
+                    {grupo.faltantes > 0 && (
+                      <Badge
+                        label={`${grupo.faltantes} faltante${grupo.faltantes === 1 ? "" : "s"}`}
+                        tone="danger"
+                        size="sm"
+                      />
+                    )}
+                    {grupo.sobrantes > 0 && (
+                      <Badge
+                        label={`${grupo.sobrantes} sobrante${grupo.sobrantes === 1 ? "" : "s"}`}
+                        tone="warning"
+                        size="sm"
+                      />
+                    )}
+                  </View>
+                </View>
+
+                <View style={{ gap: 18 }}>
+            {grupo.items.map((item) => {
               const isShortage = item.difference < 0;
               const accentColor = isShortage
                 ? theme.colors.danger
@@ -689,6 +768,8 @@ export default function ProductosFaltantesScreen() {
                     >
                       ·
                     </Text>
+                    {/* La ruta, no el chofer: la cabecera del grupo ya lo dice
+                        y repetirlo en cada card no agrega nada. */}
                     <Text
                       variant="caption"
                       numberOfLines={1}
@@ -698,7 +779,7 @@ export default function ProductosFaltantesScreen() {
                         flex: 1,
                       }}
                     >
-                      {item.driverName}
+                      {item.zonaRuta}
                     </Text>
                     <Text
                       variant="caption"
@@ -909,6 +990,9 @@ export default function ProductosFaltantesScreen() {
                 </Card>
               );
             })}
+                </View>
+              </View>
+            ))}
           </View>
         )}
       </ScrollView>

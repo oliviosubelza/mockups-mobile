@@ -10,12 +10,17 @@ type Props = {
 const TRACK_HEIGHT = 5;
 
 /**
- * Truck occupancy as one scannable row: icon, figure, fill bar, binding limit.
+ * Truck occupancy as one scannable row: icon, figure, fill bar.
  *
  * The bar carries the comparison — stacked in a list, fill lengths line up so a
- * driver reads relative load without parsing five numbers. The figure carries
- * the precision the bar cannot. `limitante` is the part a bare percentage hides:
- * "88% volumen" tells you the box is full, not that the truck is light.
+ * driver reads relative load without parsing numbers — and the figure carries
+ * the precision the bar cannot.
+ *
+ * `ocupacion.pct` is still the higher of weight and volume, because that is the
+ * one that answers "is there room left". Which of the two produced it is not
+ * printed here: it changes nothing a driver does, and a label that flipped
+ * between "peso" and "volumen" with no visible cause read as a glitch. The
+ * breakdown stays on `Ocupacion` for the screens that plan loads.
  */
 export function CapacityBar({ ocupacion }: Props) {
   const theme = useAppTheme();
@@ -28,7 +33,7 @@ export function CapacityBar({ ocupacion }: Props) {
       alignItems="center"
       gap="s"
       accessibilityRole="progressbar"
-      accessibilityLabel={`Camión al ${ocupacion.pct} por ciento, limitado por ${ocupacion.limitante}`}
+      accessibilityLabel={`Camión al ${ocupacion.pct} por ciento de su capacidad`}
     >
       <Truck color={color} size={theme.iconSizes.sm} />
 
@@ -58,8 +63,6 @@ export function CapacityBar({ ocupacion }: Props) {
           style={{ backgroundColor: color }}
         />
       </Box>
-
-      <Text variant="caption">{ocupacion.limitante}</Text>
     </Box>
   );
 }

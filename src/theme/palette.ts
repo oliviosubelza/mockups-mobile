@@ -34,6 +34,12 @@ export const palette = {
   success: 'hsl(142, 71%, 45%)',
   warning: 'hsl(38, 92%, 50%)',
 
+  // Darkened feedback shades, for solid fills carrying white text in the light
+  // scheme. `success`/`danger` at their base lightness measure 2.30:1 and
+  // 3.78:1 against white — below the 4.5:1 floor for badge-sized text.
+  successStrong: 'hsl(142, 71%, 29%)',
+  dangerStrong: 'hsl(0, 84%, 47%)',
+
   // Soft tints (light) — subtle chip/accent backgrounds
   cobaltSoft: 'hsl(226, 68%, 95%)',
   successSoft: 'hsl(142, 55%, 92%)',

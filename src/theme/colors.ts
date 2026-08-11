@@ -37,6 +37,17 @@ export const lightColors = {
   warningSoft: palette.warningSoft,
   dangerSoft: palette.dangerSoft,
 
+  /**
+   * Solid-fill tokens. Each scheme inverts the recipe so the pill stays
+   * readable *and* stays visible against its card: the light scheme fills dark
+   * and writes white, the dark scheme fills bright and writes near-black.
+   * `warning` already followed this shape, which is why it keeps its own pair.
+   */
+  primarySolid: palette.cobalt,
+  successSolid: palette.successStrong,
+  dangerSolid: palette.dangerStrong,
+  solidForeground: palette.white,
+
   transparent: palette.transparent,
 };
 
@@ -75,4 +86,12 @@ export const darkColors: typeof lightColors = {
   successSoft: palette.successSoftDark,
   warningSoft: palette.warningSoftDark,
   dangerSoft: palette.dangerSoftDark,
+
+  // Bright fill + near-black label: on the dark elevation ramp this both
+  // clears 4.5:1 for the label and keeps the pill distinct from the card,
+  // which a darkened fill does not (it sinks to ~1.1:1 against gray850).
+  primarySolid: palette.cobaltBright,
+  successSolid: palette.success,
+  dangerSolid: palette.dangerBright,
+  solidForeground: palette.ink,
 };

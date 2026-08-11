@@ -1,4 +1,4 @@
-import { Boxes, Weight } from "lucide-react-native";
+import { Truck } from "lucide-react-native";
 
 import { Box, Text, useAppTheme } from "@/theme";
 import { tonoOcupacion, type Ocupacion } from "../ocupacion";
@@ -21,7 +21,6 @@ export function CapacityBar({ ocupacion }: Props) {
   const theme = useAppTheme();
   const tone = tonoOcupacion(ocupacion.pct);
   const color = theme.colors[tone];
-  const LimitIcon = ocupacion.limitante === 'peso' ? Weight : Boxes;
 
   return (
     <Box
@@ -31,9 +30,7 @@ export function CapacityBar({ ocupacion }: Props) {
       accessibilityRole="progressbar"
       accessibilityLabel={`Camión al ${ocupacion.pct} por ciento, limitado por ${ocupacion.limitante}`}
     >
-      {/* No single glyph means "weight or volume", so the icon shows whichever
-          limit is actually binding — the same thing the trailing label names. */}
-      <LimitIcon color={color} size={theme.iconSizes.sm} />
+      <Truck color={color} size={theme.iconSizes.sm} />
 
       {/* Fixed width so the bars below each other start on the same x. */}
       <Text

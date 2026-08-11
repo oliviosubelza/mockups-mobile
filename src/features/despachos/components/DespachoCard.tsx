@@ -4,7 +4,7 @@ import {
   Hash,
   ListOrdered,
   MapPin,
-  Truck,
+  RectangleHorizontal,
 } from "lucide-react-native";
 
 import { Badge } from "@/shared/ui";
@@ -103,7 +103,9 @@ export function DespachoCard({ despacho, sequence, onPress }: Props) {
               icon={ListOrdered}
               value={`${despacho.puntosCount} paradas`}
             />
-            <MetaItem icon={Truck} value={despacho.placa} />
+            {/* Truck belongs to the occupancy row below; the plate takes the
+                glyph that matches its actual shape. */}
+            <MetaItem icon={RectangleHorizontal} value={despacho.placa} />
             <MetaItem icon={Hash} value={despacho.id} />
           </Box>
 

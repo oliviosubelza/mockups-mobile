@@ -21,6 +21,7 @@ import {
   BoxUnitCounter,
   boxUnitTotal,
   formatBoxUnit,
+  Button,
   Card,
   EMPTY_BOX_UNIT,
   SearchField,
@@ -876,33 +877,13 @@ export default function ProductosFaltantesScreen() {
                         corrección es un hecho a registrar, no un campo que va
                         cambiando mientras se teclea. */}
                     {correccionSucia && (
-                      <TouchableOpacity
+                      <Button
+                        label="Guardar corrección"
+                        icon={Check}
+                        variant="primary"
+                        size="sm"
                         onPress={() => commitCorrection(item.id)}
-                        activeOpacity={0.7}
-                        hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }}
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 5,
-                          flexShrink: 1,
-                        }}
-                      >
-                        <Check
-                          size={13}
-                          strokeWidth={3}
-                          color={theme.colors.primary}
-                        />
-                        <Text
-                          numberOfLines={1}
-                          style={{
-                            fontSize: 11,
-                            fontWeight: "700",
-                            color: theme.colors.primary,
-                          }}
-                        >
-                          Guardar corrección
-                        </Text>
-                      </TouchableOpacity>
+                      />
                     )}
 
                     <View

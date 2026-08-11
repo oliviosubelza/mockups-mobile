@@ -600,17 +600,13 @@ export default function RevisionSemaforoExecuteScreen() {
                         }}
                       >
                         {puedeEditar && editSucio && (
-                          <TouchableOpacity
+                          <Button
+                            label="Guardar corrección"
+                            icon={Check}
+                            variant="primary"
+                            size="sm"
                             onPress={() => commitEdit(registro)}
-                            activeOpacity={0.7}
-                            hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }}
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
-                          >
-                            <Check size={13} strokeWidth={3} color={theme.colors.primary} />
-                            <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
-                              Guardar corrección
-                            </Text>
-                          </TouchableOpacity>
+                          />
                         )}
 
                         {consolidado && !tieneNota ? null : (

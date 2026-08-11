@@ -130,12 +130,7 @@ export default function DespachosScreen() {
         <ListSkeleton />
       ) : (
         <View style={{ gap: 12 }}>
-          <Text
-            variant="title"
-            style={{ fontSize: 20, fontWeight: "100", color: theme.colors.foreground }}
-          >
-            Órdenes de Transporte
-          </Text>
+          <Text variant="title">Órdenes de Transporte</Text>
           {/* COMPONENTE REUTILIZABLE DE BÚSQUEDA */}
           <SearchField
             value={searchQuery}

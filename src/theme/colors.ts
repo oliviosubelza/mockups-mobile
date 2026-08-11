@@ -65,10 +65,11 @@ export const darkColors: typeof lightColors = {
   ring: palette.cobaltBright,
 
   danger: palette.dangerBright,
-  // `ink` is near-black: legible on the light `warning` amber, unreadable on the
-  // dark elevation ramp. Follows `dangerForeground`/`successForeground`, which
-  // stay `white` in both schemes.
-  warningForeground: palette.white,
+  // `warningForeground` is not overridden here: it only ever sits on `warning`,
+  // and `warning` is the same amber in both schemes. White on that amber is
+  // 2.15:1 — below the 4.5:1 AA floor for badge-sized text — so it keeps the
+  // near-black `ink` from `lightColors`, which measures 8.5:1.
+  // Use `warning` (not `warningForeground`) for warning-colored text on a card.
 
   primarySoft: palette.cobaltSoftDark,
   successSoft: palette.successSoftDark,

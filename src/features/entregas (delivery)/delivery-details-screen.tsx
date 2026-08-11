@@ -2577,7 +2577,7 @@ export const DeliveryDetailScreen = () => {
                   <Text
                     variant="caption"
                     style={{
-                      color: theme.colors.warningForeground,
+                      color: theme.colors.warning,
                       fontSize: 11,
                     }}
                   >

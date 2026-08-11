@@ -1,144 +1,131 @@
-import { View, TouchableOpacity } from "react-native";
-import { ChevronRight, Clock, ListOrdered, MapPin, Weight } from "lucide-react-native";
+import { TouchableOpacity } from "react-native";
+import {
+  ChevronRight,
+  Clock,
+  Hash,
+  ListOrdered,
+  MapPin,
+  Weight,
+} from "lucide-react-native";
 
 import { Badge } from "@/shared/ui";
-import { Text, useAppTheme } from "@/theme";
+import { Box, Text, useAppTheme } from "@/theme";
 import { ESTADO_META, type Despacho } from "../types";
 
 type Props = {
   despacho: Despacho;
   sequence: number;
   onPress: () => void;
-  paradas?: string;
+  /** Rendered only when provided — no placeholder, so every card stays truthful. */
   timeWindow?: string;
   weight?: string;
 };
 
-/** Reusable list tile item for Despacho orders with full dark mode support */
+/** One metadata chip in the footer row: icon + short value. */
+function MetaItem({
+  icon: Icon,
+  value,
+}: {
+  icon: typeof Clock;
+  value: string;
+}) {
+  const theme = useAppTheme();
+
+  return (
+    <Box flexDirection="row" alignItems="center" gap="xxs">
+      <Icon color={theme.colors.mutedForeground} size={theme.iconSizes.xs} />
+      <Text variant="caption">{value}</Text>
+    </Box>
+  );
+}
+
+/** Transport-order list tile. Shows only fields that exist on `Despacho`. */
 export function DespachoCard({
   despacho,
   sequence,
   onPress,
-  paradas,
-  timeWindow = "7hr",
-  weight = "120 kg",
+  timeWindow,
+  weight,
 }: Props) {
   const theme = useAppTheme();
   const meta = ESTADO_META[despacho.estado];
-
-  const totalParadasText = paradas || `${despacho.puntosCount} paradas`;
+  const badgeSize = theme.controlSizes.sm.height;
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.7}
-      onPress={onPress}
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: theme.colors.cardBackground,
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-      }}
-    >
-      {/* LEADING: Secuencia badge */}
-      <View
-        style={{
-          backgroundColor: theme.colors.secondary,
-          width: 34,
-          height: 34,
-          borderRadius: 17,
-          alignItems: "center",
-          justifyContent: "center",
-          marginRight: 10,
-        }}
+    <TouchableOpacity activeOpacity={0.7} onPress={onPress}>
+      <Box
+        flexDirection="row"
+        alignItems="center"
+        gap="m"
+        backgroundColor="cardBackground"
+        borderColor="border"
+        borderWidth={theme.borderWidths.thin}
+        borderRadius="xl"
+        padding="m"
       >
-        <Text
-          variant="label"
-          style={{
-            fontWeight: "700",
-            color: theme.colors.foreground,
-            fontSize: 14,
-          }}
+        {/* LEADING: sequence within the current (filtered) list */}
+        <Box
+          backgroundColor="secondary"
+          borderRadius="full"
+          width={badgeSize}
+          height={badgeSize}
+          alignItems="center"
+          justifyContent="center"
         >
-          {sequence}
-        </Text>
-      </View>
-
-      {/* BODY: Información compacta */}
-      <View style={{ flex: 1, justifyContent: "center" }}>
-        {/* Fila 1: Código OT + Badge de Estado */}
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 2,
-          }}
-        >
-          <Text
-            variant="label"
-            style={{
-              fontSize: 15,
-              fontWeight: "700",
-              color: theme.colors.foreground,
-            }}
-          >
-            OT-{despacho.codigo}
+          {/* Montserrat ships one family per weight: the weight comes from
+              fontFamily, not fontWeight, which RN would only fake. */}
+          <Text variant="label" fontFamily="Montserrat_600SemiBold">
+            {sequence}
           </Text>
-          <Badge label={meta.label} tone={meta.tone} emphasis="soft" size="sm" />
-        </View>
+        </Box>
 
-        {/* Fila 2: Resumen de Puntos de Entrega & Zona / ID */}
-        <Text
-          variant="label"
-          style={{
-            color: theme.colors.mutedForeground,
-            fontSize: 13,
-            marginBottom: 4,
-          }}
-          numberOfLines={1}
-        >
-          📍 {despacho.puntosCount} Puntos de entrega ({despacho.zonaRuta}) • ID: {despacho.id}
-        </Text>
-
-        {/* Fila 3: Metadatos en línea ultra compacta */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-            <ListOrdered color={theme.colors.mutedForeground} size={12} />
-            <Text variant="label" style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>
-              {totalParadasText}
+        <Box flex={1} gap="xs">
+          {/* Row 1: OT code + status */}
+          <Box
+            flexDirection="row"
+            justifyContent="space-between"
+            alignItems="center"
+            gap="s"
+          >
+            <Text variant="subtitle" numberOfLines={1}>
+              OT-{despacho.codigo}
             </Text>
-          </View>
+            <Badge
+              label={meta.label}
+              tone={meta.tone}
+              emphasis="solid"
+              size="sm"
+            />
+          </Box>
 
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-            <Clock color={theme.colors.mutedForeground} size={12} />
-            <Text variant="label" style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>
-              {timeWindow}
+          {/* Row 2: route */}
+          <Box flexDirection="row" alignItems="center" gap="xs">
+            <MapPin
+              color={theme.colors.mutedForeground}
+              size={theme.iconSizes.sm}
+            />
+            <Text variant="bodySmall" color="mutedForeground" numberOfLines={1}>
+              {despacho.zonaRuta}
             </Text>
-          </View>
+          </Box>
 
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-            <Weight color={theme.colors.mutedForeground} size={12} />
-            <Text variant="label" style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>
-              {weight}
-            </Text>
-          </View>
-        </View>
-      </View>
+          {/* Row 3: metadata */}
+          <Box flexDirection="row" alignItems="center" gap="m" flexWrap="wrap">
+            <MetaItem
+              icon={ListOrdered}
+              value={`${despacho.puntosCount} paradas`}
+            />
+            <MetaItem icon={Hash} value={despacho.id} />
+            {timeWindow ? <MetaItem icon={Clock} value={timeWindow} /> : null}
+            {weight ? <MetaItem icon={Weight} value={weight} /> : null}
+          </Box>
+        </Box>
 
-      {/* TRAILING: Chevron Right */}
-      <View style={{ marginLeft: 8 }}>
-        <ChevronRight color={theme.colors.mutedForeground} size={20} />
-      </View>
+        <ChevronRight
+          color={theme.colors.mutedForeground}
+          size={theme.iconSizes.lg}
+        />
+      </Box>
     </TouchableOpacity>
   );
 }

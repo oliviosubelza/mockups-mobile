@@ -647,9 +647,12 @@ export default function ProductosFaltantesScreen() {
                 currentCorrection.unidades !== savedCorrection.unidades;
 
               return (
+                /* Sin onPress: la card es un formulario, no un botón. Con
+                   correcciones sin confirmar, un toque fuera de un control
+                   navegaba a otra pantalla en medio de la edición. Ir al
+                   detalle es ahora un acto explícito. */
                 <Card
                   key={item.id}
-                  onPress={() => handleNavigateToConsolidation(item.orderCode)}
                   padding="m"
                   borderRadius="xl"
                   borderWidth={1}
@@ -689,7 +692,12 @@ export default function ProductosFaltantesScreen() {
                       )}
                     </View>
 
-                    <View
+                    <TouchableOpacity
+                      onPress={() =>
+                        handleNavigateToConsolidation(item.orderCode)
+                      }
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',
@@ -707,7 +715,7 @@ export default function ProductosFaltantesScreen() {
                         Ver detalle
                       </Text>
                       <ArrowRight size={13} color={theme.colors.primary} />
-                    </View>
+                    </TouchableOpacity>
                   </View>
 
                   {/* FILA 2: PRODUCTO + MAGNITUD DE LA DIFERENCIA */}

@@ -3,8 +3,8 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
-  FileText,
   PackageSearch,
+  Snowflake,
   User,
   X
 } from "lucide-react-native";
@@ -226,17 +226,10 @@ export default function ProductosFaltantesScreen() {
       ),
   );
 
-  /**
-   * Corrección en curso por ítem, sin confirmar todavía.
-   *
-   * Cantidad y clasificación se editan juntas y se confirman juntas: son una
-   * sola corrección sobre el mismo ítem, y separarlas dejaría media card
-   * guardando al tocar y la otra mitad esperando un botón.
-   */
+  /** Cantidad tecleada por ítem, sin confirmar todavía. */
   const [draftCorrections, setDraftCorrections] = useState<
     Record<string, BoxUnitValue>
   >({});
-  const [draftTypes, setDraftTypes] = useState<Record<string, string>>({});
 
   // MODAL SELECTOR DE TIPO DE DIFERENCIA
   const [pickerState, setPickerState] = useState<{
@@ -251,35 +244,30 @@ export default function ProductosFaltantesScreen() {
     setDraftCorrections((prev) => ({ ...prev, [itemId]: next }));
   };
 
-  const handleSelectType = (type: string) => {
-    if (pickerState.activeItemId) {
-      setDraftTypes((prev) => ({
-        ...prev,
-        [pickerState.activeItemId!]: type,
-      }));
-    }
-    setPickerState({ visible: false, activeItemId: null });
+  /**
+   * Guardar abre el clasificador en lugar de confirmar de una: una corrección
+   * sin causa no sirve para nada río abajo, así que la causa deja de ser un
+   * control suelto en la card y pasa a ser el paso que cierra el guardado.
+   */
+  const commitCorrection = (itemId: string) => {
+    setPickerState({ visible: true, activeItemId: itemId });
   };
 
-  // CONFIRMA LA CORRECCIÓN TECLEADA EN LA CARD
-  const commitCorrection = (itemId: string) => {
-    const draftCount = draftCorrections[itemId];
-    const draftType = draftTypes[itemId];
+  // ELEGIR LA CAUSA CIERRA LA CORRECCIÓN: CANTIDAD Y CLASIFICACIÓN JUNTAS
+  const handleSelectType = (type: string) => {
+    const itemId = pickerState.activeItemId;
+    setPickerState({ visible: false, activeItemId: null });
+    if (!itemId) return;
 
+    const draftCount = draftCorrections[itemId];
+
+    setSelectedTypes((prev) => ({ ...prev, [itemId]: type }));
     if (draftCount) {
       setCorrections((prev) => ({ ...prev, [itemId]: draftCount }));
     }
-    if (draftType) {
-      setSelectedTypes((prev) => ({ ...prev, [itemId]: draftType }));
-    }
 
-    // Los borradores se descartan: la card vuelve a leer del valor confirmado.
+    // El borrador se descarta: la card vuelve a leer del valor confirmado.
     setDraftCorrections((prev) => {
-      const next = { ...prev };
-      delete next[itemId];
-      return next;
-    });
-    setDraftTypes((prev) => {
       const next = { ...prev };
       delete next[itemId];
       return next;
@@ -648,18 +636,15 @@ export default function ProductosFaltantesScreen() {
                 : theme.colors.warning;
               // Lo confirmado, y encima lo tecleado si la card está en edición.
               const savedCorrection = corrections[item.id] ?? EMPTY_BOX_UNIT;
-              const savedType = selectedTypes[item.id] || item.differenceType;
               const currentCorrection =
                 draftCorrections[item.id] ?? savedCorrection;
-              const currentSelectedType = draftTypes[item.id] ?? savedType;
 
               const isMatched =
                 boxUnitTotal(currentCorrection, item.cajaSize) ===
                 item.expectedQty;
               const correccionSucia =
                 currentCorrection.cajas !== savedCorrection.cajas ||
-                currentCorrection.unidades !== savedCorrection.unidades ||
-                currentSelectedType !== savedType;
+                currentCorrection.unidades !== savedCorrection.unidades;
 
               return (
                 <Card
@@ -670,41 +655,77 @@ export default function ProductosFaltantesScreen() {
                   borderWidth={1}
                   style={{ gap: 8 }}
                 >
-                  {/* FILA 1: SKU + FRÍO + BADGE DE DIFERENCIA */}
+                  {/* FILA 1: IDENTIFICACIÓN (SKU + OT) + SALIDA AL DETALLE */}
                   <View
                     style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      alignItems: "center",
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
                       gap: 8,
                     }}
                   >
                     <View
                       style={{
-                        flexDirection: "row",
-                        alignItems: "center",
+                        flexDirection: 'row',
+                        alignItems: 'center',
                         gap: 6,
                         flexShrink: 1,
                       }}
                     >
                       <Text
-                        variant="label"
+                        variant="caption"
+                        numberOfLines={1}
                         style={{
-                          fontSize: 12,
-                          fontWeight: "800",
+                          fontSize: 11,
+                          fontWeight: '800',
                           color: theme.colors.mutedForeground,
+                          flexShrink: 1,
                         }}
                       >
-                        {item.codigo}
+                        {item.codigo} · {item.orderCode}
                       </Text>
                       {item.isColdChain && (
-                        <Badge
-                          label="❄️ Frío"
-                          tone="neutral"
-                          size="sm"
-                        />
+                        <Badge label="Frío" tone="neutral" size="sm" icon={Snowflake} />
                       )}
                     </View>
+
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 3,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: '700',
+                          color: theme.colors.primary,
+                        }}
+                      >
+                        Ver detalle
+                      </Text>
+                      <ArrowRight size={13} color={theme.colors.primary} />
+                    </View>
+                  </View>
+
+                  {/* FILA 2: PRODUCTO + MAGNITUD DE LA DIFERENCIA */}
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                    }}
+                  >
+                    <Text
+                      variant="subtitle"
+                      numberOfLines={2}
+                      style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.colors.foreground }}
+                    >
+                      {item.nombre}
+                    </Text>
 
                     <Badge
                       label={
@@ -712,79 +733,12 @@ export default function ProductosFaltantesScreen() {
                           ? `+${item.difference} Sobrante`
                           : `${item.difference} Faltante`
                       }
-                      tone={item.difference > 0 ? "warning" : "danger"}
+                      tone={item.difference > 0 ? 'warning' : 'danger'}
                       size="sm"
                     />
                   </View>
 
-                  {/* FILA 2: NOMBRE DEL PRODUCTO */}
-                  <Text
-                    variant="subtitle"
-                    numberOfLines={2}
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "700",
-                      color: theme.colors.foreground,
-                    }}
-                  >
-                    {item.nombre}
-                  </Text>
-
-                  {/* FILA 3: PROCEDENCIA EN UNA SOLA LÍNEA (OT · CHOFER · FECHA) */}
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 5,
-                    }}
-                  >
-                    <FileText size={12} color={theme.colors.primary} />
-                    <Text
-                      variant="caption"
-                      numberOfLines={1}
-                      style={{
-                        fontSize: 11,
-                        fontWeight: "700",
-                        color: theme.colors.foreground,
-                        flexShrink: 1,
-                      }}
-                    >
-                      {item.orderCode}
-                    </Text>
-                    <Text
-                      variant="caption"
-                      style={{
-                        fontSize: 11,
-                        color: theme.colors.mutedForeground,
-                      }}
-                    >
-                      ·
-                    </Text>
-                    {/* La ruta, no el chofer: la cabecera del grupo ya lo dice
-                        y repetirlo en cada card no agrega nada. */}
-                    <Text
-                      variant="caption"
-                      numberOfLines={1}
-                      style={{
-                        fontSize: 11,
-                        color: theme.colors.mutedForeground,
-                        flex: 1,
-                      }}
-                    >
-                      {item.zonaRuta}
-                    </Text>
-                    <Text
-                      variant="caption"
-                      style={{
-                        fontSize: 11,
-                        color: theme.colors.mutedForeground,
-                      }}
-                    >
-                      {item.dateFormatted}
-                    </Text>
-                  </View>
-
-                  {/* FILA 4: COMPARATIVO ESPERADO VS CONTADO */}
+                  {/* FILA 3: COMPARATIVO ESPERADO VS CONTADO */}
                   <View
                     style={{
                       backgroundColor: theme.colors.secondary,
@@ -853,7 +807,7 @@ export default function ProductosFaltantesScreen() {
                     </View>
                   </View>
 
-                  {/* FILA 5: CONTROLES DE CONSOLIDACIÓN */}
+                  {/* FILA 4: CANTIDAD CONSOLIDADA */}
                   <View
                     style={{
                       gap: 8,
@@ -869,116 +823,19 @@ export default function ProductosFaltantesScreen() {
                       totalLabel="Total consolidado"
                       targetQty={item.expectedQty}
                     />
-
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                    >
-                      <Text
-                        variant="label"
-                        numberOfLines={2}
-                        style={{
-                          fontSize: 12,
-                          fontWeight: "700",
-                          color: theme.colors.foreground,
-                          flex: 1,
-                        }}
-                      >
-                        Clasificación
-                      </Text>
-
-                      <TouchableOpacity
-                        onPress={() =>
-                          setPickerState({
-                            visible: true,
-                            activeItemId: item.id,
-                          })
-                        }
-                        activeOpacity={0.7}
-                        style={{
-                          flex: 1.4,
-                          flexDirection: "row",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 6,
-                          backgroundColor: theme.colors.secondary,
-                          borderRadius: 8,
-                          paddingHorizontal: 10,
-                          height: 34,
-                          borderWidth: 1,
-                          borderColor: theme.colors.border,
-                        }}
-                      >
-                        <Text
-                          variant="caption"
-                          numberOfLines={1}
-                          style={{
-                            fontSize: 12,
-                            fontWeight: "700",
-                            color: theme.colors.foreground,
-                            flex: 1,
-                          }}
-                        >
-                          {currentSelectedType}
-                        </Text>
-                        <ChevronDown
-                          size={15}
-                          color={theme.colors.mutedForeground}
-                        />
-                      </TouchableOpacity>
-                    </View>
                   </View>
 
-                  {/* FILA 6: CONFIRMACIÓN + ACCESO AL DETALLE */}
-                  {/* Se separa con aire, no con línea: la única división de la
-                      card marca el paso de lectura a edición. */}
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: correccionSucia
-                        ? "space-between"
-                        : "flex-end",
-                      alignItems: "center",
-                      gap: 8,
-                      marginTop: 2,
-                    }}
-                  >
-                    {/* Sale sólo cuando hay algo distinto que guardar: una
-                        corrección es un hecho a registrar, no un campo que va
-                        cambiando mientras se teclea. */}
-                    {correccionSucia && (
-                      <Button
-                        label="Guardar corrección"
-                        icon={Check}
-                        variant="primary"
-                        size="xs"
-                        onPress={() => commitCorrection(item.id)}
-                      />
-                    )}
-
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 3,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          fontWeight: "700",
-                          color: theme.colors.primary,
-                        }}
-                      >
-                        Ver detalle
-                      </Text>
-                      <ArrowRight size={13} color={theme.colors.primary} />
-                    </View>
-                  </View>
+                  {/* FILA 5: CONFIRMACIÓN. Sólo existe mientras haya algo
+                      distinto que guardar; una card intacta no la muestra. */}
+                  {correccionSucia && (
+                    <Button
+                      label="Guardar corrección"
+                      icon={Check}
+                      variant="primary"
+                      size="xs"
+                      onPress={() => commitCorrection(item.id)}
+                    />
+                  )}
                 </Card>
               );
             })}
@@ -1086,16 +943,12 @@ export default function ProductosFaltantesScreen() {
                 alignItems: "center",
               }}
             >
-              <Text
-                variant="label"
-                style={{
-                  fontSize: 16,
-                  fontWeight: "700",
-                  color: theme.colors.foreground,
-                }}
-              >
-                Seleccionar Tipo de Diferencia
-              </Text>
+              {/* Elegir una causa es lo que confirma la corrección, así que el
+                  copy lo dice: cerrar sin elegir la deja sin guardar. */}
+              <View style={{ flexShrink: 1, gap: 1 }}>
+                <Text variant="subtitle">¿Por qué la diferencia?</Text>
+                <Text variant="caption">Al elegir se guarda la corrección</Text>
+              </View>
               <TouchableOpacity
                 onPress={() =>
                   setPickerState({ visible: false, activeItemId: null })

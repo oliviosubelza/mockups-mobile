@@ -560,9 +560,10 @@ export default function RevisionSemaforoExecuteScreen() {
                         {esMatch ? '✓ Conteo conforme' : `Diferencia: ${diffText}`}
                       </Text>
 
-                      {/* ACCIONES DEL REGISTRO. Recontar está disponible en
-                          cualquier ítem y sin tope: el supervisor corrige hasta
-                          dar con el número, y sólo consolidar cierra la puerta. */}
+                      {/* ACCIONES DEL REGISTRO. Recontar sale sólo donde hay
+                          algo que corregir, pero sin tope de intentos: el
+                          supervisor insiste hasta dar con el número y sólo
+                          consolidar cierra la puerta. */}
                       <View
                         style={{
                           flexDirection: 'row',
@@ -572,7 +573,7 @@ export default function RevisionSemaforoExecuteScreen() {
                           marginTop: 2,
                         }}
                       >
-                        {!consolidado && (
+                        {!esMatch && !consolidado && (
                           <TouchableOpacity
                             onPress={() => openRecountModal(registro)}
                             activeOpacity={0.7}

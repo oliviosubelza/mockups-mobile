@@ -49,8 +49,8 @@ export interface BoxUnitCounterProps {
   /** Cantidad objetivo. Si el total coincide, el total se pinta en success. */
   targetQty?: number;
   /**
-   * Acción a la izquierda de la fila de total, para no gastar una fila entera
-   * en un solo botón. Al usarla, etiqueta y total se agrupan a la derecha: el
+   * Acción a la derecha de la fila de total, para no gastar una fila entera en
+   * un solo botón. Al usarla, etiqueta y total se agrupan a la izquierda: el
    * espacio que los separaba pasa a ser el hueco de la acción.
    */
   action?: React.ReactNode;
@@ -121,10 +121,8 @@ export const BoxUnitCounter = ({
 
       {totalLabel && (
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          {action}
-
-          {/* Con acción, etiqueta y total viajan juntos a la derecha; sin ella
-              se reparten los extremos como siempre. */}
+          {/* Con acción, etiqueta y total viajan juntos a la izquierda; sin
+              ella se reparten los extremos como siempre. */}
           <View
             style={{
               flexDirection: 'row',
@@ -153,6 +151,8 @@ export const BoxUnitCounter = ({
               {targetQty === undefined ? `${total} u.` : `${total} / ${targetQty} u.`}
             </Text>
           </View>
+
+          {action}
         </View>
       )}
     </View>

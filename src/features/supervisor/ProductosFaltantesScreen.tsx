@@ -820,7 +820,7 @@ export default function ProductosFaltantesScreen() {
                       value={currentCorrection}
                       onChange={(next) => handleCorrectionChange(item.id, next)}
                       cajaSize={item.cajaSize}
-                      totalLabel="Total consolidado"
+                      totalLabel="Total"
                       targetQty={item.expectedQty}
                       /* El botón comparte la fila del total en vez de gastar
                          una propia, y el hueco reserva su alto siempre para

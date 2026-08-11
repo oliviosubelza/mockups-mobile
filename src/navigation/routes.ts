@@ -27,8 +27,8 @@ export const routes: RouteInterface[] = [
   {
     id: 'supervisor.productosFaltantes',
     path: '/supervisor/productos-faltantes',
-    title: 'Choferes con productos faltantes',
-    description: 'Diferencias agrupadas por chofer responsable',
+    title: 'Diferencias por chofer',
+    description: 'Faltantes y sobrantes a revisar con cada chofer',
     icon: PackageSearch,
     showInHome: true,
     showInMenuBottom: true,

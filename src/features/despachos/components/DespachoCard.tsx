@@ -1,24 +1,22 @@
 import { TouchableOpacity } from "react-native";
 import {
   ChevronRight,
-  Clock,
   Hash,
   ListOrdered,
   MapPin,
-  Weight,
+  Truck,
 } from "lucide-react-native";
 
 import { Badge } from "@/shared/ui";
 import { Box, Text, useAppTheme } from "@/theme";
+import { calcularOcupacion } from "../ocupacion";
 import { ESTADO_META, type Despacho } from "../types";
+import { CapacityBar } from "./CapacityBar";
 
 type Props = {
   despacho: Despacho;
   sequence: number;
   onPress: () => void;
-  /** Rendered only when provided — no placeholder, so every card stays truthful. */
-  timeWindow?: string;
-  weight?: string;
 };
 
 /** One metadata chip in the footer row: icon + short value. */
@@ -26,7 +24,7 @@ function MetaItem({
   icon: Icon,
   value,
 }: {
-  icon: typeof Clock;
+  icon: typeof Hash;
   value: string;
 }) {
   const theme = useAppTheme();
@@ -40,15 +38,10 @@ function MetaItem({
 }
 
 /** Transport-order list tile. Shows only fields that exist on `Despacho`. */
-export function DespachoCard({
-  despacho,
-  sequence,
-  onPress,
-  timeWindow,
-  weight,
-}: Props) {
+export function DespachoCard({ despacho, sequence, onPress }: Props) {
   const theme = useAppTheme();
   const meta = ESTADO_META[despacho.estado];
+  const ocupacion = calcularOcupacion(despacho);
   const badgeSize = theme.controlSizes.sm.height;
 
   return (
@@ -90,11 +83,7 @@ export function DespachoCard({
             <Text variant="subtitle" numberOfLines={1}>
               OT-{despacho.codigo}
             </Text>
-            <Badge
-              label={meta.label}
-              tone={meta.tone}
-              size="sm"
-            />
+            <Badge label={meta.label} tone={meta.tone} size="sm" />
           </Box>
 
           {/* Row 2: route */}
@@ -108,16 +97,18 @@ export function DespachoCard({
             </Text>
           </Box>
 
-          {/* Row 3: metadata */}
+          {/* Row 3: identifiers and counts */}
           <Box flexDirection="row" alignItems="center" gap="m" flexWrap="wrap">
             <MetaItem
               icon={ListOrdered}
               value={`${despacho.puntosCount} paradas`}
             />
+            <MetaItem icon={Truck} value={despacho.placa} />
             <MetaItem icon={Hash} value={despacho.id} />
-            {timeWindow ? <MetaItem icon={Clock} value={timeWindow} /> : null}
-            {weight ? <MetaItem icon={Weight} value={weight} /> : null}
           </Box>
+
+          {/* Row 4: how full the truck is */}
+          <CapacityBar ocupacion={ocupacion} />
         </Box>
 
         <ChevronRight

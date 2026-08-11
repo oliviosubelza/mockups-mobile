@@ -8,6 +8,16 @@ export type Despacho = {
   puntosCount: number;
   zonaRuta: string;
   estado: EstadoDespacho;
+  /** Placa del camión asignado (`trucks.plate`). */
+  placa: string;
+  /** Carga asignada a la OT (`transport_orders.assigned_weight_kg`). */
+  pesoAsignadoKg: number;
+  /** Tope del camión (`trucks.capacity_weight_kg`). */
+  capacidadPesoKg: number;
+  /** Carga asignada a la OT (`transport_orders.assigned_volume_m3`). */
+  volumenAsignadoM3: number;
+  /** Tope del camión (`trucks.capacity_volume_m3`). */
+  capacidadVolumenM3: number;
 };
 
 /** One line of the blind check (chequeo a ciegas). */

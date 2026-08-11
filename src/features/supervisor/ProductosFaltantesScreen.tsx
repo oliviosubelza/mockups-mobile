@@ -8,8 +8,10 @@ import {
   User,
   X
 } from "lucide-react-native";
-import React, { useState } from "react";
+import { useFocusEffect } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
+  BackHandler,
   Modal,
   ScrollView,
   TouchableOpacity,
@@ -204,6 +206,31 @@ export default function ProductosFaltantesScreen() {
    */
   const [choferAbierto, setChoferAbierto] = useState<string | null>(null);
 
+  /**
+   * El back del sistema cierra el chofer antes de salir de la pantalla.
+   *
+   * Los dos pasos son estado local, así que el navegador ve una sola ruta: sin
+   * esto el back se saltaba el listado de choferes y devolvía directo al menú,
+   * perdiendo un nivel que el usuario sí recorrió. Devolver `true` consume el
+   * evento; con el listado a la vista no se intercepta nada y el back sale
+   * normalmente. (Android: en iOS el gesto de volver no pasa por acá.)
+   */
+  useFocusEffect(
+    useCallback(() => {
+      if (!choferAbierto) return;
+
+      const subscription = BackHandler.addEventListener(
+        "hardwareBackPress",
+        () => {
+          setChoferAbierto(null);
+          return true;
+        },
+      );
+
+      return () => subscription.remove();
+    }, [choferAbierto]),
+  );
+
   // CANTIDAD CONSOLIDADA POR ÍTEM EN CAJAS + UNIDADES (ARRANCA CON LO CONTADO POR EL CHOFER)
   const [corrections, setCorrections] = useState<Record<string, BoxUnitValue>>(
     () =>
@@ -387,28 +414,43 @@ export default function ProductosFaltantesScreen() {
         </View> */}
 
         {/* CABECERA DEL CHOFER ABIERTO + VUELTA AL LISTADO */}
+        {/* Link etiquetado, no un chevron suelto: la barra de título ya tiene
+            su back y dos flechas iguales a la misma altura se leen como el
+            mismo control. Ésta sube un nivel, aquélla sale de la pantalla. */}
         {choferAbierto && (
-          <TouchableOpacity
-            onPress={() => setChoferAbierto(null)}
-            activeOpacity={0.7}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <ChevronLeft size={20} color={theme.colors.foreground} />
-            <View style={{ flex: 1, gap: 1 }}>
-              <Text variant="subtitle" numberOfLines={1}>
-                {choferAbierto}
+          <View style={{ gap: 4 }}>
+            <TouchableOpacity
+              onPress={() => setChoferAbierto(null)}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 2,
+                alignSelf: "flex-start",
+              }}
+            >
+              <ChevronLeft size={14} color={theme.colors.primary} />
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "700",
+                  color: theme.colors.primary,
+                }}
+              >
+                Todos los choferes
               </Text>
-              <Text variant="caption">
-                {grupoAbierto
-                  ? `${grupoAbierto.items.length} ${grupoAbierto.items.length === 1 ? "producto" : "productos"} · ${grupoAbierto.ordenes} ${grupoAbierto.ordenes === 1 ? "orden" : "órdenes"}`
-                  : "Sin resultados para el filtro actual"}
-              </Text>
-            </View>
-          </TouchableOpacity>
+            </TouchableOpacity>
+
+            <Text variant="subtitle" numberOfLines={1}>
+              {choferAbierto}
+            </Text>
+            <Text variant="caption">
+              {grupoAbierto
+                ? `${grupoAbierto.items.length} ${grupoAbierto.items.length === 1 ? "producto" : "productos"} · ${grupoAbierto.ordenes} ${grupoAbierto.ordenes === 1 ? "orden" : "órdenes"}`
+                : "Sin resultados para el filtro actual"}
+            </Text>
+          </View>
         )}
 
         {/* CAMPO DE BÚSQUEDA */}

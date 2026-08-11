@@ -1585,7 +1585,6 @@ export const DeliveryDetailScreen = () => {
                 <Badge
                   label={`Bs. ${formatMoney(netAmountToCollect)}`}
                   tone="primary"
-                  emphasis="soft"
                   size="sm"
                 />
                 {isHeaderSummaryExpanded ? (
@@ -1707,7 +1706,6 @@ export const DeliveryDetailScreen = () => {
                 <Badge
                   label={getStatusLabel(currentStatus)}
                   tone={getStatusTone(currentStatus)}
-                  emphasis="soft"
                   size="md"
                 />
               ) : (
@@ -2589,7 +2587,6 @@ export const DeliveryDetailScreen = () => {
                   <Badge
                     label="Anticipo mayor a la factura"
                     tone="danger"
-                    emphasis="soft"
                     size="sm"
                   />
                 )}
@@ -2663,7 +2660,6 @@ export const DeliveryDetailScreen = () => {
                             ? "primary"
                             : "danger"
                     }
-                    emphasis="soft"
                     size="sm"
                   />
                 </View>

@@ -360,7 +360,6 @@ export default function RevisionSemaforoListScreen() {
                       <Badge
                         label="❄️ Frío"
                         tone="neutral"
-                        emphasis="soft"
                         size="sm"
                       />
                     )}
@@ -369,7 +368,6 @@ export default function RevisionSemaforoListScreen() {
                   <Badge
                     label={`${order.totalProducts} Productos`}
                     tone="neutral"
-                    emphasis="soft"
                     size="sm"
                   />
                 </View>

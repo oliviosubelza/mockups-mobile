@@ -531,7 +531,6 @@ export function RouteMapView({
                 <Badge
                   label={statsLabel}
                   tone="primary"
-                  emphasis="soft"
                   size="sm"
                 />
               </View>
@@ -1002,7 +1001,6 @@ export function RouteMapView({
                       ? "danger"
                       : "neutral"
               }
-              emphasis="soft"
               size="sm"
             />
             {sheetState === "expanded" ? (
@@ -1249,7 +1247,6 @@ export function RouteMapView({
                   <Badge
                     label="Cadena de Frío"
                     tone="primary"
-                    emphasis="soft"
                     size="sm"
                   />
                 )}

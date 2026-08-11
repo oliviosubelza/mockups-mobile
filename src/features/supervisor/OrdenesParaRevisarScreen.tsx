@@ -136,7 +136,6 @@ export default function OrdenesParaRevisarScreen() {
             <Badge
               label={`${MOCK_SUPERVISOR_ORDERS.length} OT`}
               tone="primary"
-              emphasis="soft"
               size="sm"
             />
           </View>
@@ -291,7 +290,7 @@ export default function OrdenesParaRevisarScreen() {
                     >
                       {order.code}
                     </Text>
-                    {order.isColdChain && <Badge label="❄️ Frío" tone="neutral" emphasis="soft" size="sm" />}
+                    {order.isColdChain && <Badge label="❄️ Frío" tone="neutral" size="sm" />}
                   </View>
 
                   <View style={{ flexDirection: 'row', gap: 4, flexShrink: 0 }}>
@@ -299,7 +298,6 @@ export default function OrdenesParaRevisarScreen() {
                       <Badge
                         label={`${order.shortageCount} Faltante${order.shortageCount > 1 ? 's' : ''}`}
                         tone="danger"
-                        emphasis="soft"
                         size="sm"
                       />
                     )}
@@ -307,7 +305,6 @@ export default function OrdenesParaRevisarScreen() {
                       <Badge
                         label={`+${order.surplusCount} Sobrante${order.surplusCount > 1 ? 's' : ''}`}
                         tone="warning"
-                        emphasis="soft"
                         size="sm"
                       />
                     )}

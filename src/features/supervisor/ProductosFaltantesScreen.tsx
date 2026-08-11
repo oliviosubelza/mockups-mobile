@@ -629,7 +629,6 @@ export default function ProductosFaltantesScreen() {
                         <Badge
                           label="❄️ Frío"
                           tone="neutral"
-                          emphasis="soft"
                           size="sm"
                         />
                       )}
@@ -642,7 +641,6 @@ export default function ProductosFaltantesScreen() {
                           : `${item.difference} Faltante`
                       }
                       tone={item.difference > 0 ? "warning" : "danger"}
-                      emphasis="soft"
                       size="sm"
                     />
                   </View>

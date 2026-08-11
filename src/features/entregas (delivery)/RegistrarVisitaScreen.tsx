@@ -64,7 +64,6 @@ export function RegistrarVisitaScreen() {
             <Badge
               label="En Desarrollo"
               tone="warning"
-              emphasis="soft"
               size="sm"
             />
             <Text

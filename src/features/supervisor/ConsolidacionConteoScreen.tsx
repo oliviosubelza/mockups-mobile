@@ -225,8 +225,8 @@ export default function ConsolidacionConteoScreen() {
             </View>
 
             <View style={{ flexDirection: 'row', gap: 6, flexShrink: 0 }}>
-              <Badge label={`${totalDiscrepancyCount} Dif.`} tone="danger" emphasis="soft" size="sm" icon={AlertTriangle} />
-              <Badge label={`${totalOkCount} OK`} tone="success" emphasis="soft" size="sm" icon={CheckCircle2} />
+              <Badge label={`${totalDiscrepancyCount} Dif.`} tone="danger" size="sm" icon={AlertTriangle} />
+              <Badge label={`${totalOkCount} OK`} tone="success" size="sm" icon={CheckCircle2} />
             </View>
           </View>
 
@@ -361,19 +361,18 @@ export default function ConsolidacionConteoScreen() {
                     >
                       {item.codigo}
                     </Text>
-                    {item.isCold && <Badge label="❄️ Frío" tone="neutral" emphasis="soft" size="sm" />}
+                    {item.isCold && <Badge label="❄️ Frío" tone="neutral" size="sm" />}
                   </View>
 
                   <View style={{ flexShrink: 0 }}>
                     {isOkItem ? (
-                      <Badge label="Conteo OK" tone="success" emphasis="soft" size="sm" icon={CheckCircle2} />
+                      <Badge label="Conteo OK" tone="success" size="sm" icon={CheckCircle2} />
                     ) : isMatched ? (
-                      <Badge label="Ajustado" tone="success" emphasis="solid" size="sm" icon={CheckCircle2} />
+                      <Badge label="Ajustado" tone="success" size="sm" icon={CheckCircle2} />
                     ) : (
                       <Badge
                         label={item.difference > 0 ? `+${item.difference} Sobrante` : `${item.difference} Faltante`}
                         tone={item.difference > 0 ? 'warning' : 'danger'}
-                        emphasis="soft"
                         size="sm"
                       />
                     )}

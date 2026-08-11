@@ -300,9 +300,9 @@ export default function RevisionSemaforoExecuteScreen() {
             </Text>
             {stats.contados > 0 && (
               <View style={{ flexDirection: 'row', gap: 4 }}>
-                <Badge label={`${stats.matches} ok`} tone="success" emphasis="soft" size="sm" />
+                <Badge label={`${stats.matches} ok`} tone="success" size="sm" />
                 {stats.mismatches > 0 && (
-                  <Badge label={`${stats.mismatches} diff`} tone="danger" emphasis="soft" size="sm" />
+                  <Badge label={`${stats.mismatches} diff`} tone="danger" size="sm" />
                 )}
               </View>
             )}
@@ -450,11 +450,10 @@ export default function RevisionSemaforoExecuteScreen() {
                       <Badge
                         label={esMatch ? '✓ Conforme' : 'Con diferencia'}
                         tone={esMatch ? 'success' : 'danger'}
-                        emphasis="soft"
                         size="sm"
                       />
                     ) : (
-                      <Badge label="Pendiente" tone="neutral" emphasis="soft" size="sm" />
+                      <Badge label="Pendiente" tone="neutral" size="sm" />
                     )}
                   </View>
 
@@ -722,7 +721,7 @@ export default function RevisionSemaforoExecuteScreen() {
                         {prod.codigo} - {prod.nombre}
                       </Text>
                     </View>
-                    <Badge label="Simular" tone="primary" emphasis="soft" size="sm" />
+                    <Badge label="Simular" tone="primary" size="sm" />
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -775,7 +774,6 @@ export default function RevisionSemaforoExecuteScreen() {
                     <Badge
                       label={`Intento ${(recountAttempts[modalItem.codigo] || 0) + 1} de ${MAX_RECOUNTS}`}
                       tone="warning"
-                      emphasis="soft"
                       size="sm"
                     />
                   )}
@@ -861,13 +859,13 @@ export default function RevisionSemaforoExecuteScreen() {
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           {stats.matches > 0 && (
-            <Badge label={`${stats.matches} ok`} tone="success" emphasis="soft" size="sm" />
+            <Badge label={`${stats.matches} ok`} tone="success" size="sm" />
           )}
           {stats.mismatches > 0 && (
-            <Badge label={`${stats.mismatches} diff`} tone="danger" emphasis="soft" size="sm" />
+            <Badge label={`${stats.mismatches} diff`} tone="danger" size="sm" />
           )}
           {stats.pendientes > 0 && (
-            <Badge label={`${stats.pendientes} pend.`} tone="neutral" emphasis="soft" size="sm" />
+            <Badge label={`${stats.pendientes} pend.`} tone="neutral" size="sm" />
           )}
         </View>
       </ScreenActionBar>

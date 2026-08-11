@@ -93,7 +93,6 @@ export function DespachoCard({
             <Badge
               label={meta.label}
               tone={meta.tone}
-              emphasis="solid"
               size="sm"
             />
           </Box>

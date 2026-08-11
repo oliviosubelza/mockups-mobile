@@ -494,14 +494,12 @@ export default function ChequeoScreen({ despachoId }: Props) {
                   <Badge
                     label={`${stats.matches} ok`}
                     tone="success"
-                    emphasis="soft"
                     size="sm"
                   />
                   {stats.mismatches > 0 && (
                     <Badge
                       label={`${stats.mismatches} diff`}
                       tone="danger"
-                      emphasis="soft"
                       size="sm"
                     />
                   )}
@@ -574,7 +572,6 @@ export default function ChequeoScreen({ despachoId }: Props) {
                     <Badge
                       label={`Total: ${totalContadoCalculado} unids`}
                       tone="primary"
-                      emphasis="outline"
                       size="sm"
                       icon={Package}
                     />
@@ -1014,7 +1011,6 @@ export default function ChequeoScreen({ despachoId }: Props) {
                           <Badge
                             label={esMatch ? "Conforme" : "Diferencia"}
                             tone={esMatch ? "success" : "danger"}
-                            emphasis="soft"
                             size="sm"
                             icon={esMatch ? CheckCircle2 : XCircle}
                           />
@@ -1132,14 +1128,12 @@ export default function ChequeoScreen({ despachoId }: Props) {
               <Badge
                 label={`${stats.matches} ok`}
                 tone="success"
-                emphasis="soft"
                 size="sm"
               />
               {stats.mismatches > 0 && (
                 <Badge
                   label={`${stats.mismatches} diff`}
                   tone="danger"
-                  emphasis="soft"
                   size="sm"
                 />
               )}
@@ -1315,7 +1309,6 @@ export default function ChequeoScreen({ despachoId }: Props) {
                     <Badge
                       label="Simular"
                       tone="primary"
-                      emphasis="soft"
                       size="sm"
                     />
                   </TouchableOpacity>
@@ -1385,7 +1378,6 @@ export default function ChequeoScreen({ despachoId }: Props) {
                     <Badge
                       label={`Intento ${(recountAttempts[modalItem.codigo] || 0) + 1} de ${MAX_RECOUNTS}`}
                       tone="warning"
-                      emphasis="soft"
                       size="sm"
                     />
                   )}

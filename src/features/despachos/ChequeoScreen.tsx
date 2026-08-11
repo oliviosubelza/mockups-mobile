@@ -437,11 +437,16 @@ export default function ChequeoScreen({ despachoId }: Props) {
           buttonText: "Ver el detalle",
         }
       : {
-          title: "¿Confirmar el conteo?",
-          message:
+          /*
+           * Sin cuerpo: el título es la pregunta entera. El único dato que no
+           * se puede perder es cuántos ítems quedan sin contar, porque se
+           * cierran en 0 y pasan a ser diferencia del chofer — así que ese
+           * dato viaja EN el título en vez de en una descripción aparte.
+           */
+          title:
             totalEsperado - contados > 0
-              ? `Contaste ${contados} de ${totalEsperado} ítems (${avancePct}% de avance). Los ${totalEsperado - contados} restantes se registrarán en 0 y no podrás corregir las cantidades.`
-              : `Contaste los ${totalEsperado} ítems (100% de avance). Una vez confirmado no podrás corregir las cantidades.`,
+              ? `¿Confirmar con ${totalEsperado - contados} ítems sin contar?`
+              : "¿Confirmar el conteo?",
           type: avanceCompleto ? "info" : "warning",
           buttonText: "Confirmar conteo",
           cancelText: "Seguir contando",

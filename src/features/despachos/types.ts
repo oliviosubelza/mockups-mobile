@@ -17,6 +17,19 @@ export type ProductCheck = {
   nombre: string;
 };
 
+/**
+ * How long a driver spent counting one order, stored as the two instants the
+ * schema already names — `transport_order_histories` CHECKED_START and
+ * CHECKED_END. The duration is derived, never accumulated, so backgrounding or
+ * killing the app cannot make it drift.
+ */
+export type CheckSession = {
+  /** Epoch ms of the first registered product. */
+  startedAt: number;
+  /** Epoch ms of "Finalizar"; `null` while the count is still open. */
+  finishedAt: number | null;
+};
+
 /** UI metadata (label + chip tone) for each dispatch status. */
 export const ESTADO_META: Record<
   EstadoDespacho,

@@ -16,4 +16,5 @@ export const zustandStorage: StateStorage = {
 export const StorageKeys = {
   appearance: 'app.appearance',
   dispatchPlan: 'app.dispatch-plan',
+  despachos: 'app.despachos',
 } as const;

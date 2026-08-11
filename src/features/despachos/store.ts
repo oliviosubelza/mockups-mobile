@@ -1,6 +1,9 @@
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
-import type { Despacho, ProductCheck } from './types';
+import { StorageKeys, zustandStorage } from '@/shared/storage';
+
+import type { CheckSession, Despacho, ProductCheck } from './types';
 
 let seq = 0;
 const nextId = () => `chk-${Date.now()}-${seq++}`;
@@ -18,72 +21,128 @@ type DespachosState = {
   despachos: Despacho[];
   activeId: string | null;
   checksByDespacho: Record<string, ProductCheck[]>;
+  /** Blind-count timing per dispatch — the CHECKED_START/CHECKED_END pair. */
+  sessionsByDespacho: Record<string, CheckSession>;
   setActive: (id: string) => void;
   addCheck: (despachoId: string, codigo: string, nombre: string) => void;
   removeCheck: (despachoId: string, checkId: string) => void;
+  /** CHECKED_START. Idempotent: only the first registered product opens it. */
+  startCheck: (despachoId: string) => void;
+  /** CHECKED_END. Ignored when no session was ever opened. */
+  finishCheck: (despachoId: string) => void;
   /** Mockup "send to verify": marks the dispatch as loaded. */
   guardar: (despachoId: string) => void;
   anular: (despachoId: string) => void;
 };
 
-export const useDespachos = create<DespachosState>((set) => ({
-  despachos: SEED,
-  activeId: null,
-  checksByDespacho: {},
+export const useDespachos = create<DespachosState>()(
+  persist(
+    (set) => ({
+      despachos: SEED,
+      activeId: null,
+      checksByDespacho: {},
+      sessionsByDespacho: {},
 
-  setActive: (id) => set({ activeId: id }),
+      setActive: (id) => set({ activeId: id }),
 
-  addCheck: (despachoId, codigo, nombre) =>
-    set((state) => {
-      const current = state.checksByDespacho[despachoId] ?? [];
-      const existingIndex = current.findIndex((i) => i.codigo === codigo);
+      addCheck: (despachoId, codigo, nombre) =>
+        set((state) => {
+          const current = state.checksByDespacho[despachoId] ?? [];
+          const existingIndex = current.findIndex((i) => i.codigo === codigo);
 
-      if (existingIndex !== -1) {
-        // ACTUALIZAR EL MISMO PRODUCTO EN LUGAR DE INSERTAR UNO NUEVO
-        const updated = [...current];
-        updated[existingIndex] = { ...updated[existingIndex], nombre };
-        return {
+          if (existingIndex !== -1) {
+            // ACTUALIZAR EL MISMO PRODUCTO EN LUGAR DE INSERTAR UNO NUEVO
+            const updated = [...current];
+            updated[existingIndex] = { ...updated[existingIndex], nombre };
+            return {
+              checksByDespacho: {
+                ...state.checksByDespacho,
+                [despachoId]: updated,
+              },
+            };
+          }
+
+          // SI ES NUEVO, INSERTAR AL PRINCIPIO
+          const item: ProductCheck = { id: nextId(), codigo, nombre };
+          return {
+            checksByDespacho: {
+              ...state.checksByDespacho,
+              [despachoId]: [item, ...current],
+            },
+          };
+        }),
+
+      removeCheck: (despachoId, checkId) =>
+        set((state) => ({
           checksByDespacho: {
             ...state.checksByDespacho,
-            [despachoId]: updated,
+            [despachoId]: (state.checksByDespacho[despachoId] ?? []).filter(
+              (i) => i.id !== checkId,
+            ),
           },
-        };
-      }
+        })),
 
-      // SI ES NUEVO, INSERTAR AL PRINCIPIO
-      const item: ProductCheck = { id: nextId(), codigo, nombre };
-      return {
-        checksByDespacho: {
-          ...state.checksByDespacho,
-          [despachoId]: [item, ...current],
-        },
-      };
+      startCheck: (despachoId) =>
+        set((state) => {
+          // Re-registering a product must not restart the clock, and reopening
+          // a closed count must not reopen the session.
+          if (state.sessionsByDespacho[despachoId]) return state;
+          return {
+            sessionsByDespacho: {
+              ...state.sessionsByDespacho,
+              [despachoId]: { startedAt: Date.now(), finishedAt: null },
+            },
+          };
+        }),
+
+      finishCheck: (despachoId) =>
+        set((state) => {
+          const session = state.sessionsByDespacho[despachoId];
+          // Closing an order without ever registering a product leaves no
+          // session: there is no duration to report, and inventing a
+          // zero-length one would pollute the average.
+          if (!session || session.finishedAt !== null) return state;
+          return {
+            sessionsByDespacho: {
+              ...state.sessionsByDespacho,
+              [despachoId]: { ...session, finishedAt: Date.now() },
+            },
+          };
+        }),
+
+      guardar: (despachoId) =>
+        set((state) => ({
+          despachos: state.despachos.map((d) =>
+            d.id === despachoId && d.estado === 'pendiente'
+              ? { ...d, estado: 'cargado' }
+              : d,
+          ),
+        })),
+
+      anular: (despachoId) =>
+        set((state) => {
+          // The session is persisted, so dropping the dispatch without it
+          // would leave timing for an order that no longer exists.
+          const { [despachoId]: _removed, ...sessions } =
+            state.sessionsByDespacho;
+          return {
+            despachos: state.despachos.filter((d) => d.id !== despachoId),
+            sessionsByDespacho: sessions,
+          };
+        }),
     }),
-
-  removeCheck: (despachoId, checkId) =>
-    set((state) => ({
-      checksByDespacho: {
-        ...state.checksByDespacho,
-        [despachoId]: (state.checksByDespacho[despachoId] ?? []).filter(
-          (i) => i.id !== checkId,
-        ),
-      },
-    })),
-
-  guardar: (despachoId) =>
-    set((state) => ({
-      despachos: state.despachos.map((d) =>
-        d.id === despachoId && d.estado === 'pendiente'
-          ? { ...d, estado: 'cargado' }
-          : d,
-      ),
-    })),
-
-  anular: (despachoId) =>
-    set((state) => ({
-      despachos: state.despachos.filter((d) => d.id !== despachoId),
-    })),
-}));
+    {
+      name: StorageKeys.despachos,
+      storage: createJSONStorage(() => zustandStorage),
+      /**
+       * Only the timing survives a restart. The dispatch list and the checks
+       * still come from the seed on every launch, so persisting them here
+       * would freeze the mockup data at whatever the first run wrote.
+       */
+      partialize: (state) => ({ sessionsByDespacho: state.sessionsByDespacho }),
+    },
+  ),
+);
 
 /** Count of pending dispatches — feeds the Home badge. */
 export const selectPendientesCount = (state: DespachosState): number =>

@@ -34,6 +34,7 @@ import {
 import { FormSkeleton, ListSkeleton } from "@/shared/ui/Skeleton";
 import { Box, Text, useAppTheme } from "@/theme";
 import { useDespachos } from "./store";
+import { CheckTimer } from "./components/CheckTimer";
 
 const EMPTY: any[] = [];
 
@@ -139,6 +140,9 @@ export default function ChequeoScreen({ despachoId }: Props) {
   const checksByDespacho = useDespachos((state) => state.checksByDespacho);
   const addCheck = useDespachos((state) => state.addCheck);
   const guardar = useDespachos((state) => state.guardar);
+  const sessionsByDespacho = useDespachos((state) => state.sessionsByDespacho);
+  const startCheck = useDespachos((state) => state.startCheck);
+  const finishCheck = useDespachos((state) => state.finishCheck);
 
   const activeId = despachoId || activeIdFromStore || "1";
   const despacho = despachos.find((d) => d.id === activeId) || despachos[0];
@@ -337,6 +341,8 @@ export default function ChequeoScreen({ despachoId }: Props) {
 
     const dataEmpaquetada = `${productoSeleccionado.nombre} | ${detalleCantidad} | ${isMatch} | ${productoSeleccionado.isCold} | ${productoSeleccionado.expectedQty} | ${totalContadoCalculado} | ${numCajas} | ${numUnidades}`;
 
+    // CHECKED_START: el primer producto registrado abre el cronómetro.
+    startCheck(activeId);
     addCheck(activeId, productoSeleccionado.codigo, dataEmpaquetada);
     limpiarBuscador();
   };
@@ -356,6 +362,8 @@ export default function ChequeoScreen({ despachoId }: Props) {
       );
     });
 
+    // CHECKED_END: cierra el cronómetro antes de que `guardar` cambie el estado.
+    finishCheck(activeId);
     setCierre({ contados, pct: avancePct });
     guardar(activeId);
     pasoSiguiente.current = "success";
@@ -507,6 +515,8 @@ export default function ChequeoScreen({ despachoId }: Props) {
               )}
             </View>
           </View>
+
+          <CheckTimer session={sessionsByDespacho[activeId]} />
         </View>
 
         {isLoading ? (

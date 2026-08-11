@@ -2,6 +2,7 @@ import {
   ArrowRight,
   Check,
   ChevronDown,
+  ChevronLeft,
   FileText,
   PackageSearch,
   User,
@@ -194,6 +195,15 @@ export default function ProductosFaltantesScreen() {
     "all" | "shortage" | "surplus" | "cold"
   >("all");
 
+  /**
+   * Chofer abierto, o `null` mientras se ve el listado de choferes.
+   *
+   * La pantalla tiene dos pasos sobre los mismos datos: primero a quién
+   * reclamarle, después qué reclamarle. Vive en estado local y no en una ruta
+   * porque el catch-all navega por slug y no transporta parámetros.
+   */
+  const [choferAbierto, setChoferAbierto] = useState<string | null>(null);
+
   // CANTIDAD CONSOLIDADA POR ÍTEM EN CAJAS + UNIDADES (ARRANCA CON LO CONTADO POR EL CHOFER)
   const [corrections, setCorrections] = useState<Record<string, BoxUnitValue>>(
     () =>
@@ -320,6 +330,9 @@ export default function ProductosFaltantesScreen() {
       .sort((a, b) => b.items.length - a.items.length);
   })();
 
+  const grupoAbierto =
+    discrepanciasPorChofer.find((g) => g.driverName === choferAbierto) ?? null;
+
   const totalShortageCount = FLAT_MOCK_DISCREPANCIES.filter(
     (p) => p.difference < 0,
   ).length;
@@ -385,11 +398,40 @@ export default function ProductosFaltantesScreen() {
           </View>
         </View> */}
 
+        {/* CABECERA DEL CHOFER ABIERTO + VUELTA AL LISTADO */}
+        {choferAbierto && (
+          <TouchableOpacity
+            onPress={() => setChoferAbierto(null)}
+            activeOpacity={0.7}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <ChevronLeft size={20} color={theme.colors.foreground} />
+            <View style={{ flex: 1, gap: 1 }}>
+              <Text variant="subtitle" numberOfLines={1}>
+                {choferAbierto}
+              </Text>
+              <Text variant="caption">
+                {grupoAbierto
+                  ? `${grupoAbierto.items.length} ${grupoAbierto.items.length === 1 ? "producto" : "productos"} · ${grupoAbierto.ordenes} ${grupoAbierto.ordenes === 1 ? "orden" : "órdenes"}`
+                  : "Sin resultados para el filtro actual"}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
         {/* CAMPO DE BÚSQUEDA */}
         <SearchField
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="Buscar por chofer, SKU, producto u orden (OT)..."
+          placeholder={
+            choferAbierto
+              ? "Buscar por SKU, producto u orden (OT)..."
+              : "Buscar por chofer, SKU, producto u orden (OT)..."
+          }
         />
 
         {/* BARRA DE FILTROS SOLICITADA POR KEY USERS */}
@@ -533,7 +575,10 @@ export default function ProductosFaltantesScreen() {
         </ScrollView>
 
         {/* LISTADO PLANO Y COMPACTO DE ÍTEMS CON DIFERENCIA */}
-        {filteredDiscrepancies.length === 0 ? (
+        {/* El chofer abierto puede quedar sin ítems si el filtro los excluye:
+            cae al mismo vacío, y la cabecera de arriba sigue dando la vuelta. */}
+        {filteredDiscrepancies.length === 0 ||
+        (choferAbierto && !grupoAbierto) ? (
           <View
             style={{
               backgroundColor: theme.colors.cardBackground,
@@ -593,63 +638,10 @@ export default function ProductosFaltantesScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        ) : (
-          <View style={{ gap: 22 }}>
-            {discrepanciasPorChofer.map((grupo) => (
-              <View key={grupo.driverName} style={{ gap: 10 }}>
-                {/* CABECERA DEL CHOFER */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 10,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 16,
-                      backgroundColor: theme.colors.secondary,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <User size={16} color={theme.colors.mutedForeground} />
-                  </View>
-
-                  <View style={{ flex: 1, gap: 1 }}>
-                    <Text variant="subtitle" numberOfLines={1}>
-                      {grupo.driverName}
-                    </Text>
-                    <Text variant="caption">
-                      {grupo.items.length}{" "}
-                      {grupo.items.length === 1 ? "producto" : "productos"} ·{" "}
-                      {grupo.ordenes}{" "}
-                      {grupo.ordenes === 1 ? "orden" : "órdenes"}
-                    </Text>
-                  </View>
-
-                  <View style={{ flexDirection: "row", gap: 4 }}>
-                    {grupo.faltantes > 0 && (
-                      <Badge
-                        label={`${grupo.faltantes} faltante${grupo.faltantes === 1 ? "" : "s"}`}
-                        tone="danger"
-                        size="sm"
-                      />
-                    )}
-                    {grupo.sobrantes > 0 && (
-                      <Badge
-                        label={`${grupo.sobrantes} sobrante${grupo.sobrantes === 1 ? "" : "s"}`}
-                        tone="warning"
-                        size="sm"
-                      />
-                    )}
-                  </View>
-                </View>
-
-                <View style={{ gap: 18 }}>
-            {grupo.items.map((item) => {
+        ) : grupoAbierto ? (
+          /* PASO 2: QUÉ RECLAMARLE. Las cards del chofer abierto. */
+          <View style={{ gap: 18 }}>
+            {grupoAbierto.items.map((item) => {
               const isShortage = item.difference < 0;
               const accentColor = isShortage
                 ? theme.colors.danger
@@ -990,8 +982,62 @@ export default function ProductosFaltantesScreen() {
                 </Card>
               );
             })}
+          </View>
+        ) : (
+          /* PASO 1: A QUIÉN RECLAMARLE. El detalle llega al abrir un chofer. */
+          <View style={{ gap: 10 }}>
+            {discrepanciasPorChofer.map((grupo) => (
+              <Card
+                key={grupo.driverName}
+                onPress={() => setChoferAbierto(grupo.driverName)}
+                padding="m"
+                borderRadius="xl"
+                borderWidth={1}
+                style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
+              >
+                <View
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    backgroundColor: theme.colors.secondary,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <User size={18} color={theme.colors.mutedForeground} />
                 </View>
-              </View>
+
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text variant="subtitle" numberOfLines={1}>
+                    {grupo.driverName}
+                  </Text>
+                  <Text variant="caption">
+                    {grupo.items.length}{" "}
+                    {grupo.items.length === 1 ? "producto" : "productos"} ·{" "}
+                    {grupo.ordenes}{" "}
+                    {grupo.ordenes === 1 ? "orden" : "órdenes"}
+                  </Text>
+                  <View style={{ flexDirection: "row", gap: 4, marginTop: 2 }}>
+                    {grupo.faltantes > 0 && (
+                      <Badge
+                        label={`${grupo.faltantes} faltante${grupo.faltantes === 1 ? "" : "s"}`}
+                        tone="danger"
+                        size="sm"
+                      />
+                    )}
+                    {grupo.sobrantes > 0 && (
+                      <Badge
+                        label={`${grupo.sobrantes} sobrante${grupo.sobrantes === 1 ? "" : "s"}`}
+                        tone="warning"
+                        size="sm"
+                      />
+                    )}
+                  </View>
+                </View>
+
+                <ArrowRight size={18} color={theme.colors.mutedForeground} />
+              </Card>
             ))}
           </View>
         )}

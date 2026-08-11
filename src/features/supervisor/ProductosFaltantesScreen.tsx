@@ -214,6 +214,18 @@ export default function ProductosFaltantesScreen() {
       ),
   );
 
+  /**
+   * Corrección en curso por ítem, sin confirmar todavía.
+   *
+   * Cantidad y clasificación se editan juntas y se confirman juntas: son una
+   * sola corrección sobre el mismo ítem, y separarlas dejaría media card
+   * guardando al tocar y la otra mitad esperando un botón.
+   */
+  const [draftCorrections, setDraftCorrections] = useState<
+    Record<string, BoxUnitValue>
+  >({});
+  const [draftTypes, setDraftTypes] = useState<Record<string, string>>({});
+
   // MODAL SELECTOR DE TIPO DE DIFERENCIA
   const [pickerState, setPickerState] = useState<{
     visible: boolean;
@@ -224,17 +236,42 @@ export default function ProductosFaltantesScreen() {
   });
 
   const handleCorrectionChange = (itemId: string, next: BoxUnitValue) => {
-    setCorrections((prev) => ({ ...prev, [itemId]: next }));
+    setDraftCorrections((prev) => ({ ...prev, [itemId]: next }));
   };
 
   const handleSelectType = (type: string) => {
     if (pickerState.activeItemId) {
-      setSelectedTypes((prev) => ({
+      setDraftTypes((prev) => ({
         ...prev,
         [pickerState.activeItemId!]: type,
       }));
     }
     setPickerState({ visible: false, activeItemId: null });
+  };
+
+  // CONFIRMA LA CORRECCIÓN TECLEADA EN LA CARD
+  const commitCorrection = (itemId: string) => {
+    const draftCount = draftCorrections[itemId];
+    const draftType = draftTypes[itemId];
+
+    if (draftCount) {
+      setCorrections((prev) => ({ ...prev, [itemId]: draftCount }));
+    }
+    if (draftType) {
+      setSelectedTypes((prev) => ({ ...prev, [itemId]: draftType }));
+    }
+
+    // Los borradores se descartan: la card vuelve a leer del valor confirmado.
+    setDraftCorrections((prev) => {
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+    setDraftTypes((prev) => {
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
   };
 
   // FILTRADO PLANO DE ÍTEMS DE DISCREPANCIA (CADA OCURRENCIA POR SEPARADO)
@@ -537,12 +574,20 @@ export default function ProductosFaltantesScreen() {
               const accentColor = isShortage
                 ? theme.colors.danger
                 : theme.colors.warning;
-              const currentCorrection = corrections[item.id] ?? EMPTY_BOX_UNIT;
+              // Lo confirmado, y encima lo tecleado si la card está en edición.
+              const savedCorrection = corrections[item.id] ?? EMPTY_BOX_UNIT;
+              const savedType = selectedTypes[item.id] || item.differenceType;
+              const currentCorrection =
+                draftCorrections[item.id] ?? savedCorrection;
+              const currentSelectedType = draftTypes[item.id] ?? savedType;
+
               const isMatched =
                 boxUnitTotal(currentCorrection, item.cajaSize) ===
                 item.expectedQty;
-              const currentSelectedType =
-                selectedTypes[item.id] || item.differenceType;
+              const correccionSucia =
+                currentCorrection.cajas !== savedCorrection.cajas ||
+                currentCorrection.unidades !== savedCorrection.unidades ||
+                currentSelectedType !== savedType;
 
               return (
                 <Card
@@ -813,28 +858,72 @@ export default function ProductosFaltantesScreen() {
                     </View>
                   </View>
 
-                  {/* FILA 6: ACCESO AL DETALLE */}
+                  {/* FILA 6: CONFIRMACIÓN + ACCESO AL DETALLE */}
                   {/* Se separa con aire, no con línea: la única división de la
                       card marca el paso de lectura a edición. */}
                   <View
                     style={{
                       flexDirection: "row",
-                      justifyContent: "flex-end",
+                      justifyContent: correccionSucia
+                        ? "space-between"
+                        : "flex-end",
                       alignItems: "center",
-                      gap: 3,
+                      gap: 8,
                       marginTop: 2,
                     }}
                   >
-                    <Text
+                    {/* Sale sólo cuando hay algo distinto que guardar: una
+                        corrección es un hecho a registrar, no un campo que va
+                        cambiando mientras se teclea. */}
+                    {correccionSucia && (
+                      <TouchableOpacity
+                        onPress={() => commitCorrection(item.id)}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 5,
+                          flexShrink: 1,
+                        }}
+                      >
+                        <Check
+                          size={13}
+                          strokeWidth={3}
+                          color={theme.colors.primary}
+                        />
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            fontSize: 11,
+                            fontWeight: "700",
+                            color: theme.colors.primary,
+                          }}
+                        >
+                          Guardar corrección
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    <View
                       style={{
-                        fontSize: 11,
-                        fontWeight: "700",
-                        color: theme.colors.primary,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 3,
+                        flexShrink: 0,
                       }}
                     >
-                      Ver detalle
-                    </Text>
-                    <ArrowRight size={13} color={theme.colors.primary} />
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: "700",
+                          color: theme.colors.primary,
+                        }}
+                      >
+                        Ver detalle
+                      </Text>
+                      <ArrowRight size={13} color={theme.colors.primary} />
+                    </View>
                   </View>
                 </Card>
               );

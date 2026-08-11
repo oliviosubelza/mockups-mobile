@@ -881,7 +881,7 @@ export default function ProductosFaltantesScreen() {
                         label="Guardar corrección"
                         icon={Check}
                         variant="primary"
-                        size="sm"
+                        size="xs"
                         onPress={() => commitCorrection(item.id)}
                       />
                     )}

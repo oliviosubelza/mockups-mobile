@@ -604,7 +604,7 @@ export default function RevisionSemaforoExecuteScreen() {
                             label="Guardar corrección"
                             icon={Check}
                             variant="primary"
-                            size="sm"
+                            size="xs"
                             onPress={() => commitEdit(registro)}
                           />
                         )}

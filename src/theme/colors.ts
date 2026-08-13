@@ -37,6 +37,17 @@ export const lightColors = {
   warningSoft: palette.warningSoft,
   dangerSoft: palette.dangerSoft,
 
+  /**
+   * Solid-fill tokens. Each scheme inverts the recipe so the pill stays
+   * readable *and* stays visible against its card: the light scheme fills dark
+   * and writes white, the dark scheme fills bright and writes near-black.
+   * `warning` already followed this shape, which is why it keeps its own pair.
+   */
+  primarySolid: palette.cobalt,
+  successSolid: palette.successStrong,
+  dangerSolid: palette.dangerStrong,
+  solidForeground: palette.white,
+
   transparent: palette.transparent,
 };
 
@@ -65,13 +76,22 @@ export const darkColors: typeof lightColors = {
   ring: palette.cobaltBright,
 
   danger: palette.dangerBright,
-  // `ink` is near-black: legible on the light `warning` amber, unreadable on the
-  // dark elevation ramp. Follows `dangerForeground`/`successForeground`, which
-  // stay `white` in both schemes.
-  warningForeground: palette.white,
+  // `warningForeground` is not overridden here: it only ever sits on `warning`,
+  // and `warning` is the same amber in both schemes. White on that amber is
+  // 2.15:1 — below the 4.5:1 AA floor for badge-sized text — so it keeps the
+  // near-black `ink` from `lightColors`, which measures 8.5:1.
+  // Use `warning` (not `warningForeground`) for warning-colored text on a card.
 
   primarySoft: palette.cobaltSoftDark,
   successSoft: palette.successSoftDark,
   warningSoft: palette.warningSoftDark,
   dangerSoft: palette.dangerSoftDark,
+
+  // Bright fill + near-black label: on the dark elevation ramp this both
+  // clears 4.5:1 for the label and keeps the pill distinct from the card,
+  // which a darkened fill does not (it sinks to ~1.1:1 against gray850).
+  primarySolid: palette.cobaltBright,
+  successSolid: palette.success,
+  dangerSolid: palette.dangerBright,
+  solidForeground: palette.ink,
 };

@@ -1,10 +1,10 @@
 import { ThemeProvider } from '@shopify/restyle';
 import { useMemo, type ReactNode } from 'react';
-import { useColorScheme } from 'react-native';
 
 import { useAppearance } from '@/shared/stores/appearance';
 
 import { createAppTheme } from './theme';
+import { useEffectiveColorScheme } from './useEffectiveColorScheme';
 
 type Props = {
   children: ReactNode;
@@ -16,12 +16,8 @@ type Props = {
  * rebuilt whenever the scheme or the base font size changes.
  */
 export function AppThemeProvider({ children }: Props) {
-  const mode = useAppearance((state) => state.mode);
   const baseFontSize = useAppearance((state) => state.baseFontSize);
-  const system = useColorScheme();
-
-  const effective = mode === 'system' ? system : mode;
-  const scheme = effective === 'dark' ? 'dark' : 'light';
+  const scheme = useEffectiveColorScheme();
 
   const active = useMemo(
     () => createAppTheme(scheme, baseFontSize),

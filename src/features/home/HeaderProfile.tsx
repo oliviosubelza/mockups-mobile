@@ -31,7 +31,6 @@ export function HeaderProfile() {
             <Badge
               label={user?.roleLabel || user?.role || 'Usuario'}
               tone={user?.role === 'SUPERVISOR' ? 'neutral' : 'primary'}
-              emphasis="soft"
               size="sm"
             />
           </View>

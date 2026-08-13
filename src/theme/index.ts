@@ -1,5 +1,6 @@
 export { Box, Text, useAppTheme } from './components';
 export { AppThemeProvider } from './provider';
+export { useEffectiveColorScheme } from './useEffectiveColorScheme';
 export { palette } from './palette';
 export { lightColors, darkColors } from './colors';
 export type { ColorToken } from './colors';

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { View, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -11,9 +11,10 @@ import {
   QrCode,
   Camera,
   ScanLine,
-  RotateCcw,
   CheckCheck,
   Check,
+  StickyNote,
+  Lock,
 } from 'lucide-react-native';
 
 import { findRouteById, navigateTo } from '@/navigation/registry';
@@ -22,6 +23,7 @@ import {
   Button,
   AppDialog,
   SearchField,
+  ScreenActionBar,
   Card,
   BoxUnitCounter,
   EMPTY_BOX_UNIT,
@@ -31,6 +33,8 @@ import {
   type DialogType,
 } from '@/shared/ui';
 import { Text, useAppTheme } from '@/theme';
+
+import { ObservationSheet } from './components/ObservationSheet';
 
 // MANIFIESTO COMPLETO DE LA OT-4892 QUE EL SUPERVISOR DEBE AUDITAR
 const MOCK_OT_PRODUCTS = [
@@ -76,7 +80,6 @@ const MOCK_OT_PRODUCTS = [
   },
 ];
 
-const MAX_RECOUNTS = 2;
 
 export interface CountedAuditRecord {
   id: string;
@@ -103,20 +106,34 @@ export default function RevisionSemaforoExecuteScreen() {
   // REGISTROS YA CONFIRMADOS POR EL SUPERVISOR
   const [itemsAuditados, setItemsAuditados] = useState<CountedAuditRecord[]>([]);
 
-  // CONTADOR DE RE-CONTEOS POR CÓDIGO DE PRODUCTO (MÁXIMO 2 INTENTOS PERMITIDOS)
-  const [recountAttempts, setRecountAttempts] = useState<Record<string, number>>({});
+  /**
+   * Una auditoría consolidada queda cerrada para todos. Hasta ese momento el
+   * supervisor corrige cuantas veces necesite: la revisión espejo existe para
+   * llegar al número correcto, no para gastar intentos.
+   */
+  const [consolidado, setConsolidado] = useState(false);
 
-  // ESTADO DEL MODAL IN-SITU DE RE-CONTEO RÁPIDO
-  const [isRecountModalVisible, setIsRecountModalVisible] = useState(false);
-  const [modalItem, setModalItem] = useState<CountedAuditRecord | null>(null);
-  const [modalCount, setModalCount] = useState<BoxUnitValue>(EMPTY_BOX_UNIT);
+  // OBSERVACIÓN DEL SUPERVISOR POR PRODUCTO
+  const [observations, setObservations] = useState<Record<string, string>>({});
+  const [noteCodigo, setNoteCodigo] = useState<string | null>(null);
+
+  /**
+   * Corrección en curso por producto, sin confirmar todavía.
+   *
+   * La corrección se edita en la propia fila: el modal existía para que gastar
+   * uno de los dos intentos fuera un acto deliberado, y sin tope esa ceremonia
+   * era fricción sin nada que proteger. Igual se confirma con un botón — un
+   * conteo corregido es un hecho a registrar, no un campo que va cambiando
+   * mientras se teclea.
+   */
+  const [editDrafts, setEditDrafts] = useState<Record<string, BoxUnitValue>>({});
 
   // ESTADO DEL ESCÁNER DE CÓDIGO DE BARRAS POR CÁMARA
   const [isBarcodeScannerVisible, setIsBarcodeScannerVisible] = useState(false);
   const [highlightedCode, setHighlightedCode] = useState<string | null>(null);
 
   // DIÁLOGO DE CIERRE DE AUDITORÍA
-  const [dialogConfig, setDialogConfig] = useState<{
+  type DialogConfig = {
     visible: boolean;
     title: string;
     message: string;
@@ -125,7 +142,20 @@ export default function RevisionSemaforoExecuteScreen() {
     onCancel?: () => void;
     cancelText?: string;
     buttonText?: string;
-  }>({ visible: false, title: '', message: '', type: 'info' });
+  };
+  const [dialogConfig, setDialogConfig] = useState<DialogConfig>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'info',
+  });
+
+  /**
+   * AppDialog invoca `onClose` siempre después de confirmar, así que un diálogo
+   * que abre otro se cerraría solo. El siguiente paso se encola acá y lo monta
+   * el propio `onClose` en lugar de cerrar.
+   */
+  const dialogSiguiente = useRef<DialogConfig | null>(null);
 
   // ÍNDICE DE REGISTROS CONFIRMADOS POR CÓDIGO
   const registradosPorCodigo = useMemo(() => {
@@ -171,45 +201,52 @@ export default function RevisionSemaforoExecuteScreen() {
     setHighlightedCode(found ? found.codigo : null);
   };
 
-  // ABRIR MODAL SHEET FLOTANTE IN-SITU DE RE-CONTEO
-  const openRecountModal = (item: CountedAuditRecord) => {
-    const attempts = recountAttempts[item.codigo] || 0;
-    if (attempts >= MAX_RECOUNTS) return;
+  /** Lo tecleado para un registro, o su valor confirmado si aún no se tocó. */
+  const getEditValue = (registro: CountedAuditRecord): BoxUnitValue =>
+    editDrafts[registro.codigo] ?? {
+      cajas: registro.numCajas.toString(),
+      unidades: registro.numUnidades.toString(),
+    };
 
-    setModalItem(item);
-    setModalCount({
-      cajas: item.numCajas.toString(),
-      unidades: item.numUnidades.toString(),
-    });
-    setIsRecountModalVisible(true);
-  };
+  const setEditValue = (codigo: string, next: BoxUnitValue) =>
+    setEditDrafts((prev) => ({ ...prev, [codigo]: next }));
 
-  // GUARDAR AJUSTE DE RE-CONTEO DESDE EL MODAL SHEET IN-SITU
-  const saveRecountFromModal = () => {
-    if (!modalItem) return;
-
-    const totalContadoCalculado = boxUnitTotal(modalCount, modalItem.cajaSize);
+  // CONFIRMA LA CORRECCIÓN TECLEADA EN LA FILA
+  const commitEdit = (registro: CountedAuditRecord) => {
+    const draft = editDrafts[registro.codigo];
+    if (!draft || consolidado) return;
 
     setItemsAuditados((prev) =>
       prev.map((rec) =>
-        rec.codigo === modalItem.codigo
+        rec.codigo === registro.codigo
           ? {
               ...rec,
-              numCajas: parseInt(modalCount.cajas || '0', 10) || 0,
-              numUnidades: parseInt(modalCount.unidades || '0', 10) || 0,
-              totalContado: totalContadoCalculado,
+              numCajas: parseInt(draft.cajas || '0', 10) || 0,
+              numUnidades: parseInt(draft.unidades || '0', 10) || 0,
+              totalContado: boxUnitTotal(draft, registro.cajaSize),
             }
-          : rec
-      )
+          : rec,
+      ),
     );
 
-    setRecountAttempts((prev) => ({
-      ...prev,
-      [modalItem.codigo]: (prev[modalItem.codigo] || 0) + 1,
-    }));
+    // El borrador se descarta: a partir de acá la fila vuelve a leer del registro.
+    setEditDrafts((prev) => {
+      const next = { ...prev };
+      delete next[registro.codigo];
+      return next;
+    });
+  };
 
-    setIsRecountModalVisible(false);
-    setModalItem(null);
+  // GUARDA LA OBSERVACIÓN; SI QUEDA VACÍA, LA ELIMINA DEL REGISTRO
+  const handleSaveNote = (text: string) => {
+    if (!noteCodigo) return;
+    setObservations((prev) => {
+      const next = { ...prev };
+      if (text.length === 0) delete next[noteCodigo];
+      else next[noteCodigo] = text;
+      return next;
+    });
+    setNoteCodigo(null);
   };
 
   // MÉTRICAS EN TIEMPO REAL SOBRE EL MANIFIESTO COMPLETO
@@ -237,32 +274,50 @@ export default function RevisionSemaforoExecuteScreen() {
     if (route) navigateTo(route);
   };
 
-  const confirmFinishAudit = () => {
-    setDialogConfig({
-      visible: true,
-      title: '¡Auditoría Semáforo Guardada!',
-      message: `Se ha registrado la auditoría a ciegas de ${stats.contados} de ${stats.total} productos en la Orden OT-4892.`,
-      type: 'success',
-      onConfirm: handleRedirectToList,
-    });
-  };
-
-  // SI QUEDAN PRODUCTOS SIN CONTAR, PEDIR CONFIRMACIÓN EXPLÍCITA ANTES DE CERRAR
-  const handleFinishAudit = () => {
-    if (stats.pendientes > 0) {
-      setDialogConfig({
-        visible: true,
-        title: 'Quedan productos sin contar',
-        message: `Todavía hay ${stats.pendientes} de ${stats.total} productos sin registrar. Si finalizas ahora, quedarán fuera de la auditoría.`,
-        type: 'warning',
-        buttonText: 'Finalizar igual',
-        cancelText: 'Seguir contando',
-        onCancel: closeDialog,
-        onConfirm: confirmFinishAudit,
-      });
+  const handleDialogClose = () => {
+    if (dialogSiguiente.current) {
+      setDialogConfig(dialogSiguiente.current);
+      dialogSiguiente.current = null;
       return;
     }
-    confirmFinishAudit();
+    closeDialog();
+  };
+
+  // CIERRA LA AUDITORÍA: A PARTIR DE ACÁ NADIE PUEDE TOCARLA
+  const confirmarConsolidacion = () => {
+    setConsolidado(true);
+    dialogSiguiente.current = {
+      visible: true,
+      title: 'Auditoría consolidada',
+      message: `Se consolidó la revisión de ${stats.contados} de ${stats.total} productos en la Orden OT-4892. El conteo queda cerrado y ya no admite cambios.`,
+      type: 'success',
+      onConfirm: handleRedirectToList,
+    };
+  };
+
+  /**
+   * Consolidar es irreversible, así que se confirma siempre — y si además
+   * quedan productos sin registrar, se dice en el mismo aviso en lugar de
+   * encadenar dos preguntas.
+   */
+  const handleConsolidar = () => {
+    if (consolidado) return;
+
+    const pendientes =
+      stats.pendientes > 0
+        ? `Quedan ${stats.pendientes} de ${stats.total} productos sin registrar y quedarán fuera de la auditoría. `
+        : '';
+
+    setDialogConfig({
+      visible: true,
+      title: 'Consolidar auditoría',
+      message: `${pendientes}Al consolidar, el conteo queda cerrado: ni vos ni nadie podrá corregirlo después.`,
+      type: 'warning',
+      buttonText: 'Consolidar',
+      cancelText: 'Seguir revisando',
+      onCancel: closeDialog,
+      onConfirm: confirmarConsolidacion,
+    });
   };
 
   // FILTRADO DEL MANIFIESTO POR CÓDIGO O NOMBRE
@@ -278,7 +333,7 @@ export default function RevisionSemaforoExecuteScreen() {
     <View style={{ flex: 1, backgroundColor: theme.colors.mainBackground }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 100, gap: 14 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 24, gap: 14 }}
         keyboardShouldPersistTaps="handled"
       >
         {/* HEADER DE CONTEXTO */}
@@ -299,9 +354,9 @@ export default function RevisionSemaforoExecuteScreen() {
             </Text>
             {stats.contados > 0 && (
               <View style={{ flexDirection: 'row', gap: 4 }}>
-                <Badge label={`${stats.matches} ok`} tone="success" emphasis="soft" size="sm" />
+                <Badge label={`${stats.matches} ok`} tone="success" size="sm" />
                 {stats.mismatches > 0 && (
-                  <Badge label={`${stats.mismatches} diff`} tone="danger" emphasis="soft" size="sm" />
+                  <Badge label={`${stats.mismatches} diff`} tone="danger" size="sm" />
                 )}
               </View>
             )}
@@ -413,8 +468,16 @@ export default function RevisionSemaforoExecuteScreen() {
               const diff = isRegistrado ? registro.totalContado - registro.expectedQty : 0;
               const diffText = diff > 0 ? `+${diff} (sobran)` : `${diff} (faltan)`;
 
-              const attempts = recountAttempts[producto.codigo] || 0;
-              const remainingAttempts = MAX_RECOUNTS - attempts;
+              const nota = observations[producto.codigo] ?? '';
+              const tieneNota = nota.length > 0;
+
+              // Sólo hay algo que corregir donde el conteo no cerró.
+              const puedeEditar = isRegistrado && !esMatch && !consolidado;
+              const editValue = isRegistrado ? getEditValue(registro) : EMPTY_BOX_UNIT;
+              const editSucio =
+                isRegistrado &&
+                (editValue.cajas !== registro.numCajas.toString() ||
+                  editValue.unidades !== registro.numUnidades.toString());
 
               return (
                 <Card
@@ -449,11 +512,10 @@ export default function RevisionSemaforoExecuteScreen() {
                       <Badge
                         label={esMatch ? '✓ Conforme' : 'Con diferencia'}
                         tone={esMatch ? 'success' : 'danger'}
-                        emphasis="soft"
                         size="sm"
                       />
                     ) : (
-                      <Badge label="Pendiente" tone="neutral" emphasis="soft" size="sm" />
+                      <Badge label="Pendiente" tone="neutral" size="sm" />
                     )}
                   </View>
 
@@ -476,17 +538,29 @@ export default function RevisionSemaforoExecuteScreen() {
                         gap: 5,
                       }}
                     >
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-                        <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
-                          Contado por el supervisor:
-                        </Text>
-                        <Text
-                          variant="label"
-                          style={{ fontSize: 12, fontWeight: '800', color: theme.colors.foreground }}
-                        >
-                          {registro.numCajas} Cajas + {registro.numUnidades} u. = {registro.totalContado} u.
-                        </Text>
-                      </View>
+                      {/* La corrección se teclea acá mismo. Donde ya no hay
+                          nada que corregir, la misma línea se lee estática. */}
+                      {puedeEditar ? (
+                        <BoxUnitCounter
+                          value={editValue}
+                          onChange={(next) => setEditValue(producto.codigo, next)}
+                          cajaSize={registro.cajaSize}
+                          totalLabel="Contado por el supervisor"
+                          targetQty={registro.expectedQty}
+                        />
+                      ) : (
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                          <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
+                            Contado por el supervisor:
+                          </Text>
+                          <Text
+                            variant="label"
+                            style={{ fontSize: 12, fontWeight: '800', color: theme.colors.foreground }}
+                          >
+                            {registro.numCajas} Cajas + {registro.numUnidades} u. = {registro.totalContado} u.
+                          </Text>
+                        </View>
+                      )}
 
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
                         <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
@@ -512,49 +586,73 @@ export default function RevisionSemaforoExecuteScreen() {
                         {esMatch ? '✓ Conteo conforme' : `Diferencia: ${diffText}`}
                       </Text>
 
-                      {!esMatch &&
-                        (remainingAttempts > 0 ? (
+                      {/* ACCIONES DEL REGISTRO. Guardar sólo aparece cuando la
+                          corrección cambió algo, y no tiene tope: el supervisor
+                          insiste hasta dar con el número y sólo consolidar
+                          cierra la puerta. */}
+                      {/* Reserva el alto del botón aunque no esté: si creciera
+                          al aparecer, la fila empujaría todo lo de abajo justo
+                          mientras se está tecleando la corrección. */}
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 12,
+                          flexWrap: 'wrap',
+                          marginTop: 2,
+                          minHeight: theme.controlSizes.xs.height,
+                        }}
+                      >
+                        {puedeEditar && editSucio && (
+                          <Button
+                            label="Guardar corrección"
+                            icon={Check}
+                            variant="primary"
+                            size="xs"
+                            onPress={() => commitEdit(registro)}
+                          />
+                        )}
+
+                        {consolidado && !tieneNota ? null : (
                           <TouchableOpacity
-                            onPress={() => openRecountModal(registro)}
+                            onPress={() => setNoteCodigo(producto.codigo)}
                             activeOpacity={0.7}
-                            style={{
-                              backgroundColor: theme.colors.primarySoft,
-                              borderRadius: 6,
-                              paddingHorizontal: 8,
-                              paddingVertical: 5,
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: 5,
-                              alignSelf: 'flex-start',
-                              borderWidth: 1,
-                              borderColor: theme.colors.primary,
-                              marginTop: 2,
-                            }}
+                            hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }}
                           >
-                            <RotateCcw size={12} color={theme.colors.primary} />
-                            <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
-                              Recontar producto ({remainingAttempts}{' '}
-                              {remainingAttempts === 1 ? 'intento restante' : 'intentos restantes'})
+                            <StickyNote
+                              size={13}
+                              color={tieneNota ? theme.colors.primary : theme.colors.mutedForeground}
+                            />
+                            <Text
+                              numberOfLines={1}
+                              style={{
+                                fontSize: 11,
+                                fontWeight: '700',
+                                color: tieneNota ? theme.colors.primary : theme.colors.mutedForeground,
+                                flexShrink: 1,
+                              }}
+                            >
+                              {tieneNota ? 'Ver observación' : 'Agregar observación'}
                             </Text>
                           </TouchableOpacity>
-                        ) : (
-                          <View
-                            style={{
-                              backgroundColor: theme.colors.secondary,
-                              borderRadius: 6,
-                              paddingHorizontal: 8,
-                              paddingVertical: 4,
-                              alignSelf: 'flex-start',
-                              borderWidth: 1,
-                              borderColor: theme.colors.border,
-                              marginTop: 2,
-                            }}
-                          >
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: theme.colors.mutedForeground }}>
-                              🔒 Máximo de {MAX_RECOUNTS} re-conteos alcanzado (Bloqueado)
-                            </Text>
-                          </View>
-                        ))}
+                        )}
+                      </View>
+                    </View>
+                  ) : consolidado ? (
+                    /* CONSOLIDADA: lo que no se registró ya no se puede contar */
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        marginTop: 2,
+                      }}
+                    >
+                      <Lock size={13} color={theme.colors.mutedForeground} />
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.mutedForeground }}>
+                        Quedó sin registrar. La auditoría ya fue consolidada.
+                      </Text>
                     </View>
                   ) : (
                     /* BLOQUE DE CAPTURA: SIN NINGUNA PISTA DE LA CANTIDAD ESPERADA */
@@ -721,7 +819,7 @@ export default function RevisionSemaforoExecuteScreen() {
                         {prod.codigo} - {prod.nombre}
                       </Text>
                     </View>
-                    <Badge label="Simular" tone="primary" emphasis="soft" size="sm" />
+                    <Badge label="Simular" tone="primary" size="sm" />
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -738,186 +836,45 @@ export default function RevisionSemaforoExecuteScreen() {
         </View>
       </Modal>
 
-      {/* MODAL SHEET FLOTANTE DE RE-CONTEO RÁPIDO (IN-SITU) */}
-      <Modal
-        visible={isRecountModalVisible}
-        transparent
-        animationType="slide"
-        statusBarTranslucent
-        onRequestClose={() => setIsRecountModalVisible(false)}
+      {/* BARRA DE ACCIÓN ANCLADA (hermana del ScrollView, no flotante) */}
+      <ScreenActionBar
+        actionLabel={consolidado ? 'Consolidada' : 'Consolidar'}
+        actionIcon={consolidado ? Lock : CheckCheck}
+        tone={consolidado ? 'success' : 'primary'}
+        onAction={handleConsolidar}
+        actionDisabled={consolidado || stats.contados === 0}
       >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.6)',
-            justifyContent: 'flex-end',
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: theme.colors.cardBackground,
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
-              padding: 20,
-              paddingBottom: Math.max(20, insets.bottom + 12),
-              gap: 16,
-              elevation: 20,
-            }}
-          >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View style={{ gap: 2, flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text variant="header" style={{ fontSize: 16, fontWeight: '800', color: theme.colors.foreground }}>
-                    Re-conteo en Sitio
-                  </Text>
-                  {modalItem && (
-                    <Badge
-                      label={`Intento ${(recountAttempts[modalItem.codigo] || 0) + 1} de ${MAX_RECOUNTS}`}
-                      tone="warning"
-                      emphasis="soft"
-                      size="sm"
-                    />
-                  )}
-                </View>
-                <Text variant="caption" style={{ fontSize: 12, color: theme.colors.mutedForeground }} numberOfLines={1}>
-                  {modalItem ? `${modalItem.codigo} - ${modalItem.nombre}` : ''}
-                </Text>
-              </View>
+        <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.foreground }}>
+          {stats.contados} de {stats.total} contados
+        </Text>
 
-              <TouchableOpacity
-                onPress={() => setIsRecountModalVisible(false)}
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 16,
-                  backgroundColor: theme.colors.secondary,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <X size={18} color={theme.colors.mutedForeground} />
-              </TouchableOpacity>
-            </View>
-
-            {/* MISMO CONTROL QUE LA CARD: acarrea sueltas a cajas */}
-            <BoxUnitCounter
-              value={modalCount}
-              onChange={setModalCount}
-              cajaSize={modalItem?.cajaSize ?? 1}
-              totalLabel="Total recontado"
-              targetQty={modalItem?.expectedQty}
-            />
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-              <TouchableOpacity
-                onPress={() => setIsRecountModalVisible(false)}
-                style={{
-                  flex: 1,
-                  paddingVertical: 12,
-                  borderRadius: 12,
-                  backgroundColor: theme.colors.secondary,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                }}
-              >
-                <Text style={{ fontWeight: '700', color: theme.colors.foreground, fontSize: 13 }}>
-                  Cancelar
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={saveRecountFromModal}
-                style={{
-                  flex: 1.5,
-                  paddingVertical: 12,
-                  borderRadius: 12,
-                  backgroundColor: theme.colors.primary,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text style={{ fontWeight: '800', color: '#ffffff', fontSize: 13 }}>
-                  Guardar Re-conteo
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {stats.matches > 0 && (
+            <Badge label={`${stats.matches} ok`} tone="success" size="sm" />
+          )}
+          {stats.mismatches > 0 && (
+            <Badge label={`${stats.mismatches} diff`} tone="danger" size="sm" />
+          )}
+          {stats.pendientes > 0 && (
+            <Badge label={`${stats.pendientes} pend.`} tone="neutral" size="sm" />
+          )}
         </View>
-      </Modal>
+      </ScreenActionBar>
 
-      {/* DOCK FLOTANTE DE PROGRESO Y CIERRE DE AUDITORÍA */}
-      <View
-        style={{
-          position: 'absolute',
-          bottom: Math.max(16, insets.bottom + 8),
-          left: 16,
-          right: 16,
-          backgroundColor: theme.colors.cardBackground,
-          borderRadius: 30,
-          borderWidth: 1.5,
-          borderColor: theme.colors.primary,
-          paddingVertical: 8,
-          paddingHorizontal: 14,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 10,
-          elevation: 12,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.18,
-          shadowRadius: 10,
-        }}
-      >
-        <View style={{ gap: 3, flexShrink: 1 }}>
-          <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.foreground }}>
-            {stats.contados} de {stats.total} contados
-          </Text>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            {stats.matches > 0 && <Badge label={`${stats.matches} ok`} tone="success" emphasis="soft" size="sm" />}
-            {stats.mismatches > 0 && (
-              <Badge label={`${stats.mismatches} diff`} tone="danger" emphasis="soft" size="sm" />
-            )}
-            {stats.pendientes > 0 && (
-              <Badge label={`${stats.pendientes} pend.`} tone="neutral" emphasis="soft" size="sm" />
-            )}
-          </View>
-        </View>
-
-        <TouchableOpacity
-          onPress={handleFinishAudit}
-          disabled={stats.contados === 0}
-          activeOpacity={0.85}
-          style={{
-            backgroundColor: stats.contados === 0 ? theme.colors.secondary : theme.colors.primary,
-            borderRadius: 22,
-            paddingVertical: 10,
-            paddingHorizontal: 16,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <CheckCheck size={18} color={stats.contados === 0 ? theme.colors.mutedForeground : '#ffffff'} />
-          <Text
-            style={{
-              color: stats.contados === 0 ? theme.colors.mutedForeground : '#ffffff',
-              fontWeight: '800',
-              fontSize: 13,
-            }}
-          >
-            Finalizar
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {/* OBSERVACIÓN DEL SUPERVISOR SOBRE UN PRODUCTO AUDITADO */}
+      <ObservationSheet
+        visible={noteCodigo !== null}
+        subtitle={noteCodigo ? `${noteCodigo} · OT-4892` : ''}
+        value={noteCodigo ? (observations[noteCodigo] ?? '') : ''}
+        readOnly={consolidado}
+        onSave={handleSaveNote}
+        onClose={() => setNoteCodigo(null)}
+      />
 
       {/* DIÁLOGO DE CIERRE DE AUDITORÍA */}
       <AppDialog
         visible={dialogConfig.visible}
-        onClose={closeDialog}
+        onClose={handleDialogClose}
         title={dialogConfig.title}
         message={dialogConfig.message}
         type={dialogConfig.type}

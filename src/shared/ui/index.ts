@@ -12,6 +12,8 @@ export { Chip, type ChipTone } from './Chip';
 export { Divider } from './Divider';
 export { Input } from './Input';
 export { SearchField } from './SearchField';
+export { SystemBars } from './SystemBars';
+export { ScreenActionBar, type ScreenActionBarProps } from './ScreenActionBar';
 export { QuantityStepper, type QuantityStepperProps } from './QuantityStepper';
 export {
   BoxUnitCounter,

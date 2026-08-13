@@ -15,7 +15,8 @@ export interface AppDialogProps {
   visible: boolean;
   onClose: () => void;
   title: string;
-  message: string;
+  /** Opcional: cuando el título ya dice todo, el cuerpo sobra. */
+  message?: string;
   type?: DialogType;
   buttonText?: string;
   onConfirm?: () => void;
@@ -152,19 +153,23 @@ export const AppDialog = ({
             {title}
           </Text>
 
-          {/* Mensaje */}
-          <Text
-            variant="body"
-            style={{
-              color: theme.colors.mutedForeground,
-              textAlign: 'center',
-              marginBottom: 22,
-              lineHeight: 22,
-              fontSize: 14,
-            }}
-          >
-            {message}
-          </Text>
+          {/* Mensaje. Sin él, el título se separa igual de las acciones. */}
+          {message ? (
+            <Text
+              variant="body"
+              style={{
+                color: theme.colors.mutedForeground,
+                textAlign: 'center',
+                marginBottom: 22,
+                lineHeight: 22,
+                fontSize: 14,
+              }}
+            >
+              {message}
+            </Text>
+          ) : (
+            <View style={{ marginBottom: 22 }} />
+          )}
 
           {/* Acciones: una sola confirmación o par cancelar/confirmar */}
           <View style={{ width: '100%', flexDirection: 'row', gap: 10 }}>

@@ -1,21 +1,15 @@
 import {
-  AlertTriangle,
-  ArrowRight,
   Camera,
   CheckCheck,
   CheckCircle2,
-  Clock,
   Layers,
   Minus,
   Package,
-  PlayCircle,
   Plus,
   QrCode,
   RotateCcw,
   ScanLine,
-  ShieldAlert,
   Snowflake,
-  UserCheck,
   X,
   XCircle,
 } from "lucide-react-native";
@@ -40,7 +34,7 @@ import {
 import { FormSkeleton, ListSkeleton } from "@/shared/ui/Skeleton";
 import { Box, Text, useAppTheme } from "@/theme";
 import { useDespachos } from "./store";
-import { ESTADO_META } from "./types";
+import { CheckTimer } from "./components/CheckTimer";
 
 const EMPTY: any[] = [];
 
@@ -146,8 +140,9 @@ export default function ChequeoScreen({ despachoId }: Props) {
   const checksByDespacho = useDespachos((state) => state.checksByDespacho);
   const addCheck = useDespachos((state) => state.addCheck);
   const guardar = useDespachos((state) => state.guardar);
-  const enviarASupervisor = useDespachos((state) => state.enviarASupervisor);
-  const aprobarSupervisor = useDespachos((state) => state.aprobarSupervisor);
+  const sessionsByDespacho = useDespachos((state) => state.sessionsByDespacho);
+  const startCheck = useDespachos((state) => state.startCheck);
+  const finishCheck = useDespachos((state) => state.finishCheck);
 
   const activeId = despachoId || activeIdFromStore || "1";
   const despacho = despachos.find((d) => d.id === activeId) || despachos[0];
@@ -346,6 +341,8 @@ export default function ChequeoScreen({ despachoId }: Props) {
 
     const dataEmpaquetada = `${productoSeleccionado.nombre} | ${detalleCantidad} | ${isMatch} | ${productoSeleccionado.isCold} | ${productoSeleccionado.expectedQty} | ${totalContadoCalculado} | ${numCajas} | ${numUnidades}`;
 
+    // CHECKED_START: el primer producto registrado abre el cronómetro.
+    startCheck(activeId);
     addCheck(activeId, productoSeleccionado.codigo, dataEmpaquetada);
     limpiarBuscador();
   };
@@ -355,12 +352,9 @@ export default function ChequeoScreen({ despachoId }: Props) {
   };
 
   const confirmarConteo = () => {
-    let hasAnyDiff = false;
-
     // Lo que el chofer no contó se cierra en 0: queda listado y visible como diferencia
     MOCK_DB.filter((p) => !codigosAgregados.has(p.codigo)).forEach((p) => {
       const isMatch = p.expectedQty === 0;
-      if (!isMatch) hasAnyDiff = true;
       addCheck(
         activeId,
         p.codigo,
@@ -368,15 +362,10 @@ export default function ChequeoScreen({ despachoId }: Props) {
       );
     });
 
-    items.forEach((item: any) => {
-      const partes = item.nombre.split(" | ");
-      if (partes[2] !== "true") {
-        hasAnyDiff = true;
-      }
-    });
-
+    // CHECKED_END: cierra el cronómetro antes de que `guardar` cambie el estado.
+    finishCheck(activeId);
     setCierre({ contados, pct: avancePct });
-    guardar(activeId, hasAnyDiff);
+    guardar(activeId);
     pasoSiguiente.current = "success";
   };
 
@@ -435,29 +424,24 @@ export default function ChequeoScreen({ despachoId }: Props) {
     );
   }
 
-  const hasDiffInCierre = stats.mismatches > 0 || noContados > 0;
-
   // CONTENIDO DEL DIÁLOGO SEGÚN EL PASO ACTIVO
   const dialogProps: Omit<AppDialogProps, "visible" | "onClose"> =
     dialog === "success"
       ? {
-          title: hasDiffInCierre ? "Orden con Diferencia" : "Conteo Finalizado",
+          title: "Conteo cerrado",
           message:
-            hasDiffInCierre
-              ? `Contaste ${contadosVisible} de ${totalEsperado} ítems (${avanceVisible}%). La Orden OT-${despacho.codigo} pasó al estado "Diferencia" y requiere validación del supervisor.`
-              : `Contaste los ${totalEsperado} ítems sin diferencias. La Orden OT-${despacho.codigo} pasó al estado "Finalizado".`,
-          type: hasDiffInCierre ? "warning" : "success",
+            noContados > 0
+              ? `Contaste ${contadosVisible} de ${totalEsperado} ítems (${avanceVisible}%). Los ${noContados} restantes quedaron registrados en 0 y aparecen como diferencia en la Orden ${despacho.codigo}.`
+              : `Contaste los ${totalEsperado} ítems de la Orden ${despacho.codigo}: ${stats.matches} conformes y ${stats.mismatches} con diferencia.`,
+          type: "success",
           buttonText: "Ver el detalle",
         }
       : {
-          title: "¿Confirmar el conteo?",
-          message:
-            totalEsperado - contados > 0
-              ? `Contaste ${contados} de ${totalEsperado} ítems (${avancePct}% de avance). Los ${totalEsperado - contados} restantes se registrarán en 0 y la orden pasará al estado "Diferencia".`
-              : stats.mismatches > 0
-              ? `Registraste ${stats.mismatches} producto(s) con diferencia. Al confirmar, la orden pasará al estado "Diferencia".`
-              : `Contaste los ${totalEsperado} ítems (100% conformes). Al confirmar, la orden pasará al estado "Finalizado".`,
-          type: stats.mismatches > 0 || totalEsperado - contados > 0 ? "warning" : "info",
+          // Sin cuerpo y sin datos: el título es toda la pregunta.
+          title: "Confirmar registro",
+          // El tono sigue distinguiendo un cierre completo de uno con ítems
+          // sin contar, ya sin decirlo con palabras.
+          type: avanceCompleto ? "info" : "warning",
           buttonText: "Confirmar conteo",
           cancelText: "Seguir contando",
           onCancel: handleDialogClose,
@@ -500,7 +484,7 @@ export default function ChequeoScreen({ despachoId }: Props) {
               Orden de Transporte
             </Text>
             <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
             >
               <Text
                 variant="header"
@@ -510,30 +494,19 @@ export default function ChequeoScreen({ despachoId }: Props) {
                   fontWeight: "800",
                 }}
               >
-                OT-{despacho.codigo}
+                {despacho.codigo}
               </Text>
-
-              {/* BADGE DE ESTADO ACTUAL DE LA ORDEN DE TRANSPORTE */}
-              <Badge
-                label={ESTADO_META[despacho.estado].label}
-                tone={ESTADO_META[despacho.estado].tone}
-                emphasis="solid"
-                size="sm"
-              />
-
               {items.length > 0 && (
                 <View style={{ flexDirection: "row", gap: 4 }}>
                   <Badge
                     label={`${stats.matches} ok`}
                     tone="success"
-                    emphasis="soft"
                     size="sm"
                   />
                   {stats.mismatches > 0 && (
                     <Badge
                       label={`${stats.mismatches} diff`}
                       tone="danger"
-                      emphasis="soft"
                       size="sm"
                     />
                   )}
@@ -541,6 +514,8 @@ export default function ChequeoScreen({ despachoId }: Props) {
               )}
             </View>
           </View>
+
+          <CheckTimer session={sessionsByDespacho[activeId]} />
         </View>
 
         {isLoading ? (
@@ -550,110 +525,6 @@ export default function ChequeoScreen({ despachoId }: Props) {
           </View>
         ) : (
           <View style={{ gap: 14 }}>
-            {/* BANNER INFORMATIVO SEGÚN EL ESTADO DE LA ORDEN */}
-            {despacho.estado === "diferencia" && (
-              <View
-                style={{
-                  backgroundColor: theme.colors.cardBackground,
-                  borderColor: theme.colors.danger,
-                  borderWidth: 1.5,
-                  borderRadius: 12,
-                  padding: 12,
-                  gap: 10,
-                }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <AlertTriangle size={18} color={theme.colors.danger} />
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: theme.colors.danger, flex: 1 }}>
-                    Orden con Diferencias
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 12, color: theme.colors.foreground }}>
-                  Esta orden tiene diferencias en el conteo. Puedes pasarla a validación del supervisor.
-                </Text>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => enviarASupervisor(activeId)}
-                  style={{
-                    backgroundColor: theme.colors.warning,
-                    paddingVertical: 8,
-                    paddingHorizontal: 12,
-                    borderRadius: 8,
-                    alignItems: "center",
-                    flexDirection: "row",
-                    justifyContent: "center",
-                    gap: 6,
-                  }}
-                >
-                  <ShieldAlert size={16} color="#ffffff" />
-                  <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 13 }}>
-                    Enviar a Validando Supervisor
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {despacho.estado === "validando_supervisor" && (
-              <View
-                style={{
-                  backgroundColor: theme.colors.cardBackground,
-                  borderColor: theme.colors.warning,
-                  borderWidth: 1.5,
-                  borderRadius: 12,
-                  padding: 12,
-                  gap: 10,
-                }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <ShieldAlert size={18} color={theme.colors.warning} />
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: theme.colors.warning, flex: 1 }}>
-                    Validando Supervisor
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 12, color: theme.colors.foreground }}>
-                  El supervisor está auditando las diferencias de esta orden de transporte.
-                </Text>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => aprobarSupervisor(activeId)}
-                  style={{
-                    backgroundColor: theme.colors.success,
-                    paddingVertical: 8,
-                    paddingHorizontal: 12,
-                    borderRadius: 8,
-                    alignItems: "center",
-                    flexDirection: "row",
-                    justifyContent: "center",
-                    gap: 6,
-                  }}
-                >
-                  <UserCheck size={16} color="#ffffff" />
-                  <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 13 }}>
-                    Aprobar y Finalizar (Simular Supervisor)
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {despacho.estado === "finalizado" && (
-              <View
-                style={{
-                  backgroundColor: theme.colors.successSoft,
-                  borderColor: theme.colors.success,
-                  borderWidth: 1,
-                  borderRadius: 12,
-                  padding: 12,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <CheckCircle2 size={18} color={theme.colors.success} />
-                <Text style={{ fontSize: 12, fontWeight: "600", color: theme.colors.success, flex: 1 }}>
-                  Orden Finalizada correctamente. Conteo verificado sin discrepancias.
-                </Text>
-              </View>
-            )}
             {conteoCerrado ? (
               /* CONTEO CERRADO: EL FORMULARIO YA NO ADMITE INGRESOS */
               <View
@@ -710,7 +581,6 @@ export default function ChequeoScreen({ despachoId }: Props) {
                     <Badge
                       label={`Total: ${totalContadoCalculado} unids`}
                       tone="primary"
-                      emphasis="outline"
                       size="sm"
                       icon={Package}
                     />
@@ -1150,7 +1020,6 @@ export default function ChequeoScreen({ despachoId }: Props) {
                           <Badge
                             label={esMatch ? "Conforme" : "Diferencia"}
                             tone={esMatch ? "success" : "danger"}
-                            emphasis="soft"
                             size="sm"
                             icon={esMatch ? CheckCircle2 : XCircle}
                           />
@@ -1268,14 +1137,12 @@ export default function ChequeoScreen({ despachoId }: Props) {
               <Badge
                 label={`${stats.matches} ok`}
                 tone="success"
-                emphasis="soft"
                 size="sm"
               />
               {stats.mismatches > 0 && (
                 <Badge
                   label={`${stats.mismatches} diff`}
                   tone="danger"
-                  emphasis="soft"
                   size="sm"
                 />
               )}
@@ -1451,7 +1318,6 @@ export default function ChequeoScreen({ despachoId }: Props) {
                     <Badge
                       label="Simular"
                       tone="primary"
-                      emphasis="soft"
                       size="sm"
                     />
                   </TouchableOpacity>
@@ -1521,7 +1387,6 @@ export default function ChequeoScreen({ despachoId }: Props) {
                     <Badge
                       label={`Intento ${(recountAttempts[modalItem.codigo] || 0) + 1} de ${MAX_RECOUNTS}`}
                       tone="warning"
-                      emphasis="soft"
                       size="sm"
                     />
                   )}

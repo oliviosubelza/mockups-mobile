@@ -410,7 +410,7 @@ export function DeliveryRouteScreen() {
               >
                 {trip.transportOrderCode}
               </Text>
-              <Badge label="EN RUTA" tone="primary" emphasis="soft" size="sm" />
+              <Badge label="EN RUTA" tone="primary" size="sm" />
             </View>
           </View>
 
@@ -612,7 +612,7 @@ export function DeliveryRouteScreen() {
                 {activeStop.clientName}
               </Text>
               {activeStop.isCold && (
-                <Badge label="Frío" tone="primary" emphasis="soft" size="sm" />
+                <Badge label="Frío" tone="primary" size="sm" />
               )}
             </View>
           </View>
@@ -902,7 +902,6 @@ export function DeliveryRouteScreen() {
                         <Badge
                           label="Siguiente Parada"
                           tone="primary"
-                          emphasis="soft"
                           size="sm"
                         />
                       )}

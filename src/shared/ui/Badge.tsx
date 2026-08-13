@@ -20,12 +20,18 @@ type BadgeStyle = {
   border: ColorToken | null;
 };
 
+/**
+ * Solid fills use the `*Solid` tokens rather than the raw feedback colors:
+ * those are tuned per scheme so the label clears 4.5:1 at badge text size.
+ * `neutral` is the one pair that reads as a tint — a neutral fill on a neutral
+ * surface has nowhere to go — but its label still measures 16:1 / 14:1.
+ */
 const solid: Record<BadgeTone, BadgeStyle> = {
   neutral: { background: 'secondary', foreground: 'secondaryForeground', border: null },
-  primary: { background: 'primary', foreground: 'primaryForeground', border: null },
-  success: { background: 'success', foreground: 'successForeground', border: null },
+  primary: { background: 'primarySolid', foreground: 'solidForeground', border: null },
+  success: { background: 'successSolid', foreground: 'solidForeground', border: null },
   warning: { background: 'warning', foreground: 'warningForeground', border: null },
-  danger: { background: 'danger', foreground: 'dangerForeground', border: null },
+  danger: { background: 'dangerSolid', foreground: 'solidForeground', border: null },
 };
 
 const soft: Record<BadgeTone, BadgeStyle> = {
@@ -54,7 +60,7 @@ type Props = {
   label: string | number;
   /** Color family. Default `neutral`. */
   tone?: BadgeTone;
-  /** Visual weight. Default `soft` — tinted background, colored label. */
+  /** Visual weight. Default `solid` — filled background, contrasting label. */
   emphasis?: BadgeEmphasis;
   size?: BadgeSize;
   /** Icon rendered before the label. */
@@ -74,7 +80,7 @@ type Props = {
 export function Badge({
   label,
   tone = 'neutral',
-  emphasis = 'soft',
+  emphasis = 'solid',
   size = 'md',
   icon: Icon,
   shape = 'pill',

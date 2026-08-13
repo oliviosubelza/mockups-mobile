@@ -9,10 +9,10 @@ type Props = {
 };
 
 /**
- * @deprecated Use `<Badge emphasis="soft" />` directly — it is the same
+ * @deprecated Use `<Badge />` directly — it is the same
  * component with a second axis for visual weight. Kept as a thin alias so
  * existing call sites keep working.
  */
 export function Chip({ label, tone = 'neutral' }: Props) {
-  return <Badge label={label} tone={tone} emphasis="soft" />;
+  return <Badge label={label} tone={tone} />;
 }

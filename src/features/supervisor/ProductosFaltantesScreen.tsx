@@ -2,16 +2,18 @@ import {
   ArrowRight,
   Check,
   ChevronDown,
-  FileText,
+  ChevronLeft,
   PackageSearch,
-  StickyNote,
+  Snowflake,
+  User,
   X
 } from "lucide-react-native";
-import React, { useState } from "react";
+import { useFocusEffect } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
+  BackHandler,
   Modal,
   ScrollView,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -23,6 +25,7 @@ import {
   BoxUnitCounter,
   boxUnitTotal,
   formatBoxUnit,
+  Button,
   Card,
   EMPTY_BOX_UNIT,
   SearchField,
@@ -194,6 +197,40 @@ export default function ProductosFaltantesScreen() {
     "all" | "shortage" | "surplus" | "cold"
   >("all");
 
+  /**
+   * Chofer abierto, o `null` mientras se ve el listado de choferes.
+   *
+   * La pantalla tiene dos pasos sobre los mismos datos: primero a quién
+   * reclamarle, después qué reclamarle. Vive en estado local y no en una ruta
+   * porque el catch-all navega por slug y no transporta parámetros.
+   */
+  const [choferAbierto, setChoferAbierto] = useState<string | null>(null);
+
+  /**
+   * El back del sistema cierra el chofer antes de salir de la pantalla.
+   *
+   * Los dos pasos son estado local, así que el navegador ve una sola ruta: sin
+   * esto el back se saltaba el listado de choferes y devolvía directo al menú,
+   * perdiendo un nivel que el usuario sí recorrió. Devolver `true` consume el
+   * evento; con el listado a la vista no se intercepta nada y el back sale
+   * normalmente. (Android: en iOS el gesto de volver no pasa por acá.)
+   */
+  useFocusEffect(
+    useCallback(() => {
+      if (!choferAbierto) return;
+
+      const subscription = BackHandler.addEventListener(
+        "hardwareBackPress",
+        () => {
+          setChoferAbierto(null);
+          return true;
+        },
+      );
+
+      return () => subscription.remove();
+    }, [choferAbierto]),
+  );
+
   // CANTIDAD CONSOLIDADA POR ÍTEM EN CAJAS + UNIDADES (ARRANCA CON LO CONTADO POR EL CHOFER)
   const [corrections, setCorrections] = useState<Record<string, BoxUnitValue>>(
     () =>
@@ -216,6 +253,11 @@ export default function ProductosFaltantesScreen() {
       ),
   );
 
+  /** Cantidad tecleada por ítem, sin confirmar todavía. */
+  const [draftCorrections, setDraftCorrections] = useState<
+    Record<string, BoxUnitValue>
+  >({});
+
   // MODAL SELECTOR DE TIPO DE DIFERENCIA
   const [pickerState, setPickerState] = useState<{
     visible: boolean;
@@ -225,55 +267,38 @@ export default function ProductosFaltantesScreen() {
     activeItemId: null,
   });
 
-  // OBSERVACIÓN DEL SUPERVISOR POR ÍTEM
-  const [observations, setObservations] = useState<Record<string, string>>({});
-  const [noteState, setNoteState] = useState<{
-    visible: boolean;
-    activeItemId: string | null;
-  }>({
-    visible: false,
-    activeItemId: null,
-  });
-  const [noteDraft, setNoteDraft] = useState("");
-
   const handleCorrectionChange = (itemId: string, next: BoxUnitValue) => {
-    setCorrections((prev) => ({ ...prev, [itemId]: next }));
+    setDraftCorrections((prev) => ({ ...prev, [itemId]: next }));
   };
 
+  /**
+   * Guardar abre el clasificador en lugar de confirmar de una: una corrección
+   * sin causa no sirve para nada río abajo, así que la causa deja de ser un
+   * control suelto en la card y pasa a ser el paso que cierra el guardado.
+   */
+  const commitCorrection = (itemId: string) => {
+    setPickerState({ visible: true, activeItemId: itemId });
+  };
+
+  // ELEGIR LA CAUSA CIERRA LA CORRECCIÓN: CANTIDAD Y CLASIFICACIÓN JUNTAS
   const handleSelectType = (type: string) => {
-    if (pickerState.activeItemId) {
-      setSelectedTypes((prev) => ({
-        ...prev,
-        [pickerState.activeItemId!]: type,
-      }));
-    }
+    const itemId = pickerState.activeItemId;
     setPickerState({ visible: false, activeItemId: null });
-  };
+    if (!itemId) return;
 
-  const openNoteModal = (itemId: string) => {
-    setNoteDraft(observations[itemId] ?? "");
-    setNoteState({ visible: true, activeItemId: itemId });
-  };
+    const draftCount = draftCorrections[itemId];
 
-  const closeNoteModal = () => {
-    setNoteState({ visible: false, activeItemId: null });
-    setNoteDraft("");
-  };
+    setSelectedTypes((prev) => ({ ...prev, [itemId]: type }));
+    if (draftCount) {
+      setCorrections((prev) => ({ ...prev, [itemId]: draftCount }));
+    }
 
-  // GUARDA LA OBSERVACIÓN; SI QUEDA VACÍA, LA ELIMINA DEL REGISTRO
-  const handleSaveNote = () => {
-    const { activeItemId } = noteState;
-    if (!activeItemId) return;
-
-    const trimmed = noteDraft.trim();
-    setObservations((prev) => {
+    // El borrador se descarta: la card vuelve a leer del valor confirmado.
+    setDraftCorrections((prev) => {
       const next = { ...prev };
-      if (trimmed.length === 0) delete next[activeItemId];
-      else next[activeItemId] = trimmed;
+      delete next[itemId];
       return next;
     });
-
-    closeNoteModal();
   };
 
   // FILTRADO PLANO DE ÍTEMS DE DISCREPANCIA (CADA OCURRENCIA POR SEPARADO)
@@ -296,10 +321,32 @@ export default function ProductosFaltantesScreen() {
     return true;
   });
 
-  // ÍTEM ACTIVO DEL MODAL DE OBSERVACIÓN
-  const noteItem =
-    FLAT_MOCK_DISCREPANCIES.find((i) => i.id === noteState.activeItemId) ??
-    null;
+  /**
+   * Las diferencias se leen por chofer, no por ítem suelto: la pregunta de esta
+   * pantalla es a quién reclamarle, y un mismo chofer arrastra varias OT.
+   * Ordena por cantidad de diferencias para que el caso más pesado quede arriba.
+   */
+  const discrepanciasPorChofer = (() => {
+    const porChofer = new Map<string, FlatMissingProductItem[]>();
+    filteredDiscrepancies.forEach((item) => {
+      const items = porChofer.get(item.driverName) ?? [];
+      items.push(item);
+      porChofer.set(item.driverName, items);
+    });
+
+    return [...porChofer.entries()]
+      .map(([driverName, items]) => ({
+        driverName,
+        items,
+        faltantes: items.filter((i) => i.difference < 0).length,
+        sobrantes: items.filter((i) => i.difference > 0).length,
+        ordenes: new Set(items.map((i) => i.orderCode)).size,
+      }))
+      .sort((a, b) => b.items.length - a.items.length);
+  })();
+
+  const grupoAbierto =
+    discrepanciasPorChofer.find((g) => g.driverName === choferAbierto) ?? null;
 
   const totalShortageCount = FLAT_MOCK_DISCREPANCIES.filter(
     (p) => p.difference < 0,
@@ -366,11 +413,55 @@ export default function ProductosFaltantesScreen() {
           </View>
         </View> */}
 
+        {/* CABECERA DEL CHOFER ABIERTO + VUELTA AL LISTADO */}
+        {/* Link etiquetado, no un chevron suelto: la barra de título ya tiene
+            su back y dos flechas iguales a la misma altura se leen como el
+            mismo control. Ésta sube un nivel, aquélla sale de la pantalla. */}
+        {choferAbierto && (
+          <View style={{ gap: 4 }}>
+            <TouchableOpacity
+              onPress={() => setChoferAbierto(null)}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 2,
+                alignSelf: "flex-start",
+              }}
+            >
+              <ChevronLeft size={14} color={theme.colors.primary} />
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "700",
+                  color: theme.colors.primary,
+                }}
+              >
+                Todos los choferes
+              </Text>
+            </TouchableOpacity>
+
+            <Text variant="subtitle" numberOfLines={1}>
+              {choferAbierto}
+            </Text>
+            <Text variant="caption">
+              {grupoAbierto
+                ? `${grupoAbierto.items.length} ${grupoAbierto.items.length === 1 ? "producto" : "productos"} · ${grupoAbierto.ordenes} ${grupoAbierto.ordenes === 1 ? "orden" : "órdenes"}`
+                : "Sin resultados para el filtro actual"}
+            </Text>
+          </View>
+        )}
+
         {/* CAMPO DE BÚSQUEDA */}
         <SearchField
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="Buscar por SKU, producto u orden (OT)..."
+          placeholder={
+            choferAbierto
+              ? "Buscar por SKU, producto u orden (OT)..."
+              : "Buscar por chofer, SKU, producto u orden (OT)..."
+          }
         />
 
         {/* BARRA DE FILTROS SOLICITADA POR KEY USERS */}
@@ -514,7 +605,10 @@ export default function ProductosFaltantesScreen() {
         </ScrollView>
 
         {/* LISTADO PLANO Y COMPACTO DE ÍTEMS CON DIFERENCIA */}
-        {filteredDiscrepancies.length === 0 ? (
+        {/* El chofer abierto puede quedar sin ítems si el filtro los excluye:
+            cae al mismo vacío, y la cabecera de arriba sigue dando la vuelta. */}
+        {filteredDiscrepancies.length === 0 ||
+        (choferAbierto && !grupoAbierto) ? (
           <View
             style={{
               backgroundColor: theme.colors.cardBackground,
@@ -574,66 +668,114 @@ export default function ProductosFaltantesScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        ) : (
+        ) : grupoAbierto ? (
+          /* PASO 2: QUÉ RECLAMARLE. Las cards del chofer abierto. */
           <View style={{ gap: 18 }}>
-            {filteredDiscrepancies.map((item) => {
+            {grupoAbierto.items.map((item) => {
               const isShortage = item.difference < 0;
               const accentColor = isShortage
                 ? theme.colors.danger
                 : theme.colors.warning;
-              const currentCorrection = corrections[item.id] ?? EMPTY_BOX_UNIT;
+              // Lo confirmado, y encima lo tecleado si la card está en edición.
+              const savedCorrection = corrections[item.id] ?? EMPTY_BOX_UNIT;
+              const currentCorrection =
+                draftCorrections[item.id] ?? savedCorrection;
+
               const isMatched =
                 boxUnitTotal(currentCorrection, item.cajaSize) ===
                 item.expectedQty;
-              const currentSelectedType =
-                selectedTypes[item.id] || item.differenceType;
-              const hasNote = (observations[item.id] ?? "").trim().length > 0;
+              const correccionSucia =
+                currentCorrection.cajas !== savedCorrection.cajas ||
+                currentCorrection.unidades !== savedCorrection.unidades;
 
               return (
+                /* Sin onPress: la card es un formulario, no un botón. Con
+                   correcciones sin confirmar, un toque fuera de un control
+                   navegaba a otra pantalla en medio de la edición. Ir al
+                   detalle es ahora un acto explícito. */
                 <Card
                   key={item.id}
-                  onPress={() => handleNavigateToConsolidation(item.orderCode)}
                   padding="m"
                   borderRadius="xl"
                   borderWidth={1}
                   style={{ gap: 8 }}
                 >
-                  {/* FILA 1: SKU + FRÍO + BADGE DE DIFERENCIA */}
+                  {/* FILA 1: IDENTIFICACIÓN (SKU + OT) + SALIDA AL DETALLE */}
                   <View
                     style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      alignItems: "center",
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
                       gap: 8,
                     }}
                   >
                     <View
                       style={{
-                        flexDirection: "row",
-                        alignItems: "center",
+                        flexDirection: 'row',
+                        alignItems: 'center',
                         gap: 6,
                         flexShrink: 1,
                       }}
                     >
                       <Text
-                        variant="label"
+                        variant="caption"
+                        numberOfLines={1}
                         style={{
-                          fontSize: 12,
-                          fontWeight: "800",
+                          fontSize: 11,
+                          fontWeight: '800',
                           color: theme.colors.mutedForeground,
+                          flexShrink: 1,
                         }}
                       >
-                        {item.codigo}
+                        {item.codigo} · {item.orderCode}
                       </Text>
                       {item.isColdChain && (
-                        <Badge
-                          label="❄️ Frío"
-                          tone="neutral"
-                          emphasis="soft"
-                          size="sm"
-                        />
+                        <Badge label="Frío" tone="neutral" size="sm" icon={Snowflake} />
                       )}
                     </View>
+
+                    <TouchableOpacity
+                      onPress={() =>
+                        handleNavigateToConsolidation(item.orderCode)
+                      }
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 3,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: '700',
+                          color: theme.colors.primary,
+                        }}
+                      >
+                        Ver detalle
+                      </Text>
+                      <ArrowRight size={13} color={theme.colors.primary} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* FILA 2: PRODUCTO + MAGNITUD DE LA DIFERENCIA */}
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                    }}
+                  >
+                    <Text
+                      variant="subtitle"
+                      numberOfLines={2}
+                      style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.colors.foreground }}
+                    >
+                      {item.nombre}
+                    </Text>
 
                     <Badge
                       label={
@@ -641,78 +783,12 @@ export default function ProductosFaltantesScreen() {
                           ? `+${item.difference} Sobrante`
                           : `${item.difference} Faltante`
                       }
-                      tone={item.difference > 0 ? "warning" : "danger"}
-                      emphasis="soft"
+                      tone={item.difference > 0 ? 'warning' : 'danger'}
                       size="sm"
                     />
                   </View>
 
-                  {/* FILA 2: NOMBRE DEL PRODUCTO */}
-                  <Text
-                    variant="subtitle"
-                    numberOfLines={2}
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "700",
-                      color: theme.colors.foreground,
-                    }}
-                  >
-                    {item.nombre}
-                  </Text>
-
-                  {/* FILA 3: PROCEDENCIA EN UNA SOLA LÍNEA (OT · CHOFER · FECHA) */}
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 5,
-                    }}
-                  >
-                    <FileText size={12} color={theme.colors.primary} />
-                    <Text
-                      variant="caption"
-                      numberOfLines={1}
-                      style={{
-                        fontSize: 11,
-                        fontWeight: "700",
-                        color: theme.colors.foreground,
-                        flexShrink: 1,
-                      }}
-                    >
-                      {item.orderCode}
-                    </Text>
-                    <Text
-                      variant="caption"
-                      style={{
-                        fontSize: 11,
-                        color: theme.colors.mutedForeground,
-                      }}
-                    >
-                      ·
-                    </Text>
-                    <Text
-                      variant="caption"
-                      numberOfLines={1}
-                      style={{
-                        fontSize: 11,
-                        color: theme.colors.mutedForeground,
-                        flex: 1,
-                      }}
-                    >
-                      {item.driverName}
-                    </Text>
-                    <Text
-                      variant="caption"
-                      style={{
-                        fontSize: 11,
-                        color: theme.colors.mutedForeground,
-                      }}
-                    >
-                      {item.dateFormatted}
-                    </Text>
-                  </View>
-
-                  {/* FILA 4: COMPARATIVO ESPERADO VS CONTADO */}
+                  {/* FILA 3: COMPARATIVO ESPERADO VS CONTADO */}
                   <View
                     style={{
                       backgroundColor: theme.colors.secondary,
@@ -781,7 +857,7 @@ export default function ProductosFaltantesScreen() {
                     </View>
                   </View>
 
-                  {/* FILA 5: CONTROLES DE CONSOLIDACIÓN */}
+                  {/* FILA 4: CANTIDAD CONSOLIDADA */}
                   <View
                     style={{
                       gap: 8,
@@ -794,327 +870,94 @@ export default function ProductosFaltantesScreen() {
                       value={currentCorrection}
                       onChange={(next) => handleCorrectionChange(item.id, next)}
                       cajaSize={item.cajaSize}
-                      totalLabel="Total consolidado"
+                      totalLabel="Total"
                       targetQty={item.expectedQty}
-                    />
-
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                    >
-                      <Text
-                        variant="label"
-                        numberOfLines={2}
-                        style={{
-                          fontSize: 12,
-                          fontWeight: "700",
-                          color: theme.colors.foreground,
-                          flex: 1,
-                        }}
-                      >
-                        Clasificación
-                      </Text>
-
-                      <TouchableOpacity
-                        onPress={() =>
-                          setPickerState({
-                            visible: true,
-                            activeItemId: item.id,
-                          })
-                        }
-                        activeOpacity={0.7}
-                        style={{
-                          flex: 1.4,
-                          flexDirection: "row",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 6,
-                          backgroundColor: theme.colors.secondary,
-                          borderRadius: 8,
-                          paddingHorizontal: 10,
-                          height: 34,
-                          borderWidth: 1,
-                          borderColor: theme.colors.border,
-                        }}
-                      >
-                        <Text
-                          variant="caption"
-                          numberOfLines={1}
-                          style={{
-                            fontSize: 12,
-                            fontWeight: "700",
-                            color: theme.colors.foreground,
-                            flex: 1,
-                          }}
-                        >
-                          {currentSelectedType}
-                        </Text>
-                        <ChevronDown
-                          size={15}
-                          color={theme.colors.mutedForeground}
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  {/* FILA 6: OBSERVACIÓN DEL SUPERVISOR + ACCESO AL DETALLE */}
-                  {/* Se separa con aire, no con línea: la única división de la
-                      card marca el paso de lectura a edición. */}
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 8,
-                      marginTop: 2,
-                    }}
-                  >
-                    <TouchableOpacity
-                      onPress={() => openNoteModal(item.id)}
-                      activeOpacity={0.7}
-                      hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }}
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 4,
-                        flexShrink: 1,
-                      }}
-                    >
-                      <StickyNote
-                        size={13}
-                        color={
-                          hasNote
-                            ? theme.colors.primary
-                            : theme.colors.mutedForeground
-                        }
-                      />
-                      <Text
-                        numberOfLines={1}
-                        style={{
-                          fontSize: 11,
-                          fontWeight: "700",
-                          color: hasNote
-                            ? theme.colors.primary
-                            : theme.colors.mutedForeground,
-                          flexShrink: 1,
-                        }}
-                      >
-                        {hasNote ? "Ver observación" : "Agregar observación"}
-                      </Text>
-                      {hasNote && (
+                      /* El botón comparte la fila del total en vez de gastar
+                         una propia, y el hueco reserva su alto siempre para
+                         que la card no crezca al aparecer. */
+                      action={
                         <View
                           style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: 3,
-                            backgroundColor: theme.colors.primary,
+                            minHeight: theme.controlSizes.xs.height,
+                            justifyContent: "center",
                           }}
-                        />
-                      )}
-                    </TouchableOpacity>
-
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 3,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          fontWeight: "700",
-                          color: theme.colors.primary,
-                        }}
-                      >
-                        Ver detalle
-                      </Text>
-                      <ArrowRight size={13} color={theme.colors.primary} />
-                    </View>
+                        >
+                          {correccionSucia && (
+                            <Button
+                              label="Guardar corrección"
+                              icon={Check}
+                              variant="primary"
+                              size="xs"
+                              onPress={() => commitCorrection(item.id)}
+                            />
+                          )}
+                        </View>
+                      }
+                    />
                   </View>
                 </Card>
               );
             })}
           </View>
-        )}
-      </ScrollView>
-
-      {/* MODAL SHEET DE OBSERVACIÓN DEL SUPERVISOR */}
-      <Modal
-        visible={noteState.visible}
-        transparent
-        animationType="slide"
-        statusBarTranslucent
-        onRequestClose={closeNoteModal}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.6)",
-            justifyContent: "flex-end",
-          }}
-        >
-          <View
-            style={{
-              width: "100%",
-              backgroundColor: theme.colors.cardBackground,
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
-              padding: 20,
-              paddingBottom: Math.max(20, insets.bottom + 12),
-              gap: 14,
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: -4 },
-              shadowOpacity: 0.2,
-              shadowRadius: 10,
-              elevation: 10,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 10,
-              }}
-            >
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 10,
-                  flexShrink: 1,
-                }}
+        ) : (
+          /* PASO 1: A QUIÉN RECLAMARLE. El detalle llega al abrir un chofer. */
+          <View style={{ gap: 10 }}>
+            {discrepanciasPorChofer.map((grupo) => (
+              <Card
+                key={grupo.driverName}
+                onPress={() => setChoferAbierto(grupo.driverName)}
+                padding="m"
+                borderRadius="xl"
+                borderWidth={1}
+                style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
               >
                 <View
                   style={{
                     width: 36,
                     height: 36,
-                    borderRadius: 10,
-                    backgroundColor: theme.colors.primarySoft,
+                    borderRadius: 18,
+                    backgroundColor: theme.colors.secondary,
                     alignItems: "center",
                     justifyContent: "center",
                   }}
                 >
-                  <StickyNote size={20} color={theme.colors.primary} />
+                  <User size={18} color={theme.colors.mutedForeground} />
                 </View>
-                <View style={{ flexShrink: 1 }}>
-                  <Text
-                    variant="label"
-                    style={{
-                      fontSize: 16,
-                      fontWeight: "800",
-                      color: theme.colors.foreground,
-                    }}
-                  >
-                    Observación
+
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text variant="subtitle" numberOfLines={1}>
+                    {grupo.driverName}
                   </Text>
-                  <Text
-                    variant="caption"
-                    numberOfLines={1}
-                    style={{
-                      fontSize: 11,
-                      color: theme.colors.mutedForeground,
-                    }}
-                  >
-                    {noteItem
-                      ? `${noteItem.codigo} · ${noteItem.orderCode}`
-                      : ""}
+                  <Text variant="caption">
+                    {grupo.items.length}{" "}
+                    {grupo.items.length === 1 ? "producto" : "productos"} ·{" "}
+                    {grupo.ordenes}{" "}
+                    {grupo.ordenes === 1 ? "orden" : "órdenes"}
                   </Text>
+                  <View style={{ flexDirection: "row", gap: 4, marginTop: 2 }}>
+                    {grupo.faltantes > 0 && (
+                      <Badge
+                        label={`${grupo.faltantes} faltante${grupo.faltantes === 1 ? "" : "s"}`}
+                        tone="danger"
+                        size="sm"
+                      />
+                    )}
+                    {grupo.sobrantes > 0 && (
+                      <Badge
+                        label={`${grupo.sobrantes} sobrante${grupo.sobrantes === 1 ? "" : "s"}`}
+                        tone="warning"
+                        size="sm"
+                      />
+                    )}
+                  </View>
                 </View>
-              </View>
 
-              <TouchableOpacity onPress={closeNoteModal} style={{ padding: 4 }}>
-                <X size={22} color={theme.colors.mutedForeground} />
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              value={noteDraft}
-              onChangeText={setNoteDraft}
-              placeholder="Ej. Se verificó con el chofer, faltaban 3 unidades desde el despacho."
-              placeholderTextColor={theme.colors.mutedForeground}
-              multiline
-              textAlignVertical="top"
-              maxLength={280}
-              style={{
-                minHeight: 110,
-                backgroundColor: theme.colors.secondary,
-                borderRadius: 12,
-                borderWidth: 1.5,
-                borderColor: theme.colors.border,
-                padding: 12,
-                fontSize: 13,
-                color: theme.colors.foreground,
-              }}
-            />
-
-            <Text
-              variant="caption"
-              style={{
-                fontSize: 11,
-                color: theme.colors.mutedForeground,
-                textAlign: "right",
-              }}
-            >
-              {noteDraft.length}/280
-            </Text>
-
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <TouchableOpacity
-                onPress={closeNoteModal}
-                activeOpacity={0.8}
-                style={{
-                  flex: 1,
-                  paddingVertical: 12,
-                  borderRadius: 12,
-                  backgroundColor: theme.colors.secondary,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: "700",
-                    color: theme.colors.foreground,
-                  }}
-                >
-                  Cancelar
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={handleSaveNote}
-                activeOpacity={0.8}
-                style={{
-                  flex: 1.5,
-                  paddingVertical: 12,
-                  borderRadius: 12,
-                  backgroundColor: theme.colors.primary,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexDirection: "row",
-                  gap: 6,
-                }}
-              >
-                <Check size={16} strokeWidth={3} color="#ffffff" />
-                <Text
-                  style={{ fontSize: 13, fontWeight: "800", color: "#ffffff" }}
-                >
-                  Guardar Observación
-                </Text>
-              </TouchableOpacity>
-            </View>
+                <ArrowRight size={18} color={theme.colors.mutedForeground} />
+              </Card>
+            ))}
           </View>
-        </View>
-      </Modal>
+        )}
+      </ScrollView>
 
       {/* MODAL SELECTOR DE TIPO DE DIFERENCIA */}
       <Modal
@@ -1159,16 +1002,12 @@ export default function ProductosFaltantesScreen() {
                 alignItems: "center",
               }}
             >
-              <Text
-                variant="label"
-                style={{
-                  fontSize: 16,
-                  fontWeight: "700",
-                  color: theme.colors.foreground,
-                }}
-              >
-                Seleccionar Tipo de Diferencia
-              </Text>
+              {/* Elegir una causa es lo que confirma la corrección, así que el
+                  copy lo dice: cerrar sin elegir la deja sin guardar. */}
+              <View style={{ flexShrink: 1, gap: 1 }}>
+                <Text variant="subtitle">¿Por qué la diferencia?</Text>
+                <Text variant="caption">Al elegir se guarda la corrección</Text>
+              </View>
               <TouchableOpacity
                 onPress={() =>
                   setPickerState({ visible: false, activeItemId: null })

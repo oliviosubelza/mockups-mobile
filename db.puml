@@ -14,6 +14,12 @@ skinparam note {
 
 title DB_LOGISTICS
 
+' =========================================================
+' Sincronizado con el DDL vigente (DROP SCHEMA public CASCADE).
+' El paquete de snapshots NO se crea en ese DDL: son datos
+' externos (SAP / MS Ventas) cacheados, se documentan aparte.
+' =========================================================
+
 package "(Snapshots, Cache, Datos externos)" #FDEDEC {
     entity "sales_order" as ext_sales <<MS Ventas - SAP>> {
         * id : <<PK>>
@@ -50,6 +56,7 @@ package "(Snapshots, Cache, Datos externos)" #FDEDEC {
         contact_phone : String
         address_text : String
     }
+
     entity "warehouse_snapshot" as snap_warehouse <<SAP - Almacen>> {
         * warehouse_id : Number
         --
@@ -60,31 +67,25 @@ package "(Snapshots, Cache, Datos externos)" #FDEDEC {
 }
 
 package "Proyecciones" #F8F9F9 {
-    entity "candidate_order" as candidate_order {
+    entity "candidate_orders" as candidate_order {
         * id : <<PK>>
         --
-        dispatch_delivery_point_id : <<FK>>
-        sales_order_id : Number
-        document_id : Number
-        distributor_id : Number
-        ' -delivery_window_start : Time
-        ' -delivery_window_end : Time
+        dispatch_delivery_point_id : <<FK | Null>>
+        sales_order_id : Number | Null
+        document_id : Number <<NOT NULL - documento de necesidad SAP>>
+        distributor_id : Number <<FK>>
         total_weight_kg : Decimal
         total_volume_m3 : Decimal
-        -type_order: String
-        is_included: Boolean
-        ' priority : Integer
-        ' status : String
-        ' notes : Text
+        type_movement : String
+        is_included : Boolean <<default true>>
+        refund_order_id : Number | Null <<proviene de devolución>>
+        transfer_id : Number | Null <<proviene de traslado de almacén>>
 
         created_by : String
         updated_by : String
         created_at : Timestamp
         updated_at : Timestamp
         deleted_at : Timestamp | Null
-
-        - refund_order_id : Number
-        - transfer_id : Number
     }
 }
 
@@ -93,15 +94,19 @@ package "Despachos (Draft -> Approved)" #EAF2F8 {
     entity "trucks" as truck_master <<Sincronizar con SAP>> {
         * id : <<PK>>
         --
-        distributor_id: <<FK>>
-        code: String
-        plate : String
-        capacity_weight : Decimal
-        capacity_volume : Decimal
-        status : String
-        truck_type : String
-        is_refrigerated : Boolean
-        ' is_refrigerated_available : Boolean
+        distributor_id : <<FK | Null>>
+        code : String
+        plate : String <<NOT NULL>>
+        capacity_weight_kg : Decimal <<NOT NULL>>
+        capacity_volume_m3 : Decimal <<NOT NULL>>
+        status : String <<DISPONIBLE, MANTENIMIENTO>>
+        truck_type : String <<furgón, estacas, etc.>>
+        is_refrigerated : Boolean <<default false>>
+        is_external : Boolean <<default false — camión tercerizado>>
+        shift_start : Time
+        shift_end : Time
+        break_start : Time
+        break_end : Time
 
         created_by : String
         updated_by : String
@@ -113,27 +118,28 @@ package "Despachos (Draft -> Approved)" #EAF2F8 {
     entity "distributors" as distributor_master {
         * id : <<PK>>
         --
-        department_id : Number<<FK>>
-        name: String
-        latitude: Decimal,
-        longitude: Decimal,
+        name : String <<NOT NULL>>
+        latitude : Decimal <<NOT NULL>>
+        longitude : Decimal <<NOT NULL>>
+        city_id : Number <<NOT NULL>>
+        ' department_id : Number  -- comentado en el DDL vigente
 
         created_by : String
         updated_by : String
         created_at : Timestamp
         updated_at : Timestamp
         deleted_at : Timestamp | Null
-        active_flag : Boolean
+        is_active : Boolean <<default true>>
     }
 
-    entity "sale_channel_restrictions" as sale_channel_restrictions  {
+    entity "sale_channel_restrictions" as sale_channel_restrictions {
         * id : <<PK>>
         --
-        name: String
-        description: String
-        distributor_id : Number<<FK>>
-        sale_channel_id : Number
-        cut_off_time : Time
+        name : String <<NOT NULL>>
+        description : String <<NOT NULL>>
+        distributor_id : Number <<FK>>
+        sale_channel_id : Number <<NOT NULL>>
+        cut_off_time : Time <<NOT NULL — hora límite de pedido>>
 
         created_by : String
         updated_by : String
@@ -145,24 +151,23 @@ package "Despachos (Draft -> Approved)" #EAF2F8 {
     entity "zones" as zone_master {
         * id : <<PK>>
         --
-        department_id : Number<<FK>>
-        city_id : Number<<FK>>
-        name: String
+        name : String <<NOT NULL>>
         polygon_geojson : JsonB
+        city_id : Number <<NOT NULL>>
 
         created_by : String
         updated_by : String
         created_at : Timestamp
         updated_at : Timestamp
         deleted_at : Timestamp | Null
-        active_flag : Boolean
+        is_active : Boolean <<default true>>
     }
 
     entity "plan_status" as planStatus {
         * id : <<PK>>
         --
-        name: String
-        description: String
+        name : String <<DRAFT, IN_OPTIMIZATION, APPROVED>>
+        description : String <<NOT NULL>>
 
         created_by : String
         updated_by : String
@@ -174,15 +179,12 @@ package "Despachos (Draft -> Approved)" #EAF2F8 {
     entity "dispatch_plans" as plan {
         * id : <<PK>>
         --
-
         plan_status_id : <<FK>>
         distributor_id : Number <<FK>>
-        ' city_id : Number
-        plan_date : Date
-        ' optimization_status : String
-        planned_order_count : Integer
-        planned_truck_count : Integer
-        -employee_id : Integer
+        plan_date : Date <<NOT NULL — fecha operativa>>
+        planned_order_count : Integer <<default 0>>
+        planned_truck_count : Integer <<default 0>>
+        employee_id : Number <<NOT NULL — planificador responsable>>
 
         created_by : String
         updated_by : String
@@ -191,45 +193,55 @@ package "Despachos (Draft -> Approved)" #EAF2F8 {
         deleted_at : Timestamp | Null
     }
 
-    entity "planning_truck" as truck {
+    entity "planning_trucks" as truck {
         * id : <<PK>>
         --
         dispatch_plan_id : <<FK>>
         truck_id : Number <<FK>>
-        assigned_weight_kg : Decimal
-        assigned_volume_m3 : Decimal
-        ' status : String <<DISPONIBLE, MANTENIMIENTO>>
+        assigned_weight_kg : Decimal <<default 0.00>>
+        assigned_volume_m3 : Decimal <<default 0.00>>
+        is_included_in_routing : Boolean <<default true>>
 
         created_by : String
         updated_by : String
         created_at : Timestamp
         updated_at : Timestamp
         deleted_at : Timestamp | Null
-
-        -is_included_in_routing: boolean <<si el camion esta incluido en una ruta>>
     }
 
     entity "dispatch_delivery_points" as plan_order {
         * id : <<PK>>
         --
         dispatch_plan_id : <<FK>>
-        delivery_point_id : Number
-        sale_channel_id: Integer
-        zone_id: Integer<<FK | NULL>>
-        ' planned_sequence : Integer
+        sale_channel_id : Number <<NOT NULL>>
+        delivery_point_id : Number <<NOT NULL>>
+        zone_id : Number <<FK | Null>>
+        owner_id : Number <<NOT NULL>>
+        owner_name : String
+        customer_id : Number <<NOT NULL — cliente receptor>>
+        customer_name : String
+        warehouse_destination_id : Number
         priority : Integer
-        ' notes : Text
-        -owner_id : Number
-        -owner_name : String
-        -warehouse_destination_id : Number
-
-        -delivery_window_start : Time
-        -delivery_window_end : Time
-        -total_weight_kg : Decimal
-        -total_volume_m3 : Decimal
-        -total_neto : Decimal
+        delivery_window_start : Time | Null
+        delivery_window_end : Time | Null
+        total_weight_kg : Decimal
+        total_volume_m3 : Decimal
+        total_neto : Decimal
         <<UNIFICACION DE PUNTOS DE ENTREGAS>>
-        -forced_planning_truck_id: <<FK | NULL>>
+        forced_planning_truck_id : <<FK | Null>>
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "image_delivery_points" as image_dp {
+        * id : <<PK>>
+        --
+        dispatch_delivery_point_id : <<FK | Null>>
+        path_url : Text <<fotos / fachadas del punto de entrega>>
 
         created_by : String
         updated_by : String
@@ -243,22 +255,22 @@ package "Rutas y Asignación" #E9F7EF {
     entity "routes" as routes {
         * id : <<PK>>
         --
-        planning_truck_id : Number <<FK | NULL>>
-        dispatch_plan_id : Number <<FK | NULL>>
-        employee_id : Number <<FK>>
-        -driver_employee_id : Number || NULL
-        -name_driver_employee : String || NULL
-        -helper_employee_id : Number || NULL
-        -name_helper_employee : String || NULL
-        engine : String
-        executed_at : Timestamp
         name : String
-        eta_total_distance_m : Decimal
-        eta_total_time_s : Decimal
+        planning_truck_id : Number <<FK | Null>>
+        dispatch_plan_id : Number <<FK | Null>>
+        employee_id : Number <<supervisor que aprueba o ejecuta>>
+        driver_employee_id : Number | Null
+        name_driver_employee : String | Null
+        helper_employee_id : Number | Null
+        name_helper_employee : String | Null
+        engine : String <<GOOGLE, OR_TOOLS>>
+        executed_at : Timestamp
+        eta_total_distance_m : Decimal <<meters>>
+        eta_total_time_s : Decimal <<seconds>>
         score : Decimal
-        - total_cost: Decimal
-        - is_selected: boolean<<default false>>
-        - encode_polyline: String
+        total_cost : Decimal
+        is_selected : Boolean <<default false>>
+        encode_polyline : Text
 
         created_by : String
         updated_by : String
@@ -272,11 +284,11 @@ package "Rutas y Asignación" #E9F7EF {
         --
         route_id : <<FK>>
         dispatch_delivery_point_id : <<FK>>
-        sequence : Integer
-        estimated_distance_m : Decimal<<meters>>
-        estimated_travel_s : Decimal<<seconds>>
-        - is_active: Boolean
-        - estimated_total_cost: Decimal<<routeTotalCost>>
+        sequence : Integer <<NOT NULL — orden de visita>>
+        estimated_distance_m : Decimal <<meters>>
+        estimated_travel_s : Decimal <<seconds>>
+        is_active : Boolean <<default true>>
+        estimated_total_cost : Decimal
 
         created_by : String
         updated_by : String
@@ -292,13 +304,18 @@ package "Carga en Camion (Ejecución Física)" #FEF9E7 {
         * id : <<PK>>
         --
         dispatch_plan_id : <<FK | Null>>
-        distributor_id: <<FK>>
-        code : Number
-        route_id : Number <<FK>>
-        checked_by : String | NULL
-        assigned_weight_kg : Decimal
-        assigned_volume_m3 : Decimal
-        status : String (CREATED, ENROUTE, ARRIVED, etc.)
+        distributor_id : Number <<FK>>
+        route_id : Number <<FK | Null>>
+
+        code : Number <<código numérico de OT, ej. 1000456>>
+        status : String <<CREATED, ENROUTE, CHECKED_OK, DISCREPANCY>>
+        checked_by : String | Null <<usuario/chofer que valida el conteo físico>>
+
+        departure_date : Timestamp | Null
+        completed_date : Timestamp | Null
+        total_km : Decimal <<default 0.00>>
+        assigned_weight_kg : Decimal <<default 0.00>>
+        assigned_volume_m3 : Decimal <<default 0.00>>
 
         created_by : String
         updated_by : String
@@ -311,8 +328,8 @@ package "Carga en Camion (Ejecución Física)" #FEF9E7 {
         * id : <<PK>>
         --
         transport_order_id : <<FK>>
-        status : String (CREATED, ENROUTE, ARRIVED, etc.)
-        description : Text
+        status : String <<CREATED, ENROUTE, CHECKED_START, CHECKED_END, DISCREPANCY>>
+        description : String <<detalle del evento / auditoría>>
 
         created_by : String
         updated_by : String
@@ -325,10 +342,13 @@ package "Carga en Camion (Ejecución Física)" #FEF9E7 {
         * id : <<PK>>
         --
         transport_order_id : <<FK>>
-        sale_order_id : Number
-        document_id : Number
-        total_weight_kg : Decimal
-        total_volume_m3 : Decimal
+        sales_order_id : Number
+        sales_order_split_id : Number
+        invoice_id : Number
+        invoice_amount : Decimal <<default 0.00>>
+        document_id : Number <<NOT NULL — documento SAP de necesidad>>
+        total_weight_kg : Decimal <<default 0.00>>
+        total_volume_m3 : Decimal <<default 0.00>>
 
         created_by : String
         updated_by : String
@@ -337,12 +357,12 @@ package "Carga en Camion (Ejecución Física)" #FEF9E7 {
         deleted_at : Timestamp | Null
     }
 
-    entity "transport_order_sale_items" as transport_order_sale_item {
+    entity "transport_order_sales_items" as transport_order_sale_item {
         * id : <<PK>>
         --
-        transport_order_sale_id : <<FK>>
-        product_id : Number
-        quantity_min : Number
+        transport_order_sales_id : <<FK>>
+        product_id : Number <<NOT NULL>>
+        quantity_min : Decimal <<cantidad total esperada en unidad mínima>>
 
         created_by : String
         updated_by : String
@@ -356,13 +376,28 @@ package "Carga en Camion (Ejecución Física)" #FEF9E7 {
         --
         truck_id : <<FK>>
         transport_order_id : <<FK>>
-        product_id : Number
-        loaded_qty : Decimal
-        expected_qty : Decimal
-        variance_qty : Decimal
-        -status : String <<PENDING, MATCH, APPROVED>>
-        -verified_supervisor_id: Number
-        ' as_of_at : Timestamp
+        product_id : Number <<NOT NULL>>
+        loaded_qty : Decimal <<cantidad física ingresada por el chofer>>
+        expected_qty : Decimal <<cantidad oficial esperada>>
+        variance_qty : Decimal <<loaded_qty - expected_qty>>
+        status : String <<PENDING, MATCH, MISMATCH, APPROVED>>
+        verified_supervisor_id : Number | Null <<supervisor que aprueba el descuadre>>
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "truck_inventory_histories" as inventory_hist {
+        * id : <<PK>>
+        --
+        truck_inventory_id : <<FK>>
+        loaded_qty : Decimal <<cantidad re-contada en este intento>>
+        variance_qty : Decimal <<diferencia calculada en este intento>>
+        verified_supervisor_id : Number | Null
+        observations : String <<default ''>>
 
         created_by : String
         updated_by : String
@@ -381,18 +416,51 @@ package "Ultima Milla (Entregas)" #E8F8F5 {
         dispatch_delivery_point_id : <<FK>>
         ' FK al punto de entrega unificado. Evita duplicar delivery_point_id, dueño y ventanas horarias.
         executed_sequence : Integer
-        delivery_result_code : String <<resultado final EXITOSO, RECHAZO_PARCIAL,NO_CONTACTADO >>
-        ' Código de resultado final (ej: EXITOSO, RECHAZO_TOTAL, RECHAZO_PARCIAL, NO_CONTACTADO).
-        status : String <<Estado operativo de la parada,PENDING, ENROUTE, ARRIVED, DELIVERED>>
-        ' Estado operativo de la parada (PENDING, ENROUTE, ARRIVED, DELIVERED, REJECTED).
-        arrival_latitude : Decimal <<Latitud GPS exacta capturada cuando el chofer presiona "Llegué al cliente">>
-        ' Latitud GPS exacta capturada cuando el chofer presiona "Llegué al cliente".
-        arrival_longitude : Decimal <<Longitud GPS exacta capturada cuando el chofer presiona "Llegué al cliente">>
-        ' Longitud GPS exacta capturada cuando el chofer presiona "Llegué al cliente".
-        arrived_at : Timestamp <<Fecha y hora exacta de entrada al cliente>>
-        ' Fecha y hora exacta de entrada a la geocerca / llegada al cliente.
-        delivered_at : Timestamp | Null <<Fecha y hora exacta en que se finalizo>>
-        ' Fecha y hora exacta en que se finalizó y firmó la entrega.
+        delivery_note_number : String <<Número de Nota de Entrega / Remisión>>
+        delivery_result_code : String <<EXITOSO, RECHAZO_TOTAL, RECHAZO_PARCIAL>>
+        status : String <<NOT NULL — PENDING, ENROUTE, ARRIVED, DELIVERED, REJECTED>>
+        arrival_latitude : Decimal <<GPS capturado al presionar "Llegué al cliente">>
+        arrival_longitude : Decimal
+        arrived_at : Timestamp <<Fecha y hora exacta de llegada al cliente>>
+        delivered_at : Timestamp | Null <<Fecha y hora de finalización y firma>>
+        ' verification_pin : String  -- comentado en el DDL vigente
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "delivery_order_sales" as delivery_sale {
+        * id : <<PK>>
+        --
+        delivery_order_id : <<FK>>
+        ' Divide la entrega por empresa emisora / factura.
+        sale_order_id : Number
+        company_code : Number
+        invoice_id : Number
+        total_invoice : Decimal <<NOT NULL>>
+
+        created_by : String
+        updated_by : String
+        created_at : Timestamp
+        updated_at : Timestamp
+        deleted_at : Timestamp | Null
+    }
+
+    entity "delivery_payment_references" as payment_ref {
+        * id : <<PK>>
+        --
+        delivery_order_sale_id : <<FK — ON DELETE CASCADE>>
+        collection_payment_id : Number <<NOT NULL — ID devuelto por Ms Cobranzas>>
+        payment_method : String <<NOT NULL — CASH, QR, TRANSFER, CHECK>>
+        reference_number : String <<id_qr, nro de recibo, operación o cheque>>
+        amount : Decimal <<NOT NULL — monto exacto cobrado>>
+        currency : String <<default 'BOB'>>
+        status : String <<default PENDING — PENDING, COMPLETED, EXPIRED, CANCELLED>>
+        metadata : JsonB <<datos extra, ej. {"bank_name": "BNB"}>>
+        notes : String <<glosa o comentario ingresado por el chofer>>
 
         created_by : String
         updated_by : String
@@ -404,25 +472,16 @@ package "Ultima Milla (Entregas)" #E8F8F5 {
     entity "delivery_order_items" as delivery_item {
         * id : <<PK>>
         --
-        delivery_order_id : <<FK>>
-        sales_order_id : Number <<FK venta comercial en SAP>>
-        ' FK a la orden de venta comercial en SAP/CRM. Mantiene la trazabilidad 1 a 1 con la factura/pedido original.
-        product_id : Number <<FK>>
-        ' FK al producto entregado.
-        planned_qty : Decimal <<Cantidad fisica programada a entregar>>
-        ' Cantidad física programada a entregar en unidad mínima.
-        delivered_qty : Decimal <<Cantidad física entregada>>
-        ' Cantidad física efectivamente aceptada y entregada al cliente (unidad mínima).
-        returned_qty : Decimal <<Cantidad física devuelta/rechazada>>
-        ' Cantidad física devuelta/rechazada por el cliente en rampa de descarga.
-        unit_price_snapshot : Decimal <<Snapshot del precio unitario>>
-        ' Snapshot del precio unitario original para recalcular el cobro (COD) si hay rechazo parcial.
-        rejection_reason_code : String | Null <<Motivo específico si returned_qty > 0 (ej:VENCIDO, PRECIO_INCORRECTO).>>
-        ' Motivo específico si returned_qty > 0 (ej: PRODUCTO_DANIADO, VENCIDO, PRECIO_INCORRECTO).
-        item_status : String <<PENDING, DELIVERED, PARTIALLY_REJECTED, REJECTED>>
-        ' Estado del ítem (PENDING, DELIVERED, PARTIALLY_REJECTED, REJECTED).
-        notes : Text << Observaciones específicas escritas por el chofer sobre este producto>>
-        ' Observaciones específicas escritas por el chofer sobre este producto.
+        delivery_order_sale_id : <<FK>>
+        ' Cuelga de la venta dividida, NO de delivery_orders directamente.
+        product_id : Number <<NOT NULL>>
+        planned_qty : Decimal <<NOT NULL — cantidad programada en unidad mínima>>
+        delivered_qty : Decimal <<default 0.00 — cantidad entregada/aceptada>>
+        returned_qty : Decimal <<default 0.00 — cantidad rechazada/devuelta en rampa>>
+        unit_price_snapshot : Decimal <<default 0.00 — para recalcular el cobro (COD)>>
+        rejection_reason_code : String | Null <<DANIADO, VENCIDO, PRECIO_INCORRECTO>>
+        item_status : String <<PENDING, DELIVERED, PARTIALLY_REJECTED>>
+        notes : Text <<observaciones del chofer sobre este producto>>
 
         created_by : String
         updated_by : String
@@ -431,34 +490,25 @@ package "Ultima Milla (Entregas)" #E8F8F5 {
         deleted_at : Timestamp | Null
     }
 
-    entity "proof_of_delivery" as pod {
+    entity "proof_of_deliveries" as pod {
         * id : <<PK>>
         --
         delivery_order_id : <<FK>>
         ' FK a la entrega respaldada (relación 1 a 1).
-        receiver_name : String <<Nombre completo de la persona que recibe>>
-        ' Nombre completo de la persona que recibe físicamente la carga.
-        receiver_document : String <<Número de CI/DNI de la persona que firma la conformidad>>
-        ' Número de CI/DNI de la persona que firma la conformidad.
-        signature_url : String | Null <<firma digital capturada>>
-        ' URL o trazado en Base64 de la firma digital capturada en la App Móvil.
-        photo_url : String | Null
-        gps_lat : Decimal <<Latitud GPS exacta donde se capturó la evidencia>>
-        ' Latitud GPS exacta donde se capturó la evidencia (para auditar vs coordenadas del cliente).
-        gps_lon : Decimal <<Longitud GPS exacta donde se capturó la evidencia>>
-        ' Longitud GPS exacta donde se capturó la evidencia.
-        is_offline_captured : Boolean <<si la evidencia fue tomada sin conexión a internet>>
-        ' Banderilla (true/false) que indica si la evidencia fue tomada sin conexión a internet.
-        pod_status : String <<Estado del comprobante CAPTURED, UPLOADED, APPROVED>>
-        ' Estado del comprobante (CAPTURED, UPLOADED, APPROVED).
+        receiver_name : String <<Nombre de quien recibe físicamente>>
+        receiver_document : String <<CI/DNI del receptor>>
+        receiver_relationship : String <<PROPIETARIO, ENCARGADO>>
+        signature_url : Text | Null <<firma digital capturada>>
+        image_url : Text | Null <<fotografía tomada como evidencia>>
+        latitude : Decimal <<GPS de captura del POD>>
+        longitude : Decimal
+        status : String <<CAPTURED, UPLOADED, APPROVED>>
         device_id : Number <<Identificador del dispositivo móvil>>
-        ' Identificador del dispositivo móvil registrado.
-        captured_at : Timestamp
-        ' Fecha y hora real de captura en el dispositivo del chofer.
-        uploaded_at : Timestamp | Null
-        ' Fecha y hora en que la evidencia se sincronizó con el servidor.
-        notes : Text <<Notas adicionales sobre la recepción>>
-        ' Notas adicionales sobre la recepción.
+        captured_at : Timestamp <<Hora de captura en el celular>>
+        uploaded_at : Timestamp | Null <<Hora de sincronización con el servidor>>
+        notes : Text
+        ' is_offline_captured : Boolean  -- comentado en el DDL vigente
+        ' battery_level : Integer        -- comentado en el DDL vigente
 
         created_by : String
         updated_by : String
@@ -472,27 +522,17 @@ package "Ultima Milla (Entregas)" #E8F8F5 {
         --
         delivery_order_id : <<FK>>
         ' FK a la entrega donde ocurrió el evento no deseado.
-        product_id : Number | Null <<FK>>
-        ' FK opcional al producto específico si la incidencia es puntual (ej: 1 caja rota) o NULL si es general.
-        incident_code : String
-        ' Código estandarizado de la incidencia (ej: CLIENTE_CERRADO, ZONA_INACCESIBLE, DANIADO).
-        incident_type : String
-        ' Categoría del problema (LOGISTICO, PRODUCTO, COMERCIAL, CLIENTE).
-        severity : String
-        ' Nivel de severidad (BAJA, MEDIA, ALTA, CRITICA).
+        product_id : Number | Null <<FK opcional si el daño fue puntual>>
+        incident_code : String <<CLIENTE_CERRADO, PRODUCTO_DANIADO>>
+        severity : String <<BAJA, MEDIA, ALTA, CRITICA>>
         description : Text
-        ' Explicación detallada narrada por el chofer.
-        photo_url : String | Null
-        ' URL de la foto tomada como evidencia física del problema.
-        requires_return : Boolean <<Indica si la incidencia exige que el producto vuelva fisicamente>>
-        ' Indica si la incidencia exige que el producto vuelva físicamente al almacén.
-        resolution_status : String
-        ' Estado de resolución por el supervisor (PENDING, APPROVED, OVERRIDDEN).
+        image_url : Text <<evidencia física del problema>>
+        requires_return : Boolean <<default false — exige retorno físico al almacén>>
+        resolution_status : String <<PENDING, APPROVED>>
         resolved_at : Timestamp | Null
-        ' Fecha y hora en que el supervisor resolvió la incidencia.
+        ' incident_type : String  -- comentado en el DDL vigente
 
-        created_by : String
-        ' Identificador/Usuario que reportó la incidencia (Estandarizado a String).
+        created_by : String <<usuario/chofer que reportó>>
         updated_by : String
         created_at : Timestamp
         updated_at : Timestamp
@@ -503,13 +543,9 @@ package "Ultima Milla (Entregas)" #E8F8F5 {
         * id : <<PK>>
         --
         delivery_order_id : <<FK>>
-        ' FK a la entrega registrada.
-        status : String <<CREATED, ENROUTE, ARRIVED, DELIVERED, REJECTED, INCIDENT>>
-        ' Estado transicionado (CREATED, ENROUTE, ARRIVED, DELIVERED, REJECTED, INCIDENT).
+        status : String <<NOT NULL — ARRIVED, DELIVERED, REJECTED>>
         reason : Text
-        ' Razón o descripción del cambio de estado.
-        captured_at : Timestamp
-        ' Timestamp de ocurrencia en el móvil (para sincronización offline en orden cronológico real).
+        captured_at : Timestamp <<ocurrencia offline, para orden cronológico real>>
 
         created_by : String
         updated_by : String
@@ -519,54 +555,85 @@ package "Ultima Milla (Entregas)" #E8F8F5 {
     }
 }
 
-distributor_master "1" -- "1..*"  sale_channel_restrictions: contiene restricciones >
-planStatus "1" -- "1..*" plan: tiene >
-distributor_master "1" -- "1..*" plan: tiene >
+' =========================================================
+' DESPACHOS Y MAESTROS
+' =========================================================
+
+distributor_master "1" -- "1..*" sale_channel_restrictions : contiene restricciones >
+distributor_master "1" -- "0..*" truck_master : posee flota >
+planStatus "1" -- "1..*" plan : tiene >
+distributor_master "1" -- "1..*" plan : tiene >
 plan "1" -- "0..*" truck : asigna >
 plan "1" -- "1..*" plan_order : contiene paradas >
 plan_order "1" -- "0..*" candidate_order : "agrega" >
+plan_order "1" -- "0..*" image_dp : "documenta con fotos" >
 zone_master "1" -- "0..*" plan_order : "agrega" >
+truck "1" -- "0..*" plan_order : "unificación forzada" >
+distributor_master "1" -- "0..*" candidate_order : origina >
 
 snap_warehouse ..> plan : "valida almacén"
 snap_delivery_point ..> plan_order : "provee GPS"
 truck_master "1" .. "0..*" truck : "copia capacidad" >
 
+' =========================================================
+' RUTAS
+' =========================================================
+
 plan "1" -- "0..*" routes : ejecuta >
+truck "1" -- "0..*" routes : "asignada a" >
 routes "1" -- "0..*" opt_order : resultados >
-routes "1" -- "0..*" exec_order: contiene >
+routes "1" -- "0..*" exec_order : contiene >
 plan_order "1" .. "0..*" opt_order : "optimizado en" >
-truck "1" .. "0..*" opt_order : transportada por >
+
+' =========================================================
+' CARGA EN CAMIÓN
+' =========================================================
 
 plan "1" -- "0..*" exec_order : genera >
+distributor_master "1" -- "0..*" exec_order : opera >
 exec_order "1" -- "1..*" transport_order_sale : requiere >
-exec_order "1" -- "1..*"  transp_ord_hist : registra >
+exec_order "1" -- "1..*" transp_ord_hist : registra >
 transport_order_sale "1" -- "1..*" transport_order_sale_item : contiene >
 exec_order "1" -- "0..*" inventory : establece stock >
+truck_master "1" -- "0..*" inventory : "carga en" >
+inventory "1" -- "0..*" inventory_hist : "registra re-conteos" >
 
 ' =========================================================
 ' RELACIONES INTERNAS DE ÚLTIMA MILLA
 ' =========================================================
 
-delivery "1" -- "1..*" delivery_item : "descarga productos en" >
+delivery "1" -- "1..*" delivery_sale : "divide por empresa/factura" >
+delivery_sale "1" -- "1..*" delivery_item : "descarga productos en" >
+delivery_sale "1" -- "0..*" payment_ref : "registra cobros de" >
 delivery "1" -- "0..1" pod : "genera comprobante" >
 delivery "1" -- "0..*" incident : "reporta problemas en" >
 delivery "1" -- "0..*" delivery_history : "registra trazabilidad de" >
 
 ' =========================================================
-' RELACIONES CON OTROS PAQUETES (CONEXIÓN DEL DIAGRAMA)
+' RELACIONES ENTRE PAQUETES
 ' =========================================================
 
-' Conexión con Carga en Camión (Transport Orders)
 exec_order "1" -- "1..*" delivery : "genera paradas físicas" >
-
-' Conexión con Despachos / Planificación (Punto de Entrega Unificado)
 plan_order "1" -- "0..*" delivery : "asociado a punto de entrega" >
 
-' Conexión con Datos Externos / Catálogo (Productos)
 snap_product "1" .. "0..*" delivery_item : "refiere producto"
 snap_product "1" .. "0..*" incident : "asociado a producto (opcional)"
+snap_product "1" .. "0..*" inventory : "refiere producto"
+snap_product "1" .. "0..*" transport_order_sale_item : "refiere producto"
+ext_sales "1" .. "0..*" transport_order_sale : "origen comercial"
 
-' Conexión Lógica con Inventario de Camión
 inventory ..> delivery_item : "descuenta stock al entregar"
+
+note bottom of inventory_hist
+  Cadena de conteo a ciegas:
+  cada intento (chofer, consolidador, auditor
+  semáforo) es una fila nueva aquí; la fila de
+  truck_inventories mantiene el valor vigente.
+
+  NO modelado en el DDL:
+  - causa de la diferencia (hoy iría en observations)
+  - rol del contador (chofer / consolidador / auditor)
+  - selección aleatoria de la auditoría semáforo
+end note
 
 @enduml

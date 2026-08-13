@@ -1,34 +1,35 @@
-import { ClipboardCheck, Palette, Settings, Truck, Package, ShieldCheck, CheckSquare, PackageSearch, ShieldAlert } from 'lucide-react-native';
-
-import ChequeoScreen from '@/features/despachos/ChequeoScreen';
-import DespachosScreen from '@/features/despachos/screen';
-import GalleryScreen from '@/features/gallery/screen';
-import SettingsScreen from '@/features/settings/screen';
-import OrdenesParaRevisarScreen from '@/features/supervisor/OrdenesParaRevisarScreen';
-import ConsolidacionConteoScreen from '@/features/supervisor/ConsolidacionConteoScreen';
-import ProductosFaltantesScreen from '@/features/supervisor/ProductosFaltantesScreen';
-import RevisionSemaforoListScreen from '@/features/supervisor/RevisionSemaforoListScreen';
-import RevisionSemaforoExecuteScreen from '@/features/supervisor/RevisionSemaforoExecuteScreen';
+import {
+  ClipboardCheck,
+  Palette,
+  Settings,
+  Truck,
+  Package,
+  ShieldCheck,
+  CheckSquare,
+  PackageSearch,
+  ShieldAlert,
+} from 'lucide-react-native';
 
 import type { RouteInterface } from './types';
-import { DeliveryScreen } from '@/features/entregas (delivery)/delivery-screen';
-import { DeliveryRouteScreen } from '@/features/entregas (delivery)/DeliveryRouteScreen';
-import { RegistrarVisitaScreen } from '@/features/entregas (delivery)/RegistrarVisitaScreen';
-import { DeliveryDetailScreen } from '@/features/entregas (delivery)/delivery-details-screen';
 
 /**
  * The whole app navigation as data. Add a route here (with `showInHome`) and it
  * appears on the Home grid and resolves through the catch-all automatically —
  * no new files under `app/`.
+ *
+ * This module is a leaf on purpose: it imports icons and types only. The screen
+ * that renders each route lives in `screens.ts`, keyed by `id`. Pulling screen
+ * components in here would close the cycle `registry -> routes -> screen ->
+ * registry`, which evaluates `flattenRoutes()` against a half-initialised
+ * `routes`.
  */
 export const routes: RouteInterface[] = [
   {
     id: 'supervisor.productosFaltantes',
     path: '/supervisor/productos-faltantes',
-    title: 'Productos Faltantes',
-    description: 'Productos con diferencia y a qué OT pertenecen',
+    title: 'Diferencias por chofer',
+    description: 'Faltantes y sobrantes a revisar con cada chofer',
     icon: PackageSearch,
-    component: ProductosFaltantesScreen,
     showInHome: true,
     showInMenuBottom: true,
     badge: 5,
@@ -40,7 +41,6 @@ export const routes: RouteInterface[] = [
     title: 'Revisión Semáforo',
     description: 'Auditoría aleatoria de conteo a ciegas y control de calidad',
     icon: ShieldAlert,
-    component: RevisionSemaforoListScreen,
     showInHome: true,
     showInMenuBottom: true,
     badge: 3,
@@ -51,7 +51,6 @@ export const routes: RouteInterface[] = [
         path: '/supervisor/semaforo/ejecutar',
         title: 'Auditoría a Ciegas Semáforo',
         icon: ShieldAlert,
-        component: RevisionSemaforoExecuteScreen,
       },
     ],
   },
@@ -61,7 +60,6 @@ export const routes: RouteInterface[] = [
     title: 'Órdenes para Revisar',
     description: 'Aprobación y consolidación de revisión a ciegas',
     icon: ShieldCheck,
-    component: OrdenesParaRevisarScreen,
     showInHome: true,
     showInMenuBottom: true,
     badge: 2,
@@ -72,7 +70,6 @@ export const routes: RouteInterface[] = [
         path: '/supervisor/consolidacion',
         title: 'Consolidación de Conteo',
         icon: CheckSquare,
-        component: ConsolidacionConteoScreen,
       },
     ],
   },
@@ -82,7 +79,6 @@ export const routes: RouteInterface[] = [
     title: 'Revision a ciegas',
     description: 'Ordenes de transporte asignados a tu cuenta',
     icon: Truck,
-    component: DespachosScreen,
     showInHome: true,
     showInMenuBottom: true,
     badge: 1,
@@ -93,7 +89,6 @@ export const routes: RouteInterface[] = [
         path: '/despachos/chequeo',
         title: 'Revision por Orden',
         icon: ClipboardCheck,
-        component: ChequeoScreen,
       },
     ],
   },
@@ -103,7 +98,6 @@ export const routes: RouteInterface[] = [
     title: 'Mis Entregas',
     description: 'Entregas a realizar en ruta',
     icon: Package,
-    component: DeliveryScreen,
     showInHome: true,
     showInMenuBottom: true,
     badge: 4,
@@ -114,21 +108,18 @@ export const routes: RouteInterface[] = [
         path: '/entregas/ruta',
         title: 'Hoja de Ruta',
         icon: Truck,
-        component: DeliveryRouteScreen,
       },
       {
         id: 'entregas.registrarVisita',
         path: '/entregas/registrar-visita',
         title: 'Registrar Visita',
         icon: ClipboardCheck,
-        component: RegistrarVisitaScreen,
       },
       {
         id: 'entregas.detalle',
         path: '/entregas/detalle',
         title: 'Detalle de Entrega',
         icon: ClipboardCheck,
-        component: DeliveryDetailScreen,
       },
     ],
   },
@@ -138,7 +129,6 @@ export const routes: RouteInterface[] = [
     title: 'Galería de componentes',
     description: 'Design system: variantes, tamaños y densidad',
     icon: Palette,
-    component: GalleryScreen,
     showInHome: true,
     order: 90,
   },
@@ -147,7 +137,6 @@ export const routes: RouteInterface[] = [
     path: '/settings',
     title: 'Configuración',
     icon: Settings,
-    component: SettingsScreen,
     showInHome: false,
     order: 99,
   },

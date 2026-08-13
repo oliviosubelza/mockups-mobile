@@ -48,6 +48,12 @@ export interface BoxUnitCounterProps {
   totalLabel?: string;
   /** Cantidad objetivo. Si el total coincide, el total se pinta en success. */
   targetQty?: number;
+  /**
+   * Acción a la derecha de la fila de total, para no gastar una fila entera en
+   * un solo botón. Al usarla, etiqueta y total se agrupan a la izquierda: el
+   * espacio que los separaba pasa a ser el hueco de la acción.
+   */
+  action?: React.ReactNode;
 }
 
 /**
@@ -63,6 +69,7 @@ export const BoxUnitCounter = ({
   cajaSize,
   totalLabel,
   targetQty,
+  action,
 }: BoxUnitCounterProps) => {
   const theme = useAppTheme();
 
@@ -114,23 +121,38 @@ export const BoxUnitCounter = ({
 
       {totalLabel && (
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <Text
-            variant="caption"
-            numberOfLines={1}
-            style={{ fontSize: 11, color: theme.colors.mutedForeground, flexShrink: 1 }}
-          >
-            {totalLabel}
-          </Text>
-          <Text
-            variant="label"
+          {/* Con acción, etiqueta y total viajan juntos a la izquierda; sin
+              ella se reparten los extremos como siempre. */}
+          <View
             style={{
-              fontSize: 13,
-              fontWeight: '800',
-              color: isMatched ? theme.colors.success : theme.colors.foreground,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: action ? 6 : 8,
+              flex: action ? 0 : 1,
+              flexShrink: 1,
+              justifyContent: 'space-between',
             }}
           >
-            {targetQty === undefined ? `${total} u.` : `${total} / ${targetQty} u.`}
-          </Text>
+            <Text
+              variant="caption"
+              numberOfLines={1}
+              style={{ fontSize: 11, color: theme.colors.mutedForeground, flexShrink: 1 }}
+            >
+              {totalLabel}
+            </Text>
+            <Text
+              variant="label"
+              style={{
+                fontSize: 13,
+                fontWeight: '800',
+                color: isMatched ? theme.colors.success : theme.colors.foreground,
+              }}
+            >
+              {targetQty === undefined ? `${total} u.` : `${total} / ${targetQty} u.`}
+            </Text>
+          </View>
+
+          {action}
         </View>
       )}
     </View>

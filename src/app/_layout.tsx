@@ -1,6 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useEffect } from 'react';
@@ -16,6 +15,7 @@ import {
 } from '@expo-google-fonts/montserrat';
 
 import { queryClient } from '@/shared/http';
+import { SystemBars } from '@/shared/ui';
 import {AppThemeProvider} from '@/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -54,7 +54,7 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <AppThemeProvider>
             <Stack screenOptions={{ headerShown: false }} />
-            <StatusBar style="auto" />
+            <SystemBars />
           </AppThemeProvider>
         </QueryClientProvider>
       </SafeAreaProvider>

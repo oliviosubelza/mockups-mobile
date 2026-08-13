@@ -82,7 +82,7 @@ export function DeliveryScreen() {
           >
             Mis Entregas
           </Text>
-          <Badge label="Solo Finalizadas" tone="success" emphasis="soft" size="sm" icon={ShieldCheck} />
+          <Badge label="Solo Aprobadas" tone="success" size="sm" icon={ShieldCheck} />
         </View>
         <Text variant="caption" style={{ color: theme.colors.mutedForeground }}>
           Órdenes de transporte finalizadas y listas para entrega.
@@ -191,7 +191,7 @@ export function DeliveryScreen() {
                   >
                     OT-{despacho.codigo}
                   </Text>
-                  <Badge label="Aprobado" tone="success" emphasis="soft" size="sm" icon={CheckCircle2} />
+                  <Badge label="Aprobado" tone="success" size="sm" icon={CheckCircle2} />
                 </View>
 
                 <Text

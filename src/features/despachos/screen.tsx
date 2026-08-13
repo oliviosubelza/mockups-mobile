@@ -130,6 +130,9 @@ export default function DespachosScreen() {
         !query ||
         d.codigo.toLowerCase().includes(query) ||
         d.zonaRuta.toLowerCase().includes(query) ||
+        d.placa.toLowerCase().includes(query) ||
+        // The card no longer prints the internal id, but keeping it searchable
+        // costs nothing and back-office users still quote it.
         d.id.toLowerCase().includes(query);
 
       const matchesStatus =
@@ -156,17 +159,12 @@ export default function DespachosScreen() {
         <ListSkeleton />
       ) : (
         <View style={{ gap: 12 }}>
-          <Text
-            variant="title"
-            style={{ fontSize: 20, fontWeight: "100", color: theme.colors.foreground }}
-          >
-            Órdenes de Transporte
-          </Text>
+          <Text variant="title">Órdenes de Transporte</Text>
           {/* COMPONENTE REUTILIZABLE DE BÚSQUEDA */}
           <SearchField
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Buscar por OT, ID o Ruta..."
+            placeholder="Buscar por OT, placa o ruta..."
           />
 
           {/* COMPONENTE REUTILIZABLE DE CHIPS DE FILTRO */}
@@ -225,11 +223,10 @@ export default function DespachosScreen() {
             </View>
           ) : (
             <View style={{ gap: 8 }}>
-              {despachosFiltrados.map((despacho, index) => (
+              {despachosFiltrados.map((despacho) => (
                 <DespachoCard
                   key={despacho.id}
                   despacho={despacho}
-                  sequence={index + 1}
                   onPress={() => openChequeo(despacho)}
                 />
               ))}

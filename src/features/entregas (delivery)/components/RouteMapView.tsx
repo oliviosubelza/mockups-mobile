@@ -19,7 +19,7 @@ import {
   Truck,
   User
 } from "lucide-react-native";
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Linking,
@@ -45,7 +45,7 @@ import Svg, {
 
 import { Badge, Button } from "@/shared/ui";
 import { Text, useAppTheme } from "@/theme";
-import { updateStopStatus } from "../data/delivery-store";
+import { updateStopStatus, useDeliveryStore } from "../data/delivery-store";
 import {
   SANTA_CRUZ_CLOSED_LOOP_POLYLINE,
   SANTA_CRUZ_COMPLETED_SEGMENT,
@@ -89,18 +89,57 @@ export function RouteMapView({
   const theme = useAppTheme();
   const isDark = theme.colors.mainBackground === "#18181b";
   const mapRef = useRef<MapView>(null);
-  const [currentRegion, setCurrentRegion] = useState<Region>(
-    SANTA_CRUZ_INITIAL_REGION,
-  );
+  const currentRegionRef = useRef<Region>(SANTA_CRUZ_INITIAL_REGION);
 
-  // SELECCIÓN AUTOMÁTICA DE PARADA POR DEFECTO
-  const defaultActive =
-    stops.find((s) => s.status === "ARRIVED") ||
-    stops.find((s) => s.status === "EN_ROUTE") ||
-    stops.find((s) => s.status === "INCIDENT") ||
-    stops[0];
+  const storeSelectedStopId = useDeliveryStore((state) => state.selectedStopId);
+  const setStoreSelectedStop = useDeliveryStore((state) => state.setSelectedStop);
 
-  const [selectedStop, setSelectedStop] = useState<DeliveryStop>(defaultActive);
+  // SELECCIÓN AUTOMÁTICA DE PARADA ACTIVA POR DEFECTO
+  const activeStop = useMemo(() => {
+    return (
+      stops.find((s) => s.status === "ARRIVED") ||
+      stops.find((s) => s.status === "EN_ROUTE") ||
+      stops.find((s) => s.status === "PENDING") ||
+      stops.find((s) => s.status === "INCIDENT") ||
+      stops[0]
+    );
+  }, [stops]);
+
+  // DERIVAR LA PARADA SELECCIONADA EN TIEMPO REAL DESDE `stops` PROP
+  const selectedStop = useMemo(() => {
+    if (storeSelectedStopId) {
+      const found = stops.find((s) => s.id === storeSelectedStopId);
+      if (found) return found;
+    }
+    return activeStop;
+  }, [stops, storeSelectedStopId, activeStop]);
+
+  // SI LA PARADA SELECCIONADA FUE COMPLETADA (DELIVERED), AVANZAR AUTOMÁTICAMENTE A LA SIGUIENTE PARADA ACTIVA
+  useEffect(() => {
+    if (selectedStop && selectedStop.status === "DELIVERED") {
+      if (activeStop && activeStop.id !== selectedStop.id && activeStop.status !== "DELIVERED") {
+        setStoreSelectedStop(activeStop);
+      }
+    }
+  }, [stops, selectedStop?.id, selectedStop?.status, activeStop, setStoreSelectedStop]);
+
+  // CENTRAR EL MAPA EN LA PARADA SELECCIONADA AL CAMBIAR DE SELECCIÓN DE PARADA
+  useEffect(() => {
+    if (selectedStop) {
+      const coords = SANTA_CRUZ_STOPS_COORDINATES[selectedStop.sequence];
+      if (coords && mapRef.current) {
+        mapRef.current.animateToRegion(
+          {
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            latitudeDelta: 0.015,
+            longitudeDelta: 0.015,
+          },
+          350,
+        );
+      }
+    }
+  }, [selectedStop?.id]);
 
   // ALTURA ANIMADA EN TIEMPO REAL CON EL DEDO DEL CHOFER
   const currentHeightRef = useRef<number>(290); // 290px por defecto (medium)
@@ -185,45 +224,35 @@ export function RouteMapView({
   };
 
   const handleSelectStop = (stop: DeliveryStop) => {
-    setSelectedStop(stop);
+    setStoreSelectedStop(stop);
     if (currentHeightRef.current < 200) {
       animateToHeight(290);
-    }
-    const coords = SANTA_CRUZ_STOPS_COORDINATES[stop.sequence];
-    if (coords && mapRef.current) {
-      mapRef.current.animateToRegion(
-        {
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-          latitudeDelta: 0.02,
-          longitudeDelta: 0.02,
-        },
-        300,
-      );
     }
   };
 
   const handleZoomIn = () => {
+    const current = currentRegionRef.current;
     const nextRegion = {
-      ...currentRegion,
-      latitudeDelta: Math.max(0.008, currentRegion.latitudeDelta * 0.6),
-      longitudeDelta: Math.max(0.008, currentRegion.longitudeDelta * 0.6),
+      ...current,
+      latitudeDelta: Math.max(0.008, current.latitudeDelta * 0.6),
+      longitudeDelta: Math.max(0.008, current.longitudeDelta * 0.6),
     };
-    setCurrentRegion(nextRegion);
+    currentRegionRef.current = nextRegion;
     mapRef.current?.animateToRegion(nextRegion, 300);
   };
 
   const handleZoomOut = () => {
+    const current = currentRegionRef.current;
     const nextRegion = {
-      ...currentRegion,
-      latitudeDelta: Math.min(0.3, currentRegion.latitudeDelta * 1.6),
-      longitudeDelta: Math.min(0.3, currentRegion.longitudeDelta * 1.6),
+      ...current,
+      latitudeDelta: Math.min(0.3, current.latitudeDelta * 1.6),
+      longitudeDelta: Math.min(0.3, current.longitudeDelta * 1.6),
     };
-    setCurrentRegion(nextRegion);
+    currentRegionRef.current = nextRegion;
     mapRef.current?.animateToRegion(nextRegion, 300);
   };
   const handleOrientNorth = () => {
-    setCurrentRegion(SANTA_CRUZ_INITIAL_REGION);
+    currentRegionRef.current = SANTA_CRUZ_INITIAL_REGION;
     mapRef.current?.animateToRegion(SANTA_CRUZ_INITIAL_REGION, 400);
   };
 
@@ -347,7 +376,9 @@ export function RouteMapView({
             provider={PROVIDER_GOOGLE}
             style={StyleSheet.absoluteFillObject}
             initialRegion={SANTA_CRUZ_INITIAL_REGION}
-            onRegionChangeComplete={setCurrentRegion}
+            onRegionChangeComplete={(r) => {
+              currentRegionRef.current = r;
+            }}
             customMapStyle={isDark ? darkMapStyle : lightMapStyle}
           >
             <Polyline
@@ -365,6 +396,7 @@ export function RouteMapView({
             <Marker
               coordinate={SANTA_CRUZ_DEPOT}
               title="Centro de Distribución"
+              tracksViewChanges={false}
             >
               <View
                 style={{
@@ -388,11 +420,12 @@ export function RouteMapView({
 
               return (
                 <Marker
-                  key={stop.id}
+                  key={`${stop.id}-${stop.status}-${isSelected}`}
                   coordinate={coords}
                   title={`#${stop.sequence} • ${stop.clientName}`}
                   description={stop.address}
                   onPress={() => handleSelectStop(stop)}
+                  tracksViewChanges={false}
                 >
                   <View
                     style={{ alignItems: "center", justifyContent: "center" }}

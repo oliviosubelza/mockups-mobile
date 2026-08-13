@@ -23,7 +23,10 @@ type Props = {
  */
 export function DespachoCard({ despacho, onPress }: Props) {
   const theme = useAppTheme();
-  const meta = ESTADO_META[despacho.estado];
+  const meta = ESTADO_META[despacho.estado] ?? {
+    label: despacho.estado || "Pendiente",
+    tone: "neutral" as const,
+  };
   const ocupacion = calcularOcupacion(despacho);
 
   return (
@@ -39,35 +42,37 @@ export function DespachoCard({ despacho, onPress }: Props) {
         padding="m"
       >
         <Box flex={1} gap="s">
-          {/* Row 1: what the order is */}
+          {/* Row 1: OT Code, Plate, and Status Badge */}
           <Box
             flexDirection="row"
             justifyContent="space-between"
             alignItems="center"
-            gap="s"
+            gap="xs"
           >
-            <Text variant="subtitle" numberOfLines={1}>
-              OT-{despacho.codigo}
-            </Text>
+            <Box flexDirection="row" alignItems="center" gap="xs" flex={1} style={{ minWidth: 0 }}>
+              <Text variant="subtitle" numberOfLines={1} style={{ flexShrink: 0 }}>
+                OT-{despacho.codigo}
+              </Text>
+              <PlateChip placa={despacho.placa} />
+            </Box>
             <Badge label={meta.label} tone={meta.tone} size="sm" />
           </Box>
 
-          {/* Row 2: where it goes, and which truck takes it */}
-          <Box flexDirection="row" alignItems="center" gap="s">
-            <Box flexDirection="row" alignItems="center" gap="xs" flex={1}>
-              <MapPin
-                color={theme.colors.mutedForeground}
-                size={theme.iconSizes.sm}
-              />
-              <Text
-                variant="bodySmall"
-                color="mutedForeground"
-                numberOfLines={1}
-              >
-                {despacho.zonaRuta} · {despacho.puntosCount} paradas
-              </Text>
-            </Box>
-            <PlateChip placa={despacho.placa} />
+          {/* Row 2: Route zone & stop count */}
+          <Box flexDirection="row" alignItems="center" gap="xs">
+            <MapPin
+              color={theme.colors.mutedForeground}
+              size={theme.iconSizes.sm}
+            />
+            <Text
+              variant="bodySmall"
+              color="mutedForeground"
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={{ flex: 1 }}
+            >
+              {despacho.zonaRuta} · {despacho.puntosCount} paradas
+            </Text>
           </Box>
 
           {/* Row 3: how full the truck is */}

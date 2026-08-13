@@ -35,6 +35,7 @@ import { FormSkeleton, ListSkeleton } from "@/shared/ui/Skeleton";
 import { Box, Text, useAppTheme } from "@/theme";
 import { useDespachos } from "./store";
 import { CheckTimer } from "./components/CheckTimer";
+import type { EstadoDespacho } from "./types";
 
 const EMPTY: any[] = [];
 
@@ -362,10 +363,32 @@ export default function ChequeoScreen({ despachoId }: Props) {
       );
     });
 
+    // Evaluar si existe alguna diferencia en el conteo total
+    let tieneDiferencias = false;
+
+    // 1. Revisar los ítems ya agregados
+    items.forEach((item: any) => {
+      const partes = item.nombre.split(" | ");
+      if (partes[2] !== "true") {
+        tieneDiferencias = true;
+      }
+    });
+
+    // 2. Revisar si algún producto no contado por el chofer tenía expectedQty > 0
+    MOCK_DB.filter((p) => !codigosAgregados.has(p.codigo)).forEach((p) => {
+      if (p.expectedQty > 0) {
+        tieneDiferencias = true;
+      }
+    });
+
+    const estadoFinal: EstadoDespacho = tieneDiferencias
+      ? "diferencia"
+      : "finalizado";
+
     // CHECKED_END: cierra el cronómetro antes de que `guardar` cambie el estado.
     finishCheck(activeId);
     setCierre({ contados, pct: avancePct });
-    guardar(activeId);
+    guardar(activeId, estadoFinal);
     pasoSiguiente.current = "success";
   };
 
@@ -409,7 +432,13 @@ export default function ChequeoScreen({ despachoId }: Props) {
   const avanceCompleto = contados >= totalEsperado;
 
   // Tras cerrar, la barra congela el avance real y no el 100% que dejan los ceros
-  const conteoCerrado = cierre !== null;
+  const session = sessionsByDespacho[activeId];
+  const conteoCerrado =
+    cierre !== null ||
+    session?.finishedAt != null ||
+    despacho?.estado === "finalizado" ||
+    despacho?.estado === "diferencia" ||
+    despacho?.estado === "validando_supervisor";
   const contadosVisible = cierre?.contados ?? contados;
   const avanceVisible = cierre?.pct ?? avancePct;
   const noContados = totalEsperado - contadosVisible;
@@ -515,7 +544,13 @@ export default function ChequeoScreen({ despachoId }: Props) {
             </View>
           </View>
 
-          <CheckTimer session={sessionsByDespacho[activeId]} />
+          <CheckTimer
+            session={
+              despacho?.estado !== "pendiente"
+                ? sessionsByDespacho[activeId]
+                : undefined
+            }
+          />
         </View>
 
         {isLoading ? (
@@ -921,7 +956,9 @@ export default function ChequeoScreen({ despachoId }: Props) {
                     marginVertical: 24,
                   }}
                 >
-                  Busca o selecciona un producto para comenzar el registro.
+                  {conteoCerrado
+                    ? "No se registraron productos en este conteo."
+                    : "Busca o selecciona un producto para comenzar el registro."}
                 </Text>
               ) : (
                 /* LISTADO PLANO CON SEPARADORES FINOS (SIN CAJA CONTENEDORA) */

@@ -21,6 +21,45 @@ import { Text, useAppTheme } from '@/theme';
 import { useDespachos } from '@/features/despachos/store';
 import type { Despacho } from '@/features/despachos/types';
 
+const INITIAL_DELIVERY_ORDERS: Despacho[] = [
+  {
+    id: 'ENT-98421',
+    codigo: '98421',
+    puntosCount: 6,
+    zonaRuta: 'Ruta Equipetrol • San Martín',
+    estado: 'finalizado',
+    placa: '3721-KPZ',
+    pesoAsignadoKg: 1250,
+    capacidadPesoKg: 3500,
+    volumenAsignadoM3: 4.2,
+    capacidadVolumenM3: 18,
+  },
+  {
+    id: 'ENT-1000450',
+    codigo: '1000450',
+    puntosCount: 4,
+    zonaRuta: 'Ruta Cristo Redentor • Banzer',
+    estado: 'finalizado',
+    placa: '1184-HTR',
+    pesoAsignadoKg: 890,
+    capacidadPesoKg: 3500,
+    volumenAsignadoM3: 2.8,
+    capacidadVolumenM3: 18,
+  },
+  {
+    id: 'ENT-1000451',
+    codigo: '1000451',
+    puntosCount: 5,
+    zonaRuta: 'Ruta Villa 1ro de Mayo • Cumavi',
+    estado: 'finalizado',
+    placa: '2905-FDL',
+    pesoAsignadoKg: 1640,
+    capacidadPesoKg: 8000,
+    volumenAsignadoM3: 5.1,
+    capacidadVolumenM3: 30,
+  },
+];
+
 export function DeliveryScreen() {
   const theme = useAppTheme();
   const despachos = useDespachos((state) => state.despachos);
@@ -40,9 +79,13 @@ export function DeliveryScreen() {
     message: '',
   });
 
-  // FILTRAR ÚNICAMENTE LAS ÓRDENES CON ESTADO "finalizado"
+  // COMBINAR LAS 3 ÓRDENES INICIALES DE ENTREGAS CON LAS FINALIZADAS EN CONTEO A CIEGAS
   const ordenesAprobadas = useMemo(() => {
-    return despachos.filter((d) => d.estado === 'finalizado');
+    const finalizadasDesdeConteo = despachos.filter((d) => d.estado === 'finalizado');
+    const codigosExistentes = new Set(INITIAL_DELIVERY_ORDERS.map((d) => d.codigo));
+    const nuevasFinalizadas = finalizadasDesdeConteo.filter((d) => !codigosExistentes.has(d.codigo));
+
+    return [...INITIAL_DELIVERY_ORDERS, ...nuevasFinalizadas];
   }, [despachos]);
 
   // FILTRAR POR BÚSQUEDA

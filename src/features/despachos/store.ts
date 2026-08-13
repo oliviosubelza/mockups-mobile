@@ -3,7 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { StorageKeys, zustandStorage } from '@/shared/storage';
 
-import type { CheckSession, Despacho, ProductCheck } from './types';
+import type { CheckSession, Despacho, EstadoDespacho, ProductCheck } from './types';
 
 let seq = 0;
 const nextId = () => `chk-${Date.now()}-${seq++}`;
@@ -31,28 +31,28 @@ const SEED: Despacho[] = [
   },
   {
     id: '2044', codigo: '1000458', puntosCount: 8,
-    zonaRuta: 'Ruta Centro Comercial', estado: 'cargado',
+    zonaRuta: 'Ruta Centro Comercial', estado: 'pendiente',
     placa: '2905-FDL',
     pesoAsignadoKg: 11640, capacidadPesoKg: 12000,
     volumenAsignadoM3: 37.8, capacidadVolumenM3: 45,
   },
   {
     id: '2043', codigo: '1000459', puntosCount: 5,
-    zonaRuta: 'Ruta Plan 3000', estado: 'aprobado',
+    zonaRuta: 'Ruta Plan 3000', estado: 'pendiente',
     placa: '4460-JQN',
     pesoAsignadoKg: 4080, capacidadPesoKg: 8000,
     volumenAsignadoM3: 14.1, capacidadVolumenM3: 30,
   },
   {
     id: '2042', codigo: '98421', puntosCount: 7,
-    zonaRuta: 'Ruta Villa 1ro de Mayo', estado: 'aprobado',
+    zonaRuta: 'Ruta Villa 1ro de Mayo', estado: 'pendiente',
     placa: '5013-BWX',
     pesoAsignadoKg: 9360, capacidadPesoKg: 12000,
     volumenAsignadoM3: 40.5, capacidadVolumenM3: 45,
   },
   {
     id: '2041', codigo: '98422', puntosCount: 3,
-    zonaRuta: 'Ruta Doble Vía La Guardia', estado: 'aprobado',
+    zonaRuta: 'Ruta Doble Vía La Guardia', estado: 'pendiente',
     placa: '0872-MCV',
     pesoAsignadoKg: 1090, capacidadPesoKg: 3500,
     volumenAsignadoM3: 5.4, capacidadVolumenM3: 18,
@@ -72,8 +72,8 @@ type DespachosState = {
   startCheck: (despachoId: string) => void;
   /** CHECKED_END. Ignored when no session was ever opened. */
   finishCheck: (despachoId: string) => void;
-  /** Mockup "send to verify": marks the dispatch as loaded. */
-  guardar: (despachoId: string) => void;
+  /** Marks the dispatch count as completed with a target status (finalizado or diferencia). */
+  guardar: (despachoId: string, estadoFinal?: EstadoDespacho) => void;
   anular: (despachoId: string) => void;
 };
 
@@ -92,11 +92,34 @@ export const useDespachos = create<DespachosState>()(
           const current = state.checksByDespacho[despachoId] ?? [];
           const existingIndex = current.findIndex((i) => i.codigo === codigo);
 
+          const despacho = state.despachos.find((d) => d.id === despachoId);
+          const existingSession = state.sessionsByDespacho[despachoId];
+
+          const updatedDespachos = state.despachos.map((d) =>
+            d.id === despachoId && d.estado === 'pendiente'
+              ? { ...d, estado: 'en_conteo' as EstadoDespacho }
+              : d,
+          );
+
+          const isNewSession =
+            !existingSession ||
+            despacho?.estado === 'pendiente' ||
+            !existingSession.startedAt;
+
+          const updatedSessions = isNewSession
+            ? {
+                ...state.sessionsByDespacho,
+                [despachoId]: { startedAt: Date.now(), finishedAt: null },
+              }
+            : state.sessionsByDespacho;
+
           if (existingIndex !== -1) {
             // ACTUALIZAR EL MISMO PRODUCTO EN LUGAR DE INSERTAR UNO NUEVO
             const updated = [...current];
             updated[existingIndex] = { ...updated[existingIndex], nombre };
             return {
+              despachos: updatedDespachos,
+              sessionsByDespacho: updatedSessions,
               checksByDespacho: {
                 ...state.checksByDespacho,
                 [despachoId]: updated,
@@ -107,6 +130,8 @@ export const useDespachos = create<DespachosState>()(
           // SI ES NUEVO, INSERTAR AL PRINCIPIO
           const item: ProductCheck = { id: nextId(), codigo, nombre };
           return {
+            despachos: updatedDespachos,
+            sessionsByDespacho: updatedSessions,
             checksByDespacho: {
               ...state.checksByDespacho,
               [despachoId]: [item, ...current],
@@ -126,37 +151,58 @@ export const useDespachos = create<DespachosState>()(
 
       startCheck: (despachoId) =>
         set((state) => {
-          // Re-registering a product must not restart the clock, and reopening
-          // a closed count must not reopen the session.
-          if (state.sessionsByDespacho[despachoId]) return state;
-          return {
-            sessionsByDespacho: {
-              ...state.sessionsByDespacho,
-              [despachoId]: { startedAt: Date.now(), finishedAt: null },
-            },
-          };
+          const despacho = state.despachos.find((d) => d.id === despachoId);
+          const existingSession = state.sessionsByDespacho[despachoId];
+
+          const updatedDespachos = state.despachos.map((d) =>
+            d.id === despachoId && d.estado === 'pendiente'
+              ? { ...d, estado: 'en_conteo' as EstadoDespacho }
+              : d,
+          );
+
+          const isNewSession =
+            !existingSession ||
+            despacho?.estado === 'pendiente' ||
+            !existingSession.startedAt;
+
+          if (isNewSession) {
+            return {
+              despachos: updatedDespachos,
+              sessionsByDespacho: {
+                ...state.sessionsByDespacho,
+                [despachoId]: { startedAt: Date.now(), finishedAt: null },
+              },
+            };
+          }
+          return { despachos: updatedDespachos };
         }),
 
       finishCheck: (despachoId) =>
         set((state) => {
           const session = state.sessionsByDespacho[despachoId];
-          // Closing an order without ever registering a product leaves no
-          // session: there is no duration to report, and inventing a
-          // zero-length one would pollute the average.
-          if (!session || session.finishedAt !== null) return state;
+          const now = Date.now();
+          if (!session) {
+            return {
+              sessionsByDespacho: {
+                ...state.sessionsByDespacho,
+                [despachoId]: { startedAt: now, finishedAt: now },
+              },
+            };
+          }
+          if (session.finishedAt !== null) return state;
           return {
             sessionsByDespacho: {
               ...state.sessionsByDespacho,
-              [despachoId]: { ...session, finishedAt: Date.now() },
+              [despachoId]: { ...session, finishedAt: now },
             },
           };
         }),
 
-      guardar: (despachoId) =>
+      guardar: (despachoId, estadoFinal = 'finalizado') =>
         set((state) => ({
           despachos: state.despachos.map((d) =>
-            d.id === despachoId && d.estado === 'pendiente'
-              ? { ...d, estado: 'cargado' }
+            d.id === despachoId
+              ? { ...d, estado: estadoFinal }
               : d,
           ),
         })),

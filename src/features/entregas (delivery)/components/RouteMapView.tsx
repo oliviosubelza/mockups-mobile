@@ -67,15 +67,367 @@ type Props = {
 
 type SheetState = "collapsed" | "medium" | "expanded";
 
-/** Coordenadas relativas en porcentaje para la capa web interactiva */
-const WEB_PIN_PERCENTAGES: Record<number, { left: number; top: number }> = {
-  1: { left: 42, top: 40 }, // Equipetrol Norte
-  2: { left: 52, top: 25 }, // IC Norte
-  3: { left: 50, top: 62 }, // Mercado Abasto Norte
-  4: { left: 38, top: 76 }, // Mercado Mutualista
-  5: { left: 62, top: 18 }, // Fidalga 4to Anillo
-  6: { left: 78, top: 60 }, // Villa 1ro de Mayo
-};
+/** Generador de mapa interactivo Leaflet para entorno Web con Pines de entrega realistas y trazado GPS */
+function generateLeafletHtml({
+  stops,
+  selectedStopId,
+  isDark,
+}: {
+  stops: DeliveryStop[];
+  selectedStopId?: string;
+  isDark: boolean;
+}): string {
+  const plannedPolylineJson = JSON.stringify(
+    SANTA_CRUZ_CLOSED_LOOP_POLYLINE.map((p) => [p.latitude, p.longitude])
+  );
+  const completedPolylineJson = JSON.stringify(
+    SANTA_CRUZ_COMPLETED_SEGMENT.map((p) => [p.latitude, p.longitude])
+  );
+  const depotJson = JSON.stringify([SANTA_CRUZ_DEPOT.latitude, SANTA_CRUZ_DEPOT.longitude]);
+
+  const stopsData = stops.map((s) => {
+    const coords = SANTA_CRUZ_STOPS_COORDINATES[s.sequence] || SANTA_CRUZ_DEPOT;
+    return {
+      id: s.id,
+      sequence: s.sequence,
+      clientName: s.clientName,
+      address: s.address,
+      status: s.status,
+      lat: coords.latitude,
+      lng: coords.longitude,
+      packages: s.packagesCount,
+      isSelected: s.id === selectedStopId,
+    };
+  });
+  const stopsJson = JSON.stringify(stopsData);
+
+  const tileUrl = isDark
+    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+    : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Route Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #map { width: 100%; height: 100%; overflow: hidden; background: ${isDark ? "#0f172a" : "#f8fafc"}; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    
+    /* Pin de Entrega personalizado */
+    .delivery-pin-wrap {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .delivery-pin-wrap:hover {
+      transform: scale(1.18) translateY(-4px);
+      z-index: 9999 !important;
+    }
+    .delivery-pin-wrap.selected {
+      transform: scale(1.25) translateY(-6px);
+      z-index: 10000 !important;
+    }
+    
+    .pin-head {
+      width: 32px;
+      height: 32px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+      border: 2.5px solid #ffffff;
+      position: relative;
+      z-index: 2;
+    }
+    .selected .pin-head {
+      width: 36px;
+      height: 36px;
+      border-radius: 18px;
+      border-width: 3px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+    }
+    .pin-seq {
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .selected .pin-seq {
+      font-size: 13px;
+    }
+
+    /* Estilos específicos para Parada Entregada */
+    .delivery-pin-wrap.delivered .pin-head {
+      background-color: #10b981 !important;
+      border-color: #ffffff;
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.5);
+    }
+    .delivery-pin-wrap.delivered .pin-needle {
+      border-top-color: #10b981 !important;
+    }
+    .delivered-check-badge {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      width: 16px;
+      height: 16px;
+      border-radius: 8px;
+      background: #047857;
+      border: 1.5px solid #ffffff;
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      z-index: 5;
+    }
+    
+    .pin-needle {
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 8px solid;
+      margin-top: -1px;
+      z-index: 1;
+      filter: drop-shadow(0 2px 2px rgba(0,0,0,0.25));
+    }
+    
+    .pulse-ring {
+      position: absolute;
+      top: -10px;
+      left: -10px;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      animation: pulse-ring 1.8s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+      pointer-events: none;
+      z-index: 0;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.6); opacity: 0.9; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+    
+    .pin-label {
+      position: absolute;
+      top: 42px;
+      background: rgba(15, 23, 42, 0.92);
+      color: #ffffff;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.35);
+      pointer-events: none;
+      border: 1px solid rgba(255,255,255,0.2);
+      z-index: 3;
+    }
+    .pin-label.delivered-label {
+      background: rgba(6, 78, 59, 0.95);
+      border-color: rgba(52, 211, 153, 0.4);
+    }
+
+    /* Depot Pin */
+    .depot-pin-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      user-select: none;
+    }
+    .depot-head {
+      background: #0f172a;
+      border: 2px solid #ffffff;
+      border-radius: 12px;
+      padding: 4px 8px;
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+    }
+    .depot-needle {
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 6px solid #0f172a;
+    }
+
+    /* Truck Driver Pin */
+    .truck-pin-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .truck-glow {
+      position: absolute;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(37, 99, 235, 0.35);
+      animation: pulse-ring 2s infinite ease-out;
+    }
+    .truck-head {
+      background: #2563eb;
+      border: 2.5px solid #ffffff;
+      width: 34px;
+      height: 34px;
+      border-radius: 17px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.5);
+      font-size: 16px;
+      position: relative;
+      z-index: 2;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    var plannedCoords = ${plannedPolylineJson};
+    var completedCoords = ${completedPolylineJson};
+    var depotCoords = ${depotJson};
+    var stops = ${stopsJson};
+    var isDark = ${isDark};
+
+    var map = L.map('map', {
+      zoomControl: false,
+      attributionControl: false
+    }).setView([-17.772, -63.175], 13);
+
+    L.tileLayer('${tileUrl}', {
+      maxZoom: 19,
+      subdomains: 'abcd'
+    }).addTo(map);
+
+    // 1. Trazado planificado (Gris punteado)
+    L.polyline(plannedCoords, {
+      color: isDark ? '#64748b' : '#94a3b8',
+      weight: 4,
+      dashArray: '6, 6',
+      opacity: 0.85
+    }).addTo(map);
+
+    // 2. Tramo completado (Azul vibrante)
+    L.polyline(completedCoords, {
+      color: '#2563eb',
+      weight: 5,
+      opacity: 0.95
+    }).addTo(map);
+
+    // 3. Almacén Central Marker
+    var depotIcon = L.divIcon({
+      className: 'custom-div-icon',
+      html: '<div class="depot-pin-wrap"><div class="depot-head">🏢 Almacén Central</div><div class="depot-needle"></div></div>',
+      iconSize: [120, 36],
+      iconAnchor: [60, 36]
+    });
+    L.marker(depotCoords, { icon: depotIcon }).addTo(map);
+
+    // 4. Paradas de entrega Pins
+    function getStatusColor(st) {
+      if (st === 'ARRIVED') return '#0284c7';
+      if (st === 'DELIVERED') return '#10b981';
+      if (st === 'INCIDENT') return '#ef4444';
+      return '#eab308';
+    }
+
+    stops.forEach(function(stop) {
+      var color = getStatusColor(stop.status);
+      var isSelected = stop.isSelected;
+      var isDelivered = stop.status === 'DELIVERED';
+      
+      var pulseHtml = isSelected ? '<div class="pulse-ring" style="border: 3px solid ' + color + ';"></div>' : '';
+      var checkBadgeHtml = isDelivered ? '<div class="delivered-check-badge">✓</div>' : '';
+      var labelText = '#' + stop.sequence + ' ' + stop.clientName + (isDelivered ? ' (Entregado ✓)' : '');
+      var labelHtml = '<div class="pin-label ' + (isDelivered ? 'delivered-label' : '') + '">' + labelText + '</div>';
+
+      var pinSeqText = isDelivered ? ('✓ ' + stop.sequence) : ('#' + stop.sequence);
+
+      var pinHtml = '<div class="delivery-pin-wrap ' + (isSelected ? 'selected' : '') + ' ' + (isDelivered ? 'delivered' : '') + '" id="pin-' + stop.id + '">' +
+        pulseHtml +
+        '<div class="pin-head" style="background-color: ' + color + ';">' +
+          checkBadgeHtml +
+          '<span class="pin-seq">' + pinSeqText + '</span>' +
+        '</div>' +
+        '<div class="pin-needle" style="border-top-color: ' + color + ';"></div>' +
+        (isSelected ? labelHtml : '') +
+      '</div>';
+
+      var pinIcon = L.divIcon({
+        className: 'custom-div-icon',
+        html: pinHtml,
+        iconSize: [36, 46],
+        iconAnchor: [18, 46]
+      });
+
+      var marker = L.marker([stop.lat, stop.lng], { icon: pinIcon, zIndexOffset: isDelivered ? 500 : 1000 }).addTo(map);
+      marker.on('click', function() {
+        if (window.parent) {
+          window.parent.postMessage({ type: 'SELECT_STOP', stopId: stop.id }, '*');
+        }
+      });
+    });
+
+    // 5. Camión / Chofer Marker (Ubicado en la parada activa no entregada o siguiente parada)
+    var pendingDriverStop = stops.find(function(s) { return s.status === 'ARRIVED' || s.status === 'EN_ROUTE'; }) ||
+      stops.find(function(s) { return s.status === 'PENDING'; }) ||
+      stops[stops.length - 1];
+
+    if (pendingDriverStop) {
+      var truckIcon = L.divIcon({
+        className: 'custom-div-icon',
+        html: '<div class="truck-pin-wrap" title="Tu camión en ruta"><div class="truck-glow"></div><div class="truck-head">🚚</div></div>',
+        iconSize: [36, 36],
+        iconAnchor: [-6, 18] // Desplazado al costado para no tapar el pin de la parada
+      });
+      L.marker([pendingDriverStop.lat, pendingDriverStop.lng], { icon: truckIcon, zIndexOffset: 2500 }).addTo(map);
+    }
+
+    // Centrar en parada seleccionada
+    var sel = stops.find(function(s) { return s.isSelected; });
+    if (sel) {
+      map.setView([sel.lat, sel.lng], 14);
+    }
+
+    // Escuchar mensajes desde React Native
+    window.addEventListener('message', function(event) {
+      var data = event.data;
+      if (!data) return;
+      if (data.type === 'ZOOM_IN') {
+        map.zoomIn();
+      } else if (data.type === 'ZOOM_OUT') {
+        map.zoomOut();
+      } else if (data.type === 'RECENTER') {
+        map.setView([-17.772, -63.175], 13);
+      } else if (data.type === 'PAN_TO' && data.lat && data.lng) {
+        map.flyTo([data.lat, data.lng], 15, { duration: 0.8 });
+      }
+    });
+  </script>
+</body>
+</html>`;
+}
 
 export function RouteMapView({
   stops,
@@ -89,10 +441,14 @@ export function RouteMapView({
   const theme = useAppTheme();
   const isDark = theme.colors.mainBackground === "#18181b";
   const mapRef = useRef<MapView>(null);
+  const iframeRef = useRef<any>(null);
   const currentRegionRef = useRef<Region>(SANTA_CRUZ_INITIAL_REGION);
+  const [tracksViewChanges, setTracksViewChanges] = useState<boolean>(true);
 
   const storeSelectedStopId = useDeliveryStore((state) => state.selectedStopId);
   const setStoreSelectedStop = useDeliveryStore((state) => state.setSelectedStop);
+
+  const isWeb = Platform.OS === "web";
 
   // SELECCIÓN AUTOMÁTICA DE PARADA ACTIVA POR DEFECTO
   const activeStop = useMemo(() => {
@@ -114,32 +470,54 @@ export function RouteMapView({
     return activeStop;
   }, [stops, storeSelectedStopId, activeStop]);
 
-  // SI LA PARADA SELECCIONADA FUE COMPLETADA (DELIVERED), AVANZAR AUTOMÁTICAMENTE A LA SIGUIENTE PARADA ACTIVA
-  useEffect(() => {
-    if (selectedStop && selectedStop.status === "DELIVERED") {
-      if (activeStop && activeStop.id !== selectedStop.id && activeStop.status !== "DELIVERED") {
-        setStoreSelectedStop(activeStop);
-      }
-    }
-  }, [stops, selectedStop?.id, selectedStop?.status, activeStop, setStoreSelectedStop]);
-
   // CENTRAR EL MAPA EN LA PARADA SELECCIONADA AL CAMBIAR DE SELECCIÓN DE PARADA
   useEffect(() => {
     if (selectedStop) {
       const coords = SANTA_CRUZ_STOPS_COORDINATES[selectedStop.sequence];
-      if (coords && mapRef.current) {
-        mapRef.current.animateToRegion(
-          {
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-            latitudeDelta: 0.015,
-            longitudeDelta: 0.015,
-          },
-          350,
-        );
+      if (coords) {
+        if (isWeb && iframeRef.current?.contentWindow) {
+          iframeRef.current.contentWindow.postMessage(
+            { type: "PAN_TO", lat: coords.latitude, lng: coords.longitude },
+            "*"
+          );
+        } else if (mapRef.current) {
+          mapRef.current.animateToRegion(
+            {
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+              latitudeDelta: 0.015,
+              longitudeDelta: 0.015,
+            },
+            350
+          );
+        }
       }
     }
-  }, [selectedStop?.id]);
+  }, [selectedStop?.id, isWeb]);
+
+
+  // Temporizador para tracksViewChanges en Native Maps (evita parpadeos y asegura render de iconos)
+  useEffect(() => {
+    setTracksViewChanges(true);
+    const t = setTimeout(() => setTracksViewChanges(false), 800);
+    return () => clearTimeout(t);
+  }, [selectedStop?.id, stops]);
+
+  // Escucha de mensajes en Web desde Leaflet
+  useEffect(() => {
+    if (isWeb && typeof window !== "undefined") {
+      const handleWebMessage = (e: MessageEvent) => {
+        if (e.data && e.data.type === "SELECT_STOP" && e.data.stopId) {
+          const target = stops.find((s) => s.id === e.data.stopId);
+          if (target) {
+            handleSelectStop(target);
+          }
+        }
+      };
+      window.addEventListener("message", handleWebMessage);
+      return () => window.removeEventListener("message", handleWebMessage);
+    }
+  }, [isWeb, stops]);
 
   // ALTURA ANIMADA EN TIEMPO REAL CON EL DEDO DEL CHOFER
   const currentHeightRef = useRef<number>(290); // 290px por defecto (medium)
@@ -189,7 +567,6 @@ export function RouteMapView({
         sheetHeight.stopAnimation();
       },
       onPanResponderMove: (_, gestureState) => {
-        // En cada movimiento del dedo (dy), la altura cambia en tiempo real a 60fps
         let newHeight = currentHeightRef.current - gestureState.dy;
         if (newHeight < 75) newHeight = 75;
         if (newHeight > 520) newHeight = 520;
@@ -200,16 +577,16 @@ export function RouteMapView({
         let target = 290;
 
         if (gestureState.vy < -0.4 || finalDragHeight > 360) {
-          target = 480; // Snap a totalmente expandido
+          target = 480;
         } else if (gestureState.vy > 0.4 || finalDragHeight < 160) {
-          target = 80; // Snap a colapsado
+          target = 80;
         } else {
-          target = 290; // Snap a medio
+          target = 290;
         }
 
         animateToHeight(target);
       },
-    }),
+    })
   ).current;
 
   const getPinColor = (status: string) => {
@@ -231,6 +608,10 @@ export function RouteMapView({
   };
 
   const handleZoomIn = () => {
+    if (isWeb) {
+      iframeRef.current?.contentWindow?.postMessage({ type: "ZOOM_IN" }, "*");
+      return;
+    }
     const current = currentRegionRef.current;
     const nextRegion = {
       ...current,
@@ -242,6 +623,10 @@ export function RouteMapView({
   };
 
   const handleZoomOut = () => {
+    if (isWeb) {
+      iframeRef.current?.contentWindow?.postMessage({ type: "ZOOM_OUT" }, "*");
+      return;
+    }
     const current = currentRegionRef.current;
     const nextRegion = {
       ...current,
@@ -251,7 +636,12 @@ export function RouteMapView({
     currentRegionRef.current = nextRegion;
     mapRef.current?.animateToRegion(nextRegion, 300);
   };
+
   const handleOrientNorth = () => {
+    if (isWeb) {
+      iframeRef.current?.contentWindow?.postMessage({ type: "RECENTER" }, "*");
+      return;
+    }
     currentRegionRef.current = SANTA_CRUZ_INITIAL_REGION;
     mapRef.current?.animateToRegion(SANTA_CRUZ_INITIAL_REGION, 400);
   };
@@ -265,21 +655,43 @@ export function RouteMapView({
     if (driverStop) {
       handleSelectStop(driverStop);
       const coords = SANTA_CRUZ_STOPS_COORDINATES[driverStop.sequence];
-      if (coords && mapRef.current) {
-        mapRef.current.animateToRegion(
-          {
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-            latitudeDelta: 0.012,
-            longitudeDelta: 0.012,
-          },
-          400,
-        );
+      if (coords) {
+        if (isWeb) {
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: "PAN_TO", lat: coords.latitude, lng: coords.longitude },
+            "*"
+          );
+        } else if (mapRef.current) {
+          mapRef.current.animateToRegion(
+            {
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+              latitudeDelta: 0.012,
+              longitudeDelta: 0.012,
+            },
+            400
+          );
+        }
       }
     }
   };
 
-  const isWeb = Platform.OS === "web";
+  const leafletHtml = useMemo(() => {
+    return generateLeafletHtml({
+      stops,
+      selectedStopId: selectedStop?.id,
+      isDark,
+    });
+  }, [stops, selectedStop?.id, isDark]);
+
+  const driverCoords = useMemo(() => {
+    const driverStop =
+      stops.find((s) => s.status === "ARRIVED") ||
+      stops.find((s) => s.status === "EN_ROUTE") ||
+      stops.find((s) => s.status === "PENDING") ||
+      stops[stops.length - 1];
+    return driverStop ? SANTA_CRUZ_STOPS_COORDINATES[driverStop.sequence] : undefined;
+  }, [stops]);
 
   return (
     <View
@@ -300,75 +712,13 @@ export function RouteMapView({
         {isWeb ? (
           <View style={{ flex: 1, position: "relative" }}>
             <iframe
-              title="Google Maps Route Santa Cruz"
+              ref={iframeRef}
+              title="Interactive Route Map"
               width="100%"
               height="100%"
               style={{ border: 0 }}
-              loading="lazy"
-              src={`https://maps.google.com/maps?q=${selectedStop ? SANTA_CRUZ_STOPS_COORDINATES[selectedStop.sequence]?.latitude || -17.778 : -17.778},${selectedStop ? SANTA_CRUZ_STOPS_COORDINATES[selectedStop.sequence]?.longitude || -63.18 : -63.18}&z=14&output=embed`}
+              srcDoc={leafletHtml}
             />
-
-            {stops.map((stop) => {
-              const pos = WEB_PIN_PERCENTAGES[stop.sequence] || {
-                left: 50,
-                top: 50,
-              };
-              const isSelected = selectedStop.id === stop.id;
-              const pinBg = getPinColor(stop.status);
-
-              return (
-                <TouchableOpacity
-                  key={stop.id}
-                  activeOpacity={0.8}
-                  onPress={() => handleSelectStop(stop)}
-                  style={{
-                    position: "absolute",
-                    left: `${pos.left}%`,
-                    top: `${pos.top}%`,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    zIndex: isSelected ? 99 : 10,
-                  }}
-                >
-                  {isSelected && (
-                    <View
-                      style={{
-                        position: "absolute",
-                        width: 44,
-                        height: 44,
-                        borderRadius: 22,
-                        backgroundColor: pinBg,
-                        opacity: 0.35,
-                      }}
-                    />
-                  )}
-
-                  <View
-                    style={{
-                      width: isSelected ? 36 : 30,
-                      height: isSelected ? 36 : 30,
-                      borderRadius: isSelected ? 18 : 15,
-                      backgroundColor: pinBg,
-                      borderWidth: 2.5,
-                      borderColor: isSelected ? "#ffffff" : "#00000022",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      elevation: 8,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: "#ffffff",
-                        fontWeight: "900",
-                        fontSize: isSelected ? 13 : 11,
-                      }}
-                    >
-                      #{stop.sequence}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
           </View>
         ) : (
           <MapView
@@ -381,68 +731,138 @@ export function RouteMapView({
             }}
             customMapStyle={isDark ? darkMapStyle : lightMapStyle}
           >
+            {/* Trazado planificado */}
             <Polyline
               coordinates={SANTA_CRUZ_CLOSED_LOOP_POLYLINE}
-              strokeColor="#94a3b8"
+              strokeColor={isDark ? "#64748b" : "#94a3b8"}
               strokeWidth={4}
               lineDashPattern={[6, 4]}
             />
+            {/* Tramo completado */}
             <Polyline
               coordinates={SANTA_CRUZ_COMPLETED_SEGMENT}
               strokeColor="#2563eb"
               strokeWidth={5}
             />
 
+            {/* Centro de Distribución (Depósito) */}
             <Marker
               coordinate={SANTA_CRUZ_DEPOT}
+              anchor={{ x: 0.5, y: 1 }}
               title="Centro de Distribución"
-              tracksViewChanges={false}
+              description="Almacén Central • Parque Industrial"
+              tracksViewChanges={tracksViewChanges}
             >
-              <View
-                style={{
-                  backgroundColor: "#0f172a",
-                  padding: 6,
-                  borderRadius: 16,
-                  borderWidth: 2,
-                  borderColor: "#ffffff",
-                  elevation: 5,
-                }}
-              >
-                <Building2 size={16} color="#ffffff" />
+              <View style={{ alignItems: "center", justifyContent: "center" }}>
+                <View
+                  style={{
+                    backgroundColor: "#0f172a",
+                    paddingHorizontal: 8,
+                    paddingVertical: 5,
+                    borderRadius: 12,
+                    borderWidth: 2,
+                    borderColor: "#ffffff",
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                    elevation: 6,
+                  }}
+                >
+                  <Building2 size={14} color="#ffffff" />
+                  <Text style={{ color: "#ffffff", fontSize: 10, fontWeight: "700" }}>
+                    Almacén
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    width: 0,
+                    height: 0,
+                    borderLeftWidth: 4,
+                    borderRightWidth: 4,
+                    borderTopWidth: 6,
+                    borderLeftColor: "transparent",
+                    borderRightColor: "transparent",
+                    borderTopColor: "#0f172a",
+                    marginTop: -1,
+                  }}
+                />
               </View>
             </Marker>
 
+            {/* Camión del Chofer (Ligeramente desplazado para no tapar el pin de la parada) */}
+            {driverCoords && (
+              <Marker
+                coordinate={driverCoords}
+                anchor={{ x: 0.5, y: 0.5 }}
+                centerOffset={{ x: 26, y: 0 }}
+                title="Tu Camión"
+                description="Ubicación en ruta"
+                tracksViewChanges={tracksViewChanges}
+              >
+                <View style={{ alignItems: "center", justifyContent: "center" }}>
+                  <View
+                    style={{
+                      position: "absolute",
+                      width: 44,
+                      height: 44,
+                      borderRadius: 22,
+                      backgroundColor: "rgba(37, 99, 235, 0.35)",
+                    }}
+                  />
+                  <View
+                    style={{
+                      backgroundColor: "#2563eb",
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      borderWidth: 2.5,
+                      borderColor: "#ffffff",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      elevation: 6,
+                    }}
+                  >
+                    <Truck size={16} color="#ffffff" />
+                  </View>
+                </View>
+              </Marker>
+            )}
+
+            {/* Marcadores de Paradas de Entrega con Aguja / Teardrop Pin */}
             {stops.map((stop) => {
               const coords =
                 SANTA_CRUZ_STOPS_COORDINATES[stop.sequence] || SANTA_CRUZ_DEPOT;
               const isSelected = selectedStop.id === stop.id;
-              const pinBg = getPinColor(stop.status);
+              const isDelivered = stop.status === "DELIVERED";
+              const pinBg = isDelivered ? "#10b981" : getPinColor(stop.status);
 
               return (
                 <Marker
-                  key={`${stop.id}-${stop.status}-${isSelected}`}
+                  key={`stop-marker-${stop.id}-${stop.status}-${isSelected}`}
                   coordinate={coords}
-                  title={`#${stop.sequence} • ${stop.clientName}`}
+                  anchor={{ x: 0.5, y: 1 }}
+                  title={`#${stop.sequence} • ${stop.clientName}${isDelivered ? " (Entregado)" : ""}`}
                   description={stop.address}
                   onPress={() => handleSelectStop(stop)}
-                  tracksViewChanges={false}
+                  tracksViewChanges={tracksViewChanges}
                 >
-                  <View
-                    style={{ alignItems: "center", justifyContent: "center" }}
-                  >
+                  <View style={{ alignItems: "center", justifyContent: "center" }}>
+                    {/* Anillo de pulso para la parada seleccionada */}
                     {isSelected && (
                       <View
                         style={{
                           position: "absolute",
-                          width: 44,
-                          height: 44,
-                          borderRadius: 22,
+                          top: -8,
+                          width: 48,
+                          height: 48,
+                          borderRadius: 24,
                           backgroundColor: pinBg,
-                          opacity: 0.3,
+                          opacity: 0.35,
                         }}
                       />
                     )}
 
+                    {/* Cabeza del Pin */}
                     <View
                       style={{
                         width: isSelected ? 36 : 30,
@@ -450,22 +870,101 @@ export function RouteMapView({
                         borderRadius: isSelected ? 18 : 15,
                         backgroundColor: pinBg,
                         borderWidth: 2.5,
-                        borderColor: isSelected ? "#ffffff" : "#00000022",
+                        borderColor: "#ffffff",
                         alignItems: "center",
                         justifyContent: "center",
                         elevation: isSelected ? 8 : 4,
                       }}
                     >
+                      {/* Badge check verde en esquina si ya fue entregado */}
+                      {isDelivered && (
+                        <View
+                          style={{
+                            position: "absolute",
+                            top: -5,
+                            right: -5,
+                            width: 15,
+                            height: 15,
+                            borderRadius: 8,
+                            backgroundColor: "#047857",
+                            borderWidth: 1.5,
+                            borderColor: "#ffffff",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: "#ffffff",
+                              fontSize: 9,
+                              fontWeight: "900",
+                            }}
+                          >
+                            ✓
+                          </Text>
+                        </View>
+                      )}
+
                       <Text
                         style={{
                           color: "#ffffff",
                           fontWeight: "900",
-                          fontSize: isSelected ? 13 : 11,
+                          fontSize: isSelected
+                            ? isDelivered
+                              ? 12
+                              : 13
+                            : isDelivered
+                              ? 10
+                              : 11,
                         }}
                       >
-                        #{stop.sequence}
+                        {isDelivered ? `✓ ${stop.sequence}` : `#${stop.sequence}`}
                       </Text>
                     </View>
+
+                    {/* Aguja / Punta del Pin apuntando al suelo GPS */}
+                    <View
+                      style={{
+                        width: 0,
+                        height: 0,
+                        borderLeftWidth: 5,
+                        borderRightWidth: 5,
+                        borderTopWidth: 7,
+                        borderLeftColor: "transparent",
+                        borderRightColor: "transparent",
+                        borderTopColor: pinBg,
+                        marginTop: -1,
+                      }}
+                    />
+
+                    {/* Etiqueta flotante con nombre de cliente */}
+                    {isSelected && (
+                      <View
+                        style={{
+                          marginTop: 3,
+                          backgroundColor: isDelivered ? "#064e3b" : "#0f172a",
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          borderRadius: 6,
+                          borderWidth: 1,
+                          borderColor: isDelivered
+                            ? "rgba(52, 211, 153, 0.4)"
+                            : "rgba(255,255,255,0.2)",
+                          elevation: 4,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: "#ffffff",
+                            fontSize: 10,
+                            fontWeight: "700",
+                          }}
+                        >
+                          #{stop.sequence} {stop.clientName}
+                          {isDelivered ? " (Entregado ✓)" : ""}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 </Marker>
               );
@@ -473,6 +972,7 @@ export function RouteMapView({
           </MapView>
         )}
       </View>
+
 
       {/* 2. GRADIENTE DEGRADADO SUAVE DESDE ARRIBA HACIA ABAJO (ADAPTATIVO MODO CLARO / OSCURO) */}
       <View

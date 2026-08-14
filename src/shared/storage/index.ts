@@ -17,4 +17,5 @@ export const StorageKeys = {
   appearance: 'app.appearance',
   dispatchPlan: 'app.dispatch-plan',
   despachos: 'app.despachos',
+  devSettings: 'app.dev-settings',
 } as const;

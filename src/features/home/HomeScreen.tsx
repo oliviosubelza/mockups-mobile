@@ -3,6 +3,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getHomeRoutes } from '@/navigation/registry';
 import { selectPendientesCount, useDespachos } from '@/features/despachos/store';
+import { useDevSettings } from '@/shared/stores/devSettings';
 import { useUser } from '@/shared/stores/user';
 import { CardMenu } from '@/shared/ui';
 import { Box, Text } from '@/theme';
@@ -15,6 +16,7 @@ export default function HomeScreen() {
   const isAuthenticated = useUser((state) => state.isAuthenticated);
   const user = useUser((state) => state.user);
   const pendientes = useDespachos(selectPendientesCount);
+  const showGallery = useDevSettings((state) => state.showGallery);
 
   if (!isAuthenticated || !user) {
     return <LoginScreen />;
@@ -23,18 +25,21 @@ export default function HomeScreen() {
   const allRoutes = getHomeRoutes();
 
   // FILTRAR RUTAS SEGÚN EL ROL DEL USUARIO
+  // La Galería de componentes es exclusiva para desarrollo y se controla desde Configuración -> Opciones de Desarrollador.
   const items = allRoutes.filter((route) => {
+    if (route.id === 'gallery') {
+      return showGallery;
+    }
     if (user.role === 'SUPERVISOR') {
-      // El supervisor ve "Órdenes para Revisar", "Productos Faltantes", "Revisión Semáforo" y Galería
+      // El supervisor ve "Órdenes para Revisar", "Productos Faltantes" y "Revisión Semáforo"
       return (
         route.id === 'supervisor.ordenes' ||
         route.id === 'supervisor.productosFaltantes' ||
-        route.id === 'supervisor.semaforo' ||
-        route.id === 'gallery'
+        route.id === 'supervisor.semaforo'
       );
     }
-    // El chofer ve "Revisión a ciegas", "Mis Entregas" y galería
-    return route.id === 'despachos' || route.id === 'entregas' || route.id === 'gallery';
+    // El chofer ve "Revisión a ciegas" y "Mis Entregas"
+    return route.id === 'despachos' || route.id === 'entregas';
   });
 
   const firstName = user.name.split(' ')[0];

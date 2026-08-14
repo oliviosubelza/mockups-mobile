@@ -12,6 +12,7 @@ import {
 import { navigateTo, findRouteById } from '@/navigation/registry';
 import { Badge, SearchField, Card } from '@/shared/ui';
 import { Box, Text, useAppTheme } from '@/theme';
+import { useSupervisorStore } from './store';
 
 export interface SupervisorOrder {
   id: string;
@@ -56,7 +57,7 @@ const MOCK_SUPERVISOR_ORDERS: SupervisorOrder[] = [
     status: 'PENDING_REVIEW',
     hasDiscrepancy: true,
     discrepancyCount: 1,
-    shortageCount: 1, // 1 Faltante (Harina de Trigo)
+    shortageCount: 1, // 1 Faltante (Polvo para Hornear Fleischmann)
     surplusCount: 0,
     totalItems: 12,
     isColdChain: false,
@@ -71,8 +72,8 @@ const MOCK_SUPERVISOR_ORDERS: SupervisorOrder[] = [
     status: 'PENDING_REVIEW',
     hasDiscrepancy: true,
     discrepancyCount: 3,
-    shortageCount: 2, // 2 Faltantes (Salsa Ketchup + Levadura)
-    surplusCount: 1, // 1 Sobrante (Queso)
+    shortageCount: 2, // 2 Faltantes (Ketchup Kris + Levadura Fleischmann)
+    surplusCount: 1, // 1 Sobrante (Mayonesa Real)
     totalItems: 10,
     isColdChain: true,
   },
@@ -266,6 +267,7 @@ export default function OrdenesParaRevisarScreen() {
               <Card
                 key={order.id}
                 onPress={() => {
+                  useSupervisorStore.getState().setActiveOrderCode(order.code);
                   const route = findRouteById('supervisor.consolidacion');
                   if (route) navigateTo(route);
                 }}

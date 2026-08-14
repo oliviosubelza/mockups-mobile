@@ -1,12 +1,13 @@
 import {
   ArrowRight,
   Check,
-  ChevronDown,
+  CheckCircle2,
   ChevronLeft,
-  PackageSearch,
+  Pencil,
+  RotateCcw,
   Snowflake,
   User,
-  X
+  X,
 } from "lucide-react-native";
 import { useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
@@ -27,170 +28,31 @@ import {
   formatBoxUnit,
   Button,
   Card,
-  EMPTY_BOX_UNIT,
   SearchField,
   type BoxUnitValue,
 } from "@/shared/ui";
 import { Box, Text, useAppTheme } from "@/theme";
 
-import { DISCREPANCY_CAUSES } from "./ConsolidacionConteoScreen";
+import {
+  useSupervisorStore,
+  DISCREPANCY_CAUSES,
+  type SupervisorDiscrepancyItem,
+} from "./store";
 
-export interface FlatMissingProductItem {
-  id: string;
-  orderId: string;
-  orderCode: string;
-  driverName: string;
-  zonaRuta: string;
-  date: string; // ISO YYYY-MM-DD
-  dateFormatted: string;
-  codigo: string;
-  nombre: string;
-  categoria: string;
-  isColdChain: boolean;
-  expectedQty: number;
-  expectedBoxes: number;
-  cajaSize: number; // unidades por caja
-
-  countedQty: number;
-  countedBoxes: number;
-  countedUnits: number;
-  difference: number; // e.g. -3 or +2
-  differenceType: string;
-}
-
-// CADA OCURRENCIA DE UN PRODUCTO EN UNA OT ES UN ÍTEM INDEPENDIENTE
-const FLAT_MOCK_DISCREPANCIES: FlatMissingProductItem[] = [
-  {
-    id: "disc-1",
-    orderId: "sup-1",
-    orderCode: "OT-4892",
-    driverName: "Cristhian Macchiavelli",
-    zonaRuta: "Ruta Norte • Santa Cruz",
-    date: "2026-08-05",
-    dateFormatted: "Hoy, 14:20",
-    codigo: "PROD-005",
-    nombre: "Salsa de Tomate Ketchup 5kg",
-    categoria: "Salsas y Aderezos",
-    isColdChain: false,
-    expectedQty: 96,
-    expectedBoxes: 8,
-    cajaSize: 12,
-    countedQty: 93,
-    countedBoxes: 7,
-    countedUnits: 9,
-    difference: -3,
-    differenceType: "Diferencia",
-  },
-  {
-    id: "disc-2",
-    orderId: "sup-3",
-    orderCode: "OT-5109",
-    driverName: "Roberto Gómez",
-    zonaRuta: "Ruta Plan 3000 • Sector Comercial",
-    date: "2026-08-04",
-    dateFormatted: "Ayer, 11:15",
-    codigo: "PROD-005",
-    nombre: "Salsa de Tomate Ketchup 5kg",
-    categoria: "Salsas y Aderezos",
-    isColdChain: false,
-    expectedQty: 48,
-    expectedBoxes: 4,
-    cajaSize: 12,
-    countedQty: 46,
-    countedBoxes: 3,
-    countedUnits: 10,
-    difference: -2,
-    differenceType: "Diferencia",
-  },
-  {
-    id: "disc-3",
-    orderId: "sup-1",
-    orderCode: "OT-4892",
-    driverName: "Cristhian Macchiavelli",
-    zonaRuta: "Ruta Norte • Santa Cruz",
-    date: "2026-08-05",
-    dateFormatted: "Hoy, 14:20",
-    codigo: "PROD-002",
-    nombre: "Salsa Mayonesa Industrial 10kg",
-    categoria: "Salsas y Aderezos",
-    isColdChain: true,
-    expectedQty: 144,
-    expectedBoxes: 12,
-    cajaSize: 12,
-    countedQty: 146,
-    countedBoxes: 12,
-    countedUnits: 2,
-    difference: 2,
-    differenceType: "Conteo",
-  },
-  {
-    id: "disc-4",
-    orderId: "sup-2",
-    orderCode: "OT-5011",
-    driverName: "Cristhian Macchiavelli",
-    zonaRuta: "Ruta Equipetrol",
-    date: "2026-08-01",
-    dateFormatted: "01 Ago 12:45",
-    codigo: "PROD-014",
-    nombre: "Harina de Trigo Especial Panificación 25kg",
-    categoria: "Insumos de Panificación",
-    isColdChain: false,
-    expectedQty: 120,
-    expectedBoxes: 10,
-    cajaSize: 12,
-    countedQty: 116,
-    countedBoxes: 9,
-    countedUnits: 8,
-    difference: -4,
-    differenceType: "Quiebre",
-  },
-  {
-    id: "disc-5",
-    orderId: "sup-3",
-    orderCode: "OT-5109",
-    driverName: "Roberto Gómez",
-    zonaRuta: "Ruta Plan 3000 • Sector Comercial",
-    date: "2026-08-04",
-    dateFormatted: "Ayer, 11:15",
-    codigo: "PROD-021",
-    nombre: "Levadura Fresca en Barra 500g",
-    categoria: "Insumos de Panificación",
-    isColdChain: true,
-    expectedQty: 60,
-    expectedBoxes: 5,
-    cajaSize: 12,
-    countedQty: 57,
-    countedBoxes: 4,
-    countedUnits: 9,
-    difference: -3,
-    differenceType: "Conteo",
-  },
-  {
-    id: "disc-6",
-    orderId: "sup-4",
-    orderCode: "OT-4750",
-    driverName: "Cristhian Macchiavelli",
-    zonaRuta: "Ruta Equipetrol",
-    date: "2026-07-28",
-    dateFormatted: "28 Jul 09:30",
-    codigo: "PROD-033",
-    nombre: "Salsa Barbacoa BBQ Ahumada 4L",
-    categoria: "Salsas y Aderezos",
-    isColdChain: false,
-    expectedQty: 50,
-    expectedBoxes: 5,
-    cajaSize: 10,
-    countedQty: 49,
-    countedBoxes: 4,
-    countedUnits: 9,
-    difference: -1,
-    differenceType: "Cruce",
-  },
-];
+export type FlatMissingProductItem = SupervisorDiscrepancyItem;
 
 export default function ProductosFaltantesScreen() {
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
+
+  const allItems = useSupervisorStore((state) => state.items);
+  const setCorrection = useSupervisorStore((state) => state.setCorrection);
+  const setExpected = useSupervisorStore((state) => state.setExpected);
+  const confirmItem = useSupervisorStore((state) => state.confirmItem);
+  const setEditing = useSupervisorStore((state) => state.setEditing);
+  const setActiveOrderCode = useSupervisorStore((state) => state.setActiveOrderCode);
+
+  const discrepancyItems = allItems.filter((i) => i.difference !== 0);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTypeFilter, setActiveTypeFilter] = useState<
@@ -199,21 +61,11 @@ export default function ProductosFaltantesScreen() {
 
   /**
    * Chofer abierto, o `null` mientras se ve el listado de choferes.
-   *
-   * La pantalla tiene dos pasos sobre los mismos datos: primero a quién
-   * reclamarle, después qué reclamarle. Vive en estado local y no en una ruta
-   * porque el catch-all navega por slug y no transporta parámetros.
    */
   const [choferAbierto, setChoferAbierto] = useState<string | null>(null);
 
   /**
    * El back del sistema cierra el chofer antes de salir de la pantalla.
-   *
-   * Los dos pasos son estado local, así que el navegador ve una sola ruta: sin
-   * esto el back se saltaba el listado de choferes y devolvía directo al menú,
-   * perdiendo un nivel que el usuario sí recorrió. Devolver `true` consume el
-   * evento; con el listado a la vista no se intercepta nada y el back sale
-   * normalmente. (Android: en iOS el gesto de volver no pasa por acá.)
    */
   useFocusEffect(
     useCallback(() => {
@@ -231,33 +83,6 @@ export default function ProductosFaltantesScreen() {
     }, [choferAbierto]),
   );
 
-  // CANTIDAD CONSOLIDADA POR ÍTEM EN CAJAS + UNIDADES (ARRANCA CON LO CONTADO POR EL CHOFER)
-  const [corrections, setCorrections] = useState<Record<string, BoxUnitValue>>(
-    () =>
-      Object.fromEntries(
-        FLAT_MOCK_DISCREPANCIES.map((item) => [
-          item.id,
-          {
-            cajas: item.countedBoxes.toString(),
-            unidades: item.countedUnits.toString(),
-          },
-        ]),
-      ),
-  );
-
-  // CLASIFICACIÓN DE LA DIFERENCIA POR ÍTEM
-  const [selectedTypes, setSelectedTypes] = useState<Record<string, string>>(
-    () =>
-      Object.fromEntries(
-        FLAT_MOCK_DISCREPANCIES.map((item) => [item.id, item.differenceType]),
-      ),
-  );
-
-  /** Cantidad tecleada por ítem, sin confirmar todavía. */
-  const [draftCorrections, setDraftCorrections] = useState<
-    Record<string, BoxUnitValue>
-  >({});
-
   // MODAL SELECTOR DE TIPO DE DIFERENCIA
   const [pickerState, setPickerState] = useState<{
     visible: boolean;
@@ -268,14 +93,14 @@ export default function ProductosFaltantesScreen() {
   });
 
   const handleCorrectionChange = (itemId: string, next: BoxUnitValue) => {
-    setDraftCorrections((prev) => ({ ...prev, [itemId]: next }));
+    setCorrection(itemId, next.cajas, next.unidades);
   };
 
-  /**
-   * Guardar abre el clasificador en lugar de confirmar de una: una corrección
-   * sin causa no sirve para nada río abajo, así que la causa deja de ser un
-   * control suelto en la card y pasa a ser el paso que cierra el guardado.
-   */
+  /** Atajo para igualar la cantidad al esperado de la OT en 1 toque */
+  const handleSetExpectedItem = (item: SupervisorDiscrepancyItem) => {
+    setExpected(item.id);
+  };
+
   const commitCorrection = (itemId: string) => {
     setPickerState({ visible: true, activeItemId: itemId });
   };
@@ -286,23 +111,11 @@ export default function ProductosFaltantesScreen() {
     setPickerState({ visible: false, activeItemId: null });
     if (!itemId) return;
 
-    const draftCount = draftCorrections[itemId];
-
-    setSelectedTypes((prev) => ({ ...prev, [itemId]: type }));
-    if (draftCount) {
-      setCorrections((prev) => ({ ...prev, [itemId]: draftCount }));
-    }
-
-    // El borrador se descarta: la card vuelve a leer del valor confirmado.
-    setDraftCorrections((prev) => {
-      const next = { ...prev };
-      delete next[itemId];
-      return next;
-    });
+    confirmItem(itemId, type);
   };
 
   // FILTRADO PLANO DE ÍTEMS DE DISCREPANCIA (CADA OCURRENCIA POR SEPARADO)
-  const filteredDiscrepancies = FLAT_MOCK_DISCREPANCIES.filter((item) => {
+  const filteredDiscrepancies = discrepancyItems.filter((item) => {
     // Filtro por búsqueda
     const matchesSearch =
       item.codigo.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -322,12 +135,10 @@ export default function ProductosFaltantesScreen() {
   });
 
   /**
-   * Las diferencias se leen por chofer, no por ítem suelto: la pregunta de esta
-   * pantalla es a quién reclamarle, y un mismo chofer arrastra varias OT.
-   * Ordena por cantidad de diferencias para que el caso más pesado quede arriba.
+   * Las diferencias se leen por chofer, no por ítem suelto.
    */
   const discrepanciasPorChofer = (() => {
-    const porChofer = new Map<string, FlatMissingProductItem[]>();
+    const porChofer = new Map<string, SupervisorDiscrepancyItem[]>();
     filteredDiscrepancies.forEach((item) => {
       const items = porChofer.get(item.driverName) ?? [];
       items.push(item);
@@ -348,17 +159,18 @@ export default function ProductosFaltantesScreen() {
   const grupoAbierto =
     discrepanciasPorChofer.find((g) => g.driverName === choferAbierto) ?? null;
 
-  const totalShortageCount = FLAT_MOCK_DISCREPANCIES.filter(
+  const totalShortageCount = discrepancyItems.filter(
     (p) => p.difference < 0,
   ).length;
-  const totalSurplusCount = FLAT_MOCK_DISCREPANCIES.filter(
+  const totalSurplusCount = discrepancyItems.filter(
     (p) => p.difference > 0,
   ).length;
-  const totalColdCount = FLAT_MOCK_DISCREPANCIES.filter(
+  const totalColdCount = discrepancyItems.filter(
     (p) => p.isColdChain,
   ).length;
 
   const handleNavigateToConsolidation = (orderCode: string) => {
+    setActiveOrderCode(orderCode);
     const route = findRouteById("supervisor.consolidacion");
     if (route) {
       navigateTo(route);
@@ -375,48 +187,7 @@ export default function ProductosFaltantesScreen() {
           gap: 12,
         }}
       >
-        {/* BANNER INFORMATIVO */}
-        {/* <View
-          style={{
-            backgroundColor: theme.colors.cardBackground,
-            borderRadius: 14,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            padding: 12,
-            gap: 6,
-          }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <View
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
-                backgroundColor: theme.colors.primarySoft,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <PackageSearch size={18} color={theme.colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text
-                variant="label"
-                style={{ fontSize: 13, fontWeight: '800', color: theme.colors.foreground }}
-              >
-                Productos con Diferencia
-              </Text>
-              <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
-                Listado individual de ítems y las órdenes de transporte (OT) a las que pertenecen.
-              </Text>
-            </View>
-          </View>
-        </View> */}
-
         {/* CABECERA DEL CHOFER ABIERTO + VUELTA AL LISTADO */}
-        {/* Link etiquetado, no un chevron suelto: la barra de título ya tiene
-            su back y dos flechas iguales a la misma altura se leen como el
-            mismo control. Ésta sube un nivel, aquélla sale de la pantalla. */}
         {choferAbierto && (
           <View style={{ gap: 4 }}>
             <TouchableOpacity
@@ -426,56 +197,80 @@ export default function ProductosFaltantesScreen() {
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 2,
+                gap: 4,
                 alignSelf: "flex-start",
+                paddingVertical: 4,
+                paddingHorizontal: 2,
               }}
             >
-              <ChevronLeft size={14} color={theme.colors.primary} />
+              <ChevronLeft size={16} color={theme.colors.primary} />
               <Text
                 style={{
-                  fontSize: 11,
-                  fontWeight: "700",
                   color: theme.colors.primary,
+                  fontWeight: "700",
+                  fontSize: 13,
                 }}
               >
                 Todos los choferes
               </Text>
             </TouchableOpacity>
 
-            <Text variant="subtitle" numberOfLines={1}>
-              {choferAbierto}
-            </Text>
-            <Text variant="caption">
-              {grupoAbierto
-                ? `${grupoAbierto.items.length} ${grupoAbierto.items.length === 1 ? "producto" : "productos"} · ${grupoAbierto.ordenes} ${grupoAbierto.ordenes === 1 ? "orden" : "órdenes"}`
-                : "Sin resultados para el filtro actual"}
-            </Text>
+            <View
+              style={{
+                backgroundColor: theme.colors.cardBackground,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                padding: 12,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: theme.colors.primarySoft,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <User size={18} color={theme.colors.primary} />
+              </View>
+
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text variant="subtitle" numberOfLines={1}>
+                  {choferAbierto}
+                </Text>
+                <Text variant="caption">
+                  {grupoAbierto?.items.length ?? 0}{" "}
+                  {(grupoAbierto?.items.length ?? 0) === 1
+                    ? "diferencia"
+                    : "diferencias"}{" "}
+                  en {grupoAbierto?.ordenes ?? 0}{" "}
+                  {(grupoAbierto?.ordenes ?? 0) === 1 ? "orden" : "órdenes"}
+                </Text>
+              </View>
+            </View>
           </View>
         )}
 
-        {/* CAMPO DE BÚSQUEDA */}
+        {/* BUSCADOR */}
         <SearchField
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder={
-            choferAbierto
-              ? "Buscar por SKU, producto u orden (OT)..."
-              : "Buscar por chofer, SKU, producto u orden (OT)..."
-          }
+          placeholder="Buscar por producto, código, OT o chofer..."
         />
 
-        {/* BARRA DE FILTROS SOLICITADA POR KEY USERS */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8 }}
-          style={{ flexGrow: 0 }}
-        >
-          {/* 1. TODOS */}
+        {/* FILTROS RÁPIDOS POR TIPO */}
+        <View style={{ flexDirection: "row", gap: 6 }}>
           <TouchableOpacity
             onPress={() => setActiveTypeFilter("all")}
+            activeOpacity={0.7}
             style={{
-              paddingHorizontal: 13,
+              paddingHorizontal: 12,
               paddingVertical: 6,
               borderRadius: 20,
               backgroundColor:
@@ -490,25 +285,24 @@ export default function ProductosFaltantesScreen() {
             }}
           >
             <Text
-              variant="caption"
               style={{
-                fontSize: 12,
-                fontWeight: "700",
                 color:
                   activeTypeFilter === "all"
                     ? "#ffffff"
                     : theme.colors.foreground,
+                fontWeight: "700",
+                fontSize: 12,
               }}
             >
-              Todos ({filteredDiscrepancies.length})
+              Todos ({discrepancyItems.length})
             </Text>
           </TouchableOpacity>
 
-          {/* 2. FALTANTES */}
           <TouchableOpacity
             onPress={() => setActiveTypeFilter("shortage")}
+            activeOpacity={0.7}
             style={{
-              paddingHorizontal: 13,
+              paddingHorizontal: 12,
               paddingVertical: 6,
               borderRadius: 20,
               backgroundColor:
@@ -523,25 +317,24 @@ export default function ProductosFaltantesScreen() {
             }}
           >
             <Text
-              variant="caption"
               style={{
-                fontSize: 12,
-                fontWeight: "700",
                 color:
                   activeTypeFilter === "shortage"
                     ? "#ffffff"
                     : theme.colors.foreground,
+                fontWeight: "700",
+                fontSize: 12,
               }}
             >
               Faltantes ({totalShortageCount})
             </Text>
           </TouchableOpacity>
 
-          {/* 3. SOBRANTES */}
           <TouchableOpacity
             onPress={() => setActiveTypeFilter("surplus")}
+            activeOpacity={0.7}
             style={{
-              paddingHorizontal: 13,
+              paddingHorizontal: 12,
               paddingVertical: 6,
               borderRadius: 20,
               backgroundColor:
@@ -556,30 +349,29 @@ export default function ProductosFaltantesScreen() {
             }}
           >
             <Text
-              variant="caption"
               style={{
-                fontSize: 12,
-                fontWeight: "700",
                 color:
                   activeTypeFilter === "surplus"
                     ? "#ffffff"
                     : theme.colors.foreground,
+                fontWeight: "700",
+                fontSize: 12,
               }}
             >
               Sobrantes ({totalSurplusCount})
             </Text>
           </TouchableOpacity>
 
-          {/* 4. CADENA DE FRÍO */}
           <TouchableOpacity
             onPress={() => setActiveTypeFilter("cold")}
+            activeOpacity={0.7}
             style={{
-              paddingHorizontal: 13,
+              paddingHorizontal: 12,
               paddingVertical: 6,
               borderRadius: 20,
               backgroundColor:
                 activeTypeFilter === "cold"
-                  ? theme.colors.primary
+                  ? theme.colors.primarySoft
                   : theme.colors.cardBackground,
               borderWidth: 1,
               borderColor:
@@ -589,69 +381,42 @@ export default function ProductosFaltantesScreen() {
             }}
           >
             <Text
-              variant="caption"
               style={{
-                fontSize: 12,
-                fontWeight: "700",
                 color:
                   activeTypeFilter === "cold"
-                    ? "#ffffff"
+                    ? theme.colors.primary
                     : theme.colors.foreground,
-              }}
-            >
-              ❄️ Cadena de Frío ({totalColdCount})
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
-
-        {/* LISTADO PLANO Y COMPACTO DE ÍTEMS CON DIFERENCIA */}
-        {/* El chofer abierto puede quedar sin ítems si el filtro los excluye:
-            cae al mismo vacío, y la cabecera de arriba sigue dando la vuelta. */}
-        {filteredDiscrepancies.length === 0 ||
-        (choferAbierto && !grupoAbierto) ? (
-          <View
-            style={{
-              backgroundColor: theme.colors.cardBackground,
-              borderRadius: 14,
-              padding: 20,
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              marginVertical: 16,
-            }}
-          >
-            <PackageSearch size={36} color={theme.colors.mutedForeground} />
-            <Text
-              variant="label"
-              style={{
-                fontSize: 14,
                 fontWeight: "700",
-                color: theme.colors.foreground,
-              }}
-            >
-              Sin coincidencias encontradas
-            </Text>
-            <Text
-              variant="caption"
-              style={{
-                textAlign: "center",
-                color: theme.colors.mutedForeground,
                 fontSize: 12,
               }}
             >
-              No se encontraron registros de faltantes para el filtro
-              seleccionado.
+              ❄️ Frío ({totalColdCount})
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* LISTA DE CHOFERES O LISTA DE PRODUCTOS DEL CHOFER ABIERTO */}
+        {filteredDiscrepancies.length === 0 ? (
+          <View
+            style={{
+              alignItems: "center",
+              justifyContent: "center",
+              paddingVertical: 40,
+              gap: 8,
+            }}
+          >
+            <Text
+              variant="label"
+              style={{ color: theme.colors.mutedForeground, fontSize: 14 }}
+            >
+              No se encontraron productos con diferencias
             </Text>
             <TouchableOpacity
               onPress={() => {
-                setActiveTypeFilter("all");
                 setSearchQuery("");
+                setActiveTypeFilter("all");
               }}
               style={{
-                marginTop: 4,
-                backgroundColor: theme.colors.primarySoft,
                 paddingHorizontal: 14,
                 paddingVertical: 6,
                 borderRadius: 8,
@@ -673,46 +438,50 @@ export default function ProductosFaltantesScreen() {
           <View style={{ gap: 18 }}>
             {grupoAbierto.items.map((item) => {
               const isShortage = item.difference < 0;
-              const accentColor = isShortage
-                ? theme.colors.danger
-                : theme.colors.warning;
-              // Lo confirmado, y encima lo tecleado si la card está en edición.
-              const savedCorrection = corrections[item.id] ?? EMPTY_BOX_UNIT;
-              const currentCorrection =
-                draftCorrections[item.id] ?? savedCorrection;
+              const currentCorrection: BoxUnitValue = {
+                cajas: item.correctedBoxes,
+                unidades: item.correctedUnits,
+              };
 
-              const isMatched =
+              const isSavedMatched =
                 boxUnitTotal(currentCorrection, item.cajaSize) ===
                 item.expectedQty;
-              const correccionSucia =
-                currentCorrection.cajas !== savedCorrection.cajas ||
-                currentCorrection.unidades !== savedCorrection.unidades;
+              const isConfirmed = item.isConfirmed;
+              const isEditing = item.isEditing;
+
+              const accentColor = isSavedMatched
+                ? theme.colors.success
+                : isShortage
+                ? theme.colors.danger
+                : theme.colors.warning;
 
               return (
-                /* Sin onPress: la card es un formulario, no un botón. Con
-                   correcciones sin confirmar, un toque fuera de un control
-                   navegaba a otra pantalla en medio de la edición. Ir al
-                   detalle es ahora un acto explícito. */
                 <Card
                   key={item.id}
                   padding="m"
                   borderRadius="xl"
                   borderWidth={1}
-                  style={{ gap: 8 }}
+                  style={{
+                    gap: 8,
+                    borderColor:
+                      isSavedMatched && !isEditing
+                        ? theme.colors.success
+                        : theme.colors.border,
+                  }}
                 >
                   {/* FILA 1: IDENTIFICACIÓN (SKU + OT) + SALIDA AL DETALLE */}
                   <View
                     style={{
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
                       gap: 8,
                     }}
                   >
                     <View
                       style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
+                        flexDirection: "row",
+                        alignItems: "center",
                         gap: 6,
                         flexShrink: 1,
                       }}
@@ -722,7 +491,7 @@ export default function ProductosFaltantesScreen() {
                         numberOfLines={1}
                         style={{
                           fontSize: 11,
-                          fontWeight: '800',
+                          fontWeight: "800",
                           color: theme.colors.mutedForeground,
                           flexShrink: 1,
                         }}
@@ -741,8 +510,8 @@ export default function ProductosFaltantesScreen() {
                       activeOpacity={0.7}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
+                        flexDirection: "row",
+                        alignItems: "center",
                         gap: 3,
                         flexShrink: 0,
                       }}
@@ -750,7 +519,7 @@ export default function ProductosFaltantesScreen() {
                       <Text
                         style={{
                           fontSize: 11,
-                          fontWeight: '700',
+                          fontWeight: "700",
                           color: theme.colors.primary,
                         }}
                       >
@@ -763,29 +532,38 @@ export default function ProductosFaltantesScreen() {
                   {/* FILA 2: PRODUCTO + MAGNITUD DE LA DIFERENCIA */}
                   <View
                     style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
                       gap: 8,
                     }}
                   >
                     <Text
                       variant="subtitle"
                       numberOfLines={2}
-                      style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.colors.foreground }}
+                      style={{ flex: 1, fontSize: 14, fontWeight: "700", color: theme.colors.foreground }}
                     >
                       {item.nombre}
                     </Text>
 
-                    <Badge
-                      label={
-                        item.difference > 0
-                          ? `+${item.difference} Sobrante`
-                          : `${item.difference} Faltante`
-                      }
-                      tone={item.difference > 0 ? 'warning' : 'danger'}
-                      size="sm"
-                    />
+                    {isSavedMatched && !isEditing ? (
+                      <Badge
+                        label="Ajustado"
+                        tone="success"
+                        size="sm"
+                        icon={CheckCircle2}
+                      />
+                    ) : (
+                      <Badge
+                        label={
+                          item.difference > 0
+                            ? `+${item.difference} Sobrante`
+                            : `${item.difference} Faltante`
+                        }
+                        tone={item.difference > 0 ? "warning" : "danger"}
+                        size="sm"
+                      />
+                    )}
                   </View>
 
                   {/* FILA 3: COMPARATIVO ESPERADO VS CONTADO */}
@@ -793,46 +571,92 @@ export default function ProductosFaltantesScreen() {
                     style={{
                       backgroundColor: theme.colors.secondary,
                       borderRadius: 8,
-                      paddingHorizontal: 9,
-                      paddingVertical: 7,
-                      gap: 4,
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
+                      gap: 6,
                     }}
                   >
-                    <View
+                    <TouchableOpacity
+                      disabled={!isEditing || isSavedMatched}
+                      onPress={() => handleSetExpectedItem(item)}
+                      activeOpacity={0.7}
                       style={{
                         flexDirection: "row",
                         justifyContent: "space-between",
                         alignItems: "center",
-                        gap: 6,
+                        gap: 8,
                       }}
                     >
-                      <Text
-                        variant="caption"
+                      <View
                         style={{
-                          fontSize: 11,
-                          color: theme.colors.mutedForeground,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 6,
+                          flexShrink: 1,
                         }}
                       >
-                        Esperado en OT
-                      </Text>
+                        <Text
+                          variant="caption"
+                          style={{
+                            fontSize: 11,
+                            color: theme.colors.mutedForeground,
+                          }}
+                        >
+                          Esperado en OT
+                        </Text>
+                        {isEditing && !isSavedMatched && (
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 3,
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                              borderRadius: 4,
+                              backgroundColor: theme.colors.primarySoft,
+                            }}
+                          >
+                            <RotateCcw size={10} color={theme.colors.primary} />
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: "700",
+                                color: theme.colors.primary,
+                              }}
+                            >
+                              Aplicar
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                       <Text
                         variant="label"
+                        numberOfLines={1}
                         style={{
                           fontSize: 12,
                           fontWeight: "700",
-                          color: theme.colors.foreground,
+                          color:
+                            isEditing && !isSavedMatched
+                              ? theme.colors.primary
+                              : theme.colors.foreground,
+                          textDecorationLine:
+                            isEditing && !isSavedMatched ? "underline" : "none",
                         }}
                       >
-                        {formatBoxUnit(item.expectedBoxes, item.expectedQty - item.expectedBoxes * item.cajaSize, item.expectedQty)}
+                        {formatBoxUnit(
+                          item.expectedBoxes,
+                          item.expectedQty - item.expectedBoxes * item.cajaSize,
+                          item.expectedQty
+                        )}
                       </Text>
-                    </View>
+                    </TouchableOpacity>
 
                     <View
                       style={{
                         flexDirection: "row",
                         justifyContent: "space-between",
                         alignItems: "center",
-                        gap: 6,
+                        gap: 8,
                       }}
                     >
                       <Text
@@ -846,13 +670,18 @@ export default function ProductosFaltantesScreen() {
                       </Text>
                       <Text
                         variant="label"
+                        numberOfLines={1}
                         style={{
                           fontSize: 12,
                           fontWeight: "800",
                           color: accentColor,
                         }}
                       >
-                        {formatBoxUnit(item.countedBoxes, item.countedUnits, item.countedQty)}
+                        {formatBoxUnit(
+                          item.driverBoxes,
+                          item.driverUnits,
+                          item.driverQty
+                        )}
                       </Text>
                     </View>
                   </View>
@@ -866,34 +695,120 @@ export default function ProductosFaltantesScreen() {
                       borderTopColor: theme.colors.border,
                     }}
                   >
-                    <BoxUnitCounter
-                      value={currentCorrection}
-                      onChange={(next) => handleCorrectionChange(item.id, next)}
-                      cajaSize={item.cajaSize}
-                      totalLabel="Total"
-                      targetQty={item.expectedQty}
-                      /* El botón comparte la fila del total en vez de gastar
-                         una propia, y el hueco reserva su alto siempre para
-                         que la card no crezca al aparecer. */
-                      action={
+                    {!isEditing && isConfirmed ? (
+                      /* ESTADO RESOLVIDO / CONFIRMADO: SIN BOTONES NI STEPPERS DE CAJA/UNIDADES */
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          backgroundColor: isSavedMatched ? theme.colors.successSoft : theme.colors.secondary,
+                          borderColor: isSavedMatched ? theme.colors.success : theme.colors.border,
+                          borderWidth: 1,
+                          borderRadius: 10,
+                          paddingHorizontal: 12,
+                          paddingVertical: 9,
+                          gap: 8,
+                        }}
+                      >
                         <View
                           style={{
-                            minHeight: theme.controlSizes.xs.height,
-                            justifyContent: "center",
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 8,
+                            flex: 1,
                           }}
                         >
-                          {correccionSucia && (
-                            <Button
-                              label="Guardar corrección"
-                              icon={Check}
-                              variant="primary"
-                              size="xs"
-                              onPress={() => commitCorrection(item.id)}
-                            />
-                          )}
+                          <CheckCircle2
+                            size={16}
+                            color={isSavedMatched ? theme.colors.success : theme.colors.primary}
+                          />
+                          <View style={{ flex: 1, gap: 1 }}>
+                            <Text
+                              variant="label"
+                              style={{
+                                fontSize: 12,
+                                fontWeight: "700",
+                                color: isSavedMatched ? theme.colors.success : theme.colors.foreground,
+                              }}
+                            >
+                              {isSavedMatched
+                                ? `Total conforme: ${formatBoxUnit(
+                                    parseInt(item.correctedBoxes || "0", 10),
+                                    parseInt(item.correctedUnits || "0", 10),
+                                    item.expectedQty
+                                  )}`
+                                : `Total confirmado: ${formatBoxUnit(
+                                    parseInt(item.correctedBoxes || "0", 10),
+                                    parseInt(item.correctedUnits || "0", 10),
+                                    boxUnitTotal(currentCorrection, item.cajaSize)
+                                  )}`}
+                            </Text>
+                            <Text
+                              variant="caption"
+                              style={{
+                                fontSize: 10,
+                                color: theme.colors.mutedForeground,
+                              }}
+                            >
+                              {item.selectedType
+                                ? `Clasificación: ${item.selectedType}`
+                                : isSavedMatched
+                                ? "Diferencia corregida sin observaciones"
+                                : "Diferencia confirmada"}
+                            </Text>
+                          </View>
                         </View>
-                      }
-                    />
+
+                        <Button
+                          label="Modificar"
+                          icon={Pencil}
+                          variant="secondary"
+                          size="xs"
+                          onPress={() => setEditing(item.id, true)}
+                        />
+                      </View>
+                    ) : (
+                      /* MODO EDICIÓN: STEPPERS Y BOTÓN GUARDAR SIEMPRE DISPONIBLE */
+                      <View style={{ gap: 8 }}>
+                        <BoxUnitCounter
+                          value={currentCorrection}
+                          onChange={(next) =>
+                            handleCorrectionChange(item.id, next)
+                          }
+                          cajaSize={item.cajaSize}
+                          totalLabel="Total corregido"
+                          targetQty={item.expectedQty}
+                          action={
+                            <View
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                gap: 6,
+                                minHeight: theme.controlSizes.xs.height,
+                                justifyContent: "center",
+                              }}
+                            >
+                              {isConfirmed && (
+                                <Button
+                                  label="Cancelar"
+                                  variant="secondary"
+                                  size="xs"
+                                  onPress={() => setEditing(item.id, false)}
+                                />
+                              )}
+                              <Button
+                                label="Guardar"
+                                icon={Check}
+                                variant="primary"
+                                size="xs"
+                                onPress={() => commitCorrection(item.id)}
+                              />
+                            </View>
+                          }
+                        />
+                      </View>
+                    )}
                   </View>
                 </Card>
               );
@@ -1002,8 +917,6 @@ export default function ProductosFaltantesScreen() {
                 alignItems: "center",
               }}
             >
-              {/* Elegir una causa es lo que confirma la corrección, así que el
-                  copy lo dice: cerrar sin elegir la deja sin guardar. */}
               <View style={{ flexShrink: 1, gap: 1 }}>
                 <Text variant="subtitle">¿Por qué la diferencia?</Text>
                 <Text variant="caption">Al elegir se guarda la corrección</Text>
@@ -1020,9 +933,10 @@ export default function ProductosFaltantesScreen() {
 
             <View style={{ gap: 8 }}>
               {DISCREPANCY_CAUSES.map((cause) => {
-                const isSelected =
-                  pickerState.activeItemId != null &&
-                  selectedTypes[pickerState.activeItemId] === cause;
+                const activeItem = allItems.find(
+                  (i) => i.id === pickerState.activeItemId
+                );
+                const isSelected = activeItem?.selectedType === cause;
 
                 return (
                   <TouchableOpacity
@@ -1069,7 +983,6 @@ export default function ProductosFaltantesScreen() {
           </View>
         </View>
       </Modal>
-
     </Box>
   );
 }

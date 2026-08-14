@@ -80,7 +80,7 @@ const MOCK_DB = [
   {
     id: 1,
     codigo: "7790001",
-    nombre: "Ketchup 900ml",
+    nombre: "Ketchup Kris Doypack 900g",
     cajaSize: 12,
     expectedQty: 24,
     isCold: false,
@@ -88,7 +88,7 @@ const MOCK_DB = [
   {
     id: 2,
     codigo: "7790002",
-    nombre: "Mayonesa Clásica 500g",
+    nombre: "Mayonesa Kris Pomo 500g",
     cajaSize: 24,
     expectedQty: 24,
     isCold: false,
@@ -96,7 +96,7 @@ const MOCK_DB = [
   {
     id: 3,
     codigo: "7790003",
-    nombre: "Levadura Fleischmann 500g",
+    nombre: "Levadura Fresca Fleischmann 500g",
     cajaSize: 10,
     expectedQty: 50,
     isCold: true,
@@ -104,7 +104,7 @@ const MOCK_DB = [
   {
     id: 4,
     codigo: "7790004",
-    nombre: "Levadura Fleischmann 1Kg",
+    nombre: "Crema Whip Topping Base Rich's 1L",
     cajaSize: 10,
     expectedQty: 20,
     isCold: true,
@@ -112,7 +112,7 @@ const MOCK_DB = [
   {
     id: 5,
     codigo: "7790005",
-    nombre: "Salsa Golf 500g",
+    nombre: "Salsa Golf Kris Doypack 500g",
     cajaSize: 20,
     expectedQty: 440,
     isCold: false,
@@ -120,7 +120,7 @@ const MOCK_DB = [
   {
     id: 6,
     codigo: "7790006",
-    nombre: "Mostaza Dulce 500g",
+    nombre: "Mostaza Kris Pomo 500g",
     cajaSize: 20,
     expectedQty: 20,
     isCold: false,
@@ -435,7 +435,7 @@ export default function ChequeoScreen({ despachoId }: Props) {
   const session = sessionsByDespacho[activeId];
   const conteoCerrado =
     cierre !== null ||
-    session?.finishedAt != null ||
+    (despacho?.estado !== "pendiente" && session?.finishedAt != null) ||
     despacho?.estado === "finalizado" ||
     despacho?.estado === "diferencia" ||
     despacho?.estado === "validando_supervisor";
@@ -460,8 +460,8 @@ export default function ChequeoScreen({ despachoId }: Props) {
           title: "Conteo cerrado",
           message:
             noContados > 0
-              ? `Contaste ${contadosVisible} de ${totalEsperado} ítems (${avanceVisible}%). Los ${noContados} restantes quedaron registrados en 0 y aparecen como diferencia en la Orden ${despacho.codigo}.`
-              : `Contaste los ${totalEsperado} ítems de la Orden ${despacho.codigo}: ${stats.matches} conformes y ${stats.mismatches} con diferencia.`,
+              ? `Hay productos que no fueron registrados en el conteo; por lo tanto, quedarán guardados automáticamente en 0 en la Orden ${despacho.codigo}.`
+              : `El conteo de la Orden ${despacho.codigo} ha finalizado y fue registrado exitosamente.`,
           type: "success",
           buttonText: "Ver el detalle",
         }

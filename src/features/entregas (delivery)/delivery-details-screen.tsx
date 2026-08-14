@@ -203,7 +203,7 @@ const MOCK_ITEMS: DeliveryItem[] = [
   {
     id: "1",
     codigo: "7790010",
-    nombre: "Queso Gouda Bloque 5kg",
+    nombre: "Crema Bettercreme Chocolate 1L",
     plannedQty: 8,
     deliveredQty: 8,
     isCold: true,
@@ -213,7 +213,7 @@ const MOCK_ITEMS: DeliveryItem[] = [
   {
     id: "2",
     codigo: "7790025",
-    nombre: "Mantequilla Cremosa Con Sal 500g",
+    nombre: "Levadura Fresca Fleischmann 500g",
     plannedQty: 15,
     deliveredQty: 15,
     isCold: true,
@@ -223,11 +223,11 @@ const MOCK_ITEMS: DeliveryItem[] = [
   {
     id: "3",
     codigo: "7790040",
-    nombre: "Ketchup Girasol Institucional 5kg",
+    nombre: "Ketchup Kris Galón Institucional 4kg",
     plannedQty: 12,
     deliveredQty: 12,
     isCold: false,
-    unit: "baldes",
+    unit: "galones",
     unitPrice: 95.0,
   },
 ];

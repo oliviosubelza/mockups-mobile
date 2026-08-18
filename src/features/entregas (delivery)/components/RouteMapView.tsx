@@ -241,32 +241,77 @@ function generateLeafletHtml({
       border-color: rgba(52, 211, 153, 0.4);
     }
 
-    /* Depot Pin */
+    /* Reset Leaflet divIcon box model to prevent square background cuts */
+    .leaflet-div-icon {
+      background: transparent !important;
+      border: none !important;
+    }
+
+    /* Centro de Distribución (Depot Pin) */
     .depot-pin-wrap {
+      width: 140px;
       display: flex;
       flex-direction: column;
       align-items: center;
+      justify-content: flex-start;
       user-select: none;
+      position: relative;
+      cursor: pointer;
+      transition: transform 0.2s ease;
+      overflow: visible;
+    }
+    .depot-pin-wrap:hover {
+      transform: scale(1.12) translateY(-3px);
+      z-index: 10000 !important;
+    }
+    .depot-glow {
+      position: absolute;
+      top: -6px;
+      left: 45px;
+      width: 50px;
+      height: 50px;
+      border-radius: 25px;
+      background: rgba(30, 58, 138, 0.3);
+      border: 2px solid rgba(59, 130, 246, 0.6);
+      animation: pulse-ring 2.2s infinite ease-out;
+      pointer-events: none;
     }
     .depot-head {
+      width: 38px;
+      height: 38px;
+      border-radius: 19px;
       background: #0f172a;
-      border: 2px solid #ffffff;
-      border-radius: 12px;
-      padding: 4px 8px;
-      color: #ffffff;
-      font-size: 11px;
-      font-weight: 800;
+      border: 2.5px solid #3b82f6;
       display: flex;
       align-items: center;
-      gap: 4px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+      justify-content: center;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+      position: relative;
+      z-index: 2;
     }
     .depot-needle {
       width: 0;
       height: 0;
-      border-left: 5px solid transparent;
-      border-right: 5px solid transparent;
-      border-top: 6px solid #0f172a;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 8px solid #0f172a;
+      margin-top: -1px;
+      z-index: 1;
+      filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));
+    }
+    .depot-label {
+      margin-top: 3px;
+      background: #0f172a;
+      color: #ffffff;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      z-index: 3;
+      pointer-events: none;
     }
 
     /* Truck Driver Pin */
@@ -335,14 +380,29 @@ function generateLeafletHtml({
       opacity: 0.95
     }).addTo(map);
 
-    // 3. Almacén Central Marker
+    // 3. Almacén Central Marker con SVG Building2 Vectorial
+    var depotBuildingSvg = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/>' +
+      '<path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>' +
+      '<path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/>' +
+      '<path d="M10 6h4"/>' +
+      '<path d="M10 10h4"/>' +
+      '<path d="M10 14h4"/>' +
+      '<path d="M10 18h4"/>' +
+    '</svg>';
+
     var depotIcon = L.divIcon({
       className: 'custom-div-icon',
-      html: '<div class="depot-pin-wrap"><div class="depot-head">🏢 Almacén Central</div><div class="depot-needle"></div></div>',
-      iconSize: [120, 36],
-      iconAnchor: [60, 36]
+      html: '<div class="depot-pin-wrap">' +
+        '<div class="depot-glow"></div>' +
+        '<div class="depot-head">' + depotBuildingSvg + '</div>' +
+        '<div class="depot-needle"></div>' +
+        '<div class="depot-label">Almacén Central (Depósito)</div>' +
+      '</div>',
+      iconSize: [140, 74],
+      iconAnchor: [70, 46]
     });
-    L.marker(depotCoords, { icon: depotIcon }).addTo(map);
+    L.marker(depotCoords, { icon: depotIcon, zIndexOffset: 8000 }).addTo(map);
 
     // 4. Paradas de entrega Pins
     function getStatusColor(st) {
@@ -418,8 +478,12 @@ function generateLeafletHtml({
         map.zoomIn();
       } else if (data.type === 'ZOOM_OUT') {
         map.zoomOut();
-      } else if (data.type === 'RECENTER') {
-        map.setView([-17.772, -63.175], 13);
+      } else if (data.type === 'RECENTER' || data.type === 'FIT_ALL') {
+        var group = new L.featureGroup([
+          L.polyline(plannedCoords),
+          L.marker(depotCoords)
+        ]);
+        map.fitBounds(group.getBounds(), { padding: [50, 50] });
       } else if (data.type === 'PAN_TO' && data.lat && data.lng) {
         map.flyTo([data.lat, data.lng], 15, { duration: 0.8 });
       }
@@ -427,6 +491,7 @@ function generateLeafletHtml({
   </script>
 </body>
 </html>`;
+
 }
 
 export function RouteMapView({
@@ -450,7 +515,7 @@ export function RouteMapView({
 
   const isWeb = Platform.OS === "web";
 
-  // SELECCIÓN AUTOMÁTICA DE PARADA ACTIVA POR DEFECTO
+  // SELECCIÓN AUTOMÁTICA DE PARADA ACTIVA POR DEFECTO (EN CURSO O SIGUIENTE PENDIENTE)
   const activeStop = useMemo(() => {
     return (
       stops.find((s) => s.status === "ARRIVED") ||
@@ -461,14 +526,33 @@ export function RouteMapView({
     );
   }, [stops]);
 
-  // DERIVAR LA PARADA SELECCIONADA EN TIEMPO REAL DESDE `stops` PROP
+  // DERIVAR LA PARADA SELECCIONADA EN TIEMPO REAL:
+  // Si la parada anteriormente seleccionada ya está completada (DELIVERED) y hay paradas pendientes,
+  // se sincroniza automáticamente con activeStop (el siguiente punto de entrega con su botón de acción).
   const selectedStop = useMemo(() => {
     if (storeSelectedStopId) {
       const found = stops.find((s) => s.id === storeSelectedStopId);
+      if (found && found.status !== "DELIVERED") {
+        return found;
+      }
+      if (
+        found &&
+        found.status === "DELIVERED" &&
+        activeStop &&
+        activeStop.status !== "DELIVERED"
+      ) {
+        return activeStop;
+      }
       if (found) return found;
     }
     return activeStop;
   }, [stops, storeSelectedStopId, activeStop]);
+
+  useEffect(() => {
+    if (selectedStop && storeSelectedStopId !== selectedStop.id) {
+      setStoreSelectedStop(selectedStop);
+    }
+  }, [selectedStop, storeSelectedStopId, setStoreSelectedStop]);
 
   // CENTRAR EL MAPA EN LA PARADA SELECCIONADA AL CAMBIAR DE SELECCIÓN DE PARADA
   useEffect(() => {
@@ -676,6 +760,25 @@ export function RouteMapView({
     }
   };
 
+  const handleCenterDepot = () => {
+    if (isWeb) {
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: "PAN_TO", lat: SANTA_CRUZ_DEPOT.latitude, lng: SANTA_CRUZ_DEPOT.longitude },
+        "*"
+      );
+    } else if (mapRef.current) {
+      mapRef.current.animateToRegion(
+        {
+          latitude: SANTA_CRUZ_DEPOT.latitude,
+          longitude: SANTA_CRUZ_DEPOT.longitude,
+          latitudeDelta: 0.015,
+          longitudeDelta: 0.015,
+        },
+        400
+      );
+    }
+  };
+
   const leafletHtml = useMemo(() => {
     return generateLeafletHtml({
       stops,
@@ -754,38 +857,79 @@ export function RouteMapView({
               tracksViewChanges={tracksViewChanges}
             >
               <View style={{ alignItems: "center", justifyContent: "center" }}>
+                {/* Halo del depósito */}
                 <View
                   style={{
+                    position: "absolute",
+                    top: -6,
+                    width: 48,
+                    height: 48,
+                    borderRadius: 24,
+                    backgroundColor: "rgba(15, 23, 42, 0.15)",
+                    borderWidth: 1.5,
+                    borderColor: "rgba(15, 23, 42, 0.3)",
+                  }}
+                />
+
+                {/* Cabeza circular del pin de Almacén */}
+                <View
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
                     backgroundColor: "#0f172a",
-                    paddingHorizontal: 8,
-                    paddingVertical: 5,
-                    borderRadius: 12,
-                    borderWidth: 2,
+                    borderWidth: 2.5,
                     borderColor: "#ffffff",
-                    flexDirection: "row",
                     alignItems: "center",
-                    gap: 4,
-                    elevation: 6,
+                    justifyContent: "center",
+                    elevation: 7,
+                    shadowColor: "#000",
+                    shadowOffset: { width: 0, height: 3 },
+                    shadowOpacity: 0.4,
+                    shadowRadius: 4,
                   }}
                 >
-                  <Building2 size={14} color="#ffffff" />
-                  <Text style={{ color: "#ffffff", fontSize: 10, fontWeight: "700" }}>
-                    Almacén
-                  </Text>
+                  <Building2 size={18} color="#ffffff" />
                 </View>
+
+                {/* Aguja apuntando al suelo GPS */}
                 <View
                   style={{
                     width: 0,
                     height: 0,
-                    borderLeftWidth: 4,
-                    borderRightWidth: 4,
-                    borderTopWidth: 6,
+                    borderLeftWidth: 6,
+                    borderRightWidth: 6,
+                    borderTopWidth: 8,
                     borderLeftColor: "transparent",
                     borderRightColor: "transparent",
                     borderTopColor: "#0f172a",
                     marginTop: -1,
                   }}
                 />
+
+                {/* Etiqueta descriptiva inferior */}
+                <View
+                  style={{
+                    marginTop: 3,
+                    backgroundColor: "#0f172a",
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.2)",
+                    elevation: 4,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "#ffffff",
+                      fontSize: 10,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Centro de Distribución
+                  </Text>
+                </View>
               </View>
             </Marker>
 
@@ -1276,6 +1420,35 @@ export function RouteMapView({
               Incidencias
             </Text>
           </View>
+
+          <TouchableOpacity
+            onPress={handleCenterDepot}
+            activeOpacity={0.8}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: theme.colors.cardBackground,
+              borderColor: "#3b82f6",
+              borderWidth: 1.5,
+              borderRadius: 14,
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              gap: 5,
+              elevation: 2,
+            }}
+          >
+            <Building2 size={12} color="#3b82f6" />
+            <Text
+              variant="caption"
+              style={{
+                fontSize: 11,
+                fontWeight: "700",
+                color: theme.colors.foreground,
+              }}
+            >
+              Almacén Central
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
 

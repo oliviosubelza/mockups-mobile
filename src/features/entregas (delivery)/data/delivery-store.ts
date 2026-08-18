@@ -156,11 +156,28 @@ export const useDeliveryStore = create<DeliveryStoreState>((set, get) => ({
   },
 
   updateStopStatus: (stopId, status) =>
-    set((state) => ({
-      stops: state.stops.map((s) =>
+    set((state) => {
+      const updatedStops = state.stops.map((s) =>
         s.id === stopId ? { ...s, status } : s
-      ),
-    })),
+      );
+
+      let nextSelectedId = state.selectedStopId;
+      if (status === "DELIVERED" && state.selectedStopId === stopId) {
+        const nextActive =
+          updatedStops.find((s) => s.status === "ARRIVED") ||
+          updatedStops.find((s) => s.status === "EN_ROUTE") ||
+          updatedStops.find((s) => s.status === "PENDING") ||
+          updatedStops.find((s) => s.status === "INCIDENT");
+        if (nextActive) {
+          nextSelectedId = nextActive.id;
+        }
+      }
+
+      return {
+        stops: updatedStops,
+        selectedStopId: nextSelectedId,
+      };
+    }),
 }));
 
 export function setSelectedStop(stop: DeliveryStop): void {

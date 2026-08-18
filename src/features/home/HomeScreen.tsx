@@ -38,7 +38,7 @@ export default function HomeScreen() {
         route.id === 'supervisor.semaforo'
       );
     }
-    // El chofer ve "Revisión a ciegas" y "Mis Entregas"
+    // El chofer ve "Revisión de Despacho" y "Mis Entregas"
     return route.id === 'despachos' || route.id === 'entregas';
   });
 
@@ -55,7 +55,7 @@ export default function HomeScreen() {
           <Text variant="header">Hola, {firstName}</Text>
           <Text variant="caption">
             {user.role === 'SUPERVISOR'
-              ? 'Panel de Supervisor: Consolidación, Auditoría Semáforo y Productos Faltantes.'
+              ? 'Panel de Supervisor: Consolidación, Revisión Semáforo y Productos Faltantes.'
               : 'Panel de Chofer: Selecciona una opción para comenzar tu ruta.'}
           </Text>
         </Box>

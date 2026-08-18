@@ -6,11 +6,12 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react-native";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
-  KeyboardAvoidingView,
+  Keyboard,
   Modal,
   Platform,
+  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   View,
@@ -48,11 +49,7 @@ const METHOD_ICONS: Record<PaymentMethodType, LucideIcon> = {
 
 /**
  * Hoja inferior reutilizable para los formularios de cobro en sitio.
- *
- * Es solo el cascaron: encabezado con el metodo y el saldo pendiente siempre
- * visible, cuerpo scrolleable con `children` y pie con la accion principal.
- * Cada metodo aporta unicamente sus campos, asi los cuatro formularios dejan de
- * ocupar altura en el tab de cobro.
+ * Despliegue más alto y elevación garantizada sobre el teclado numérico mediante Keyboard Listener.
  */
 export function PaymentMethodModal({
   visible,
@@ -70,6 +67,28 @@ export function PaymentMethodModal({
 }: PaymentMethodModalProps) {
   const theme = useAppTheme();
 
+  // Escucha activa del teclado nativo para elevar el modal con precisión matemática
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   const MethodIcon = method ? METHOD_ICONS[method] : Banknote;
 
   const requestClose = () => {
@@ -85,157 +104,211 @@ export function PaymentMethodModal({
       statusBarTranslucent={true}
       onRequestClose={requestClose}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={{ flex: 1 }}
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(0, 0, 0, 0.65)",
+          justifyContent: "flex-end",
+          paddingBottom: keyboardHeight > 0 ? keyboardHeight + 28 : 0,
+        }}
       >
+        {/* ZONA SUPERIOR TRANSLÚCIDA: TOCARLA CIERRA LA HOJA */}
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={requestClose}
+          style={{ flex: 1 }}
+        />
+
+        {/* CONTENEDOR PRINCIPAL DEL BOTTOM SHEET A MEDIA PANTALLA */}
         <View
           style={{
-            flex: 1,
-            backgroundColor: "rgba(0, 0, 0, 0.65)",
-            justifyContent: "flex-end",
-            zIndex: 1000,
+            backgroundColor: theme.colors.cardBackground,
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            borderTopWidth: 2,
+            borderLeftWidth: 1,
+            borderRightWidth: 1,
+            borderColor: theme.colors.border,
+            height: keyboardHeight > 0 ? "70%" : "54%",
+            maxHeight: keyboardHeight > 0 ? "78%" : "60%",
+            minHeight: "48%",
+            overflow: "hidden",
+            elevation: 24,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: -6 },
+            shadowOpacity: 0.25,
+            shadowRadius: 16,
           }}
         >
-          {/* ZONA MUERTA SUPERIOR: TOCARLA CIERRA LA HOJA */}
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={requestClose}
-            style={{ flex: 1 }}
-          />
-
+          {/* MANIJA INDICADORA DE DRAG (PILL HANDLE) */}
           <View
             style={{
-              backgroundColor: theme.colors.cardBackground,
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
-              borderTopWidth: 1,
-              borderTopColor: theme.colors.border,
-              maxHeight: "85%",
-              paddingBottom: 18,
-              elevation: 12,
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: -4 },
-              shadowOpacity: 0.3,
-              shadowRadius: 10,
+              alignSelf: "center",
+              width: 44,
+              height: 5,
+              borderRadius: 3,
+              backgroundColor: theme.colors.border,
+              marginTop: 10,
+              marginBottom: 4,
+            }}
+          />
+
+          {/* ENCABEZADO CON EL MÉTODO Y EL SALDO PENDIENTE */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              paddingHorizontal: 18,
+              paddingTop: 8,
+              paddingBottom: 12,
+              borderBottomWidth: 1,
+              borderBottomColor: theme.colors.border,
             }}
           >
-            {/* ENCABEZADO CON EL METODO Y EL SALDO PENDIENTE SIEMPRE VISIBLE */}
             <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                justifyContent: "space-between",
                 gap: 10,
-                paddingHorizontal: 18,
-                paddingTop: 18,
-                paddingBottom: 12,
-                borderBottomWidth: 1,
-                borderBottomColor: theme.colors.border,
+                flex: 1,
               }}
             >
               <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: theme.colors.primarySoft,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
               >
-                <View
+                <MethodIcon size={20} color={theme.colors.primary} />
+              </View>
+              <View style={{ flex: 1, gap: 1 }}>
+                <Text
+                  variant="title"
+                  numberOfLines={1}
                   style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: 21,
-                    backgroundColor: theme.colors.primarySoft,
-                    alignItems: "center",
-                    justifyContent: "center",
+                    fontSize: 16,
+                    color: theme.colors.foreground,
+                    fontWeight: "700",
                   }}
                 >
-                  <MethodIcon size={22} color={theme.colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
+                  {title}
+                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
                   <Text
-                    variant="title"
+                    variant="caption"
+                    numberOfLines={1}
                     style={{
-                      fontSize: 18,
-                      color: theme.colors.foreground,
-                      fontWeight: "700",
+                      fontSize: 11,
+                      color: theme.colors.mutedForeground,
                     }}
                   >
-                    {title}
+                    Saldo Pendiente:
                   </Text>
-                  <View
-                    style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+                  <Text
+                    variant="label"
+                    numberOfLines={1}
+                    style={{
+                      fontSize: 12,
+                      fontWeight: "800",
+                      color: theme.colors.primary,
+                    }}
                   >
-                    <Text
-                      variant="caption"
-                      style={{ fontSize: 12, color: theme.colors.mutedForeground }}
-                    >
-                      Saldo Pendiente:
-                    </Text>
-                    <Text
-                      variant="label"
-                      style={{
-                        fontSize: 13,
-                        fontWeight: "800",
-                        color: theme.colors.primary,
-                      }}
-                    >
-                      Bs. {pendingBalance.toFixed(2)}
-                    </Text>
-                  </View>
+                    Bs. {pendingBalance.toFixed(2)}
+                  </Text>
                 </View>
               </View>
-
-              <TouchableOpacity
-                onPress={requestClose}
-                disabled={closeDisabled}
-                style={{ padding: 4, opacity: closeDisabled ? 0.4 : 1 }}
-              >
-                <X size={20} color={theme.colors.mutedForeground} />
-              </TouchableOpacity>
             </View>
 
-            {/* CUERPO SCROLLEABLE CON LOS CAMPOS DEL METODO */}
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ padding: 18, gap: 12 }}
-            >
-              {children}
-            </ScrollView>
-
-            {/* PIE CON LA ACCION PRINCIPAL DEL METODO */}
-            <View
+            <TouchableOpacity
+              onPress={requestClose}
+              disabled={closeDisabled}
               style={{
-                flexDirection: "row",
-                gap: 10,
-                paddingHorizontal: 18,
-                paddingTop: 12,
-                borderTopWidth: 1,
-                borderTopColor: theme.colors.border,
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: theme.colors.secondary,
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: closeDisabled ? 0.4 : 1,
+                flexShrink: 0,
               }}
             >
-              <View style={{ flex: 1 }}>
-                <Button
-                  label="Cancelar"
-                  variant="outline"
-                  fullWidth
-                  disabled={closeDisabled}
-                  onPress={requestClose}
-                />
-              </View>
-              <View style={{ flex: 1.5 }}>
-                <Button
-                  label={submitLabel}
-                  variant="primary"
-                  icon={submitIcon}
-                  fullWidth
-                  loading={submitLoading}
-                  disabled={submitDisabled}
-                  onPress={onSubmit}
-                />
-              </View>
-            </View>
+              <X size={18} color={theme.colors.foreground} />
+            </TouchableOpacity>
           </View>
+
+          {/* CUERPO SCROLLEABLE CON LOS CAMPOS DEL MÉTODO */}
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            automaticallyAdjustKeyboardInsets={true}
+            showsVerticalScrollIndicator={true}
+            style={{ flex: 1 }}
+            contentContainerStyle={{
+              padding: 16,
+              gap: 12,
+              paddingBottom: 20,
+            }}
+          >
+            {children}
+          </ScrollView>
+
+          {/* PIE CON LA ACCIÓN PRINCIPAL DEL MÉTODO */}
+          <SafeAreaView
+            style={{
+              flexDirection: "row",
+              gap: 10,
+              paddingHorizontal: 16,
+              paddingTop: 12,
+              paddingBottom:
+                keyboardHeight > 0
+                  ? 12
+                  : Platform.OS === "ios"
+                    ? 14
+                    : 16,
+              borderTopWidth: 1,
+              borderTopColor: theme.colors.border,
+              backgroundColor: theme.colors.cardBackground,
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Button
+                label="Cancelar"
+                variant="outline"
+                size="md"
+                fullWidth
+                disabled={closeDisabled}
+                onPress={requestClose}
+              />
+            </View>
+            <View style={{ flex: 1.4 }}>
+              <Button
+                label={submitLabel}
+                variant="primary"
+                icon={submitIcon}
+                size="md"
+                fullWidth
+                loading={submitLoading}
+                disabled={submitDisabled}
+                onPress={onSubmit}
+              />
+            </View>
+          </SafeAreaView>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }

@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   ArrowRight,
   Check,
   CheckCircle2,
@@ -102,7 +103,19 @@ export default function ProductosFaltantesScreen() {
   };
 
   const commitCorrection = (itemId: string) => {
-    setPickerState({ visible: true, activeItemId: itemId });
+    const item = allItems.find((i) => i.id === itemId);
+    if (!item) return;
+    const currentCorrection: BoxUnitValue = {
+      cajas: item.correctedBoxes,
+      unidades: item.correctedUnits,
+    };
+    const isMatched =
+      boxUnitTotal(currentCorrection, item.cajaSize) === item.expectedQty;
+    if (isMatched) {
+      confirmItem(itemId, "Error de Conteo Chofer");
+    } else {
+      setPickerState({ visible: true, activeItemId: itemId });
+    }
   };
 
   // ELEGIR LA CAUSA CIERRA LA CORRECCIÓN: CANTIDAD Y CLASIFICACIÓN JUNTAS
@@ -443,30 +456,40 @@ export default function ProductosFaltantesScreen() {
                 unidades: item.correctedUnits,
               };
 
-              const isSavedMatched =
-                boxUnitTotal(currentCorrection, item.cajaSize) ===
-                item.expectedQty;
+              const currentTotal = boxUnitTotal(currentCorrection, item.cajaSize);
+              const isSavedMatched = currentTotal === item.expectedQty;
               const isConfirmed = item.isConfirmed;
               const isEditing = item.isEditing;
 
-              const accentColor = isSavedMatched
+              // ESTADO GUARDADO / CONFIRMADO: Los colores solo aparecen al guardar
+              const isConfirmedAndSaved = isConfirmed && !isEditing;
+              const isRectified = isConfirmedAndSaved && isSavedMatched;
+              const isConfirmedDiscrepancy = isConfirmedAndSaved && !isSavedMatched;
+
+              const cardBorderColor = isRectified
                 ? theme.colors.success
-                : isShortage
-                ? theme.colors.danger
-                : theme.colors.warning;
+                : isConfirmedDiscrepancy
+                  ? (isShortage ? theme.colors.danger : theme.colors.warning)
+                  : theme.colors.border;
+
+              const cardBgColor = isRectified
+                ? theme.colors.successSoft
+                : isConfirmedDiscrepancy
+                  ? (isShortage ? theme.colors.dangerSoft : theme.colors.cardBackground)
+                  : theme.colors.cardBackground;
 
               return (
                 <Card
                   key={item.id}
                   padding="m"
                   borderRadius="xl"
-                  borderWidth={1}
+                  borderWidth={isConfirmedAndSaved ? 1.5 : 1}
                   style={{
-                    gap: 8,
-                    borderColor:
-                      isSavedMatched && !isEditing
-                        ? theme.colors.success
-                        : theme.colors.border,
+                    gap: 10,
+                    backgroundColor: cardBgColor,
+                    borderColor: cardBorderColor,
+                    borderLeftWidth: isConfirmedAndSaved ? 5 : 1,
+                    borderLeftColor: cardBorderColor,
                   }}
                 >
                   {/* FILA 1: IDENTIFICACIÓN (SKU + OT) + SALIDA AL DETALLE */}
@@ -499,7 +522,12 @@ export default function ProductosFaltantesScreen() {
                         {item.codigo} · {item.orderCode}
                       </Text>
                       {item.isColdChain && (
-                        <Badge label="Frío" tone="neutral" size="sm" icon={Snowflake} />
+                        <Badge
+                          label="Frío"
+                          tone="neutral"
+                          size="sm"
+                          icon={Snowflake}
+                        />
                       )}
                     </View>
 
@@ -529,7 +557,7 @@ export default function ProductosFaltantesScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  {/* FILA 2: PRODUCTO + MAGNITUD DE LA DIFERENCIA */}
+                  {/* FILA 2: PRODUCTO + BADGE (NEUTRO ANTES DE GUARDAR, VERDE/ROJO AL GUARDAR) */}
                   <View
                     style={{
                       flexDirection: "row",
@@ -541,17 +569,33 @@ export default function ProductosFaltantesScreen() {
                     <Text
                       variant="subtitle"
                       numberOfLines={2}
-                      style={{ flex: 1, fontSize: 14, fontWeight: "700", color: theme.colors.foreground }}
+                      style={{
+                        flex: 1,
+                        fontSize: 14,
+                        fontWeight: "700",
+                        color: theme.colors.foreground,
+                      }}
                     >
                       {item.nombre}
                     </Text>
 
-                    {isSavedMatched && !isEditing ? (
+                    {isRectified ? (
                       <Badge
-                        label="Ajustado"
+                        label="Rectificado (Conforme ✓)"
                         tone="success"
                         size="sm"
                         icon={CheckCircle2}
+                      />
+                    ) : isConfirmedDiscrepancy ? (
+                      <Badge
+                        label={
+                          item.difference > 0
+                            ? `+${item.difference} Sobrante Confirmado`
+                            : `${item.difference} Faltante Confirmado`
+                        }
+                        tone={item.difference > 0 ? "warning" : "danger"}
+                        size="sm"
+                        icon={AlertTriangle}
                       />
                     ) : (
                       <Badge
@@ -560,26 +604,29 @@ export default function ProductosFaltantesScreen() {
                             ? `+${item.difference} Sobrante`
                             : `${item.difference} Faltante`
                         }
-                        tone={item.difference > 0 ? "warning" : "danger"}
+                        tone="neutral"
                         size="sm"
                       />
                     )}
                   </View>
 
-                  {/* FILA 3: COMPARATIVO ESPERADO VS CONTADO */}
+                  {/* FILA 3: COMPARATIVO ESPERADO EN OT VS CONTADO POR CHOFER */}
                   <View
                     style={{
-                      backgroundColor: theme.colors.secondary,
-                      borderRadius: 8,
-                      paddingHorizontal: 10,
-                      paddingVertical: 8,
-                      gap: 6,
+                      backgroundColor: isConfirmedAndSaved
+                        ? theme.colors.cardBackground
+                        : theme.colors.secondary,
+                      borderRadius: 10,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      gap: 8,
+                      borderWidth: 1,
+                      borderColor: isConfirmedAndSaved
+                        ? (isRectified ? theme.colors.success + "40" : theme.colors.danger + "40")
+                        : theme.colors.border,
                     }}
                   >
-                    <TouchableOpacity
-                      disabled={!isEditing || isSavedMatched}
-                      onPress={() => handleSetExpectedItem(item)}
-                      activeOpacity={0.7}
+                    <View
                       style={{
                         flexDirection: "row",
                         justifyContent: "space-between",
@@ -599,21 +646,29 @@ export default function ProductosFaltantesScreen() {
                           variant="caption"
                           style={{
                             fontSize: 11,
+                            fontWeight: "600",
                             color: theme.colors.mutedForeground,
                           }}
                         >
                           Esperado en OT
                         </Text>
-                        {isEditing && !isSavedMatched && (
-                          <View
+                        {/* EL BOTÓN RECTIFICAR SOLO SE MUESTRA ANTES DE GUARDAR (DESAPARECE AL GUARDAR) */}
+                        {!isConfirmedAndSaved && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              handleSetExpectedItem(item);
+                            }}
+                            activeOpacity={0.8}
                             style={{
                               flexDirection: "row",
                               alignItems: "center",
-                              gap: 3,
-                              paddingHorizontal: 6,
-                              paddingVertical: 2,
-                              borderRadius: 4,
-                              backgroundColor: theme.colors.primarySoft,
+                              gap: 4,
+                              paddingHorizontal: 7,
+                              paddingVertical: 3,
+                              borderRadius: 6,
+                              backgroundColor: theme.colors.cardBackground,
+                              borderWidth: 1,
+                              borderColor: theme.colors.border,
                             }}
                           >
                             <RotateCcw size={10} color={theme.colors.primary} />
@@ -624,32 +679,29 @@ export default function ProductosFaltantesScreen() {
                                 color: theme.colors.primary,
                               }}
                             >
-                              Aplicar
+                              Rectificar a OT
                             </Text>
-                          </View>
+                          </TouchableOpacity>
                         )}
                       </View>
                       <Text
                         variant="label"
                         numberOfLines={1}
                         style={{
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: "700",
-                          color:
-                            isEditing && !isSavedMatched
-                              ? theme.colors.primary
-                              : theme.colors.foreground,
-                          textDecorationLine:
-                            isEditing && !isSavedMatched ? "underline" : "none",
+                          color: isRectified
+                            ? theme.colors.success
+                            : theme.colors.foreground,
                         }}
                       >
                         {formatBoxUnit(
                           item.expectedBoxes,
                           item.expectedQty - item.expectedBoxes * item.cajaSize,
-                          item.expectedQty
+                          item.expectedQty,
                         )}
                       </Text>
-                    </TouchableOpacity>
+                    </View>
 
                     <View
                       style={{
@@ -657,6 +709,9 @@ export default function ProductosFaltantesScreen() {
                         justifyContent: "space-between",
                         alignItems: "center",
                         gap: 8,
+                        paddingTop: 6,
+                        borderTopWidth: 1,
+                        borderTopColor: theme.colors.border + "80",
                       }}
                     >
                       <Text
@@ -673,41 +728,49 @@ export default function ProductosFaltantesScreen() {
                         numberOfLines={1}
                         style={{
                           fontSize: 12,
-                          fontWeight: "800",
-                          color: accentColor,
+                          fontWeight: "700",
+                          color: isConfirmedAndSaved
+                            ? (isRectified
+                                ? theme.colors.success
+                                : isShortage
+                                  ? theme.colors.danger
+                                  : theme.colors.warning)
+                            : theme.colors.foreground,
                         }}
                       >
                         {formatBoxUnit(
                           item.driverBoxes,
                           item.driverUnits,
-                          item.driverQty
+                          item.driverQty,
                         )}
                       </Text>
                     </View>
                   </View>
 
-                  {/* FILA 4: CANTIDAD CONSOLIDADA */}
+                  {/* FILA 4: CANTIDAD CONSOLIDADA / RESOLUCIÓN */}
                   <View
                     style={{
                       gap: 8,
-                      paddingTop: 8,
-                      borderTopWidth: 1,
-                      borderTopColor: theme.colors.border,
+                      paddingTop: 4,
                     }}
                   >
                     {!isEditing && isConfirmed ? (
-                      /* ESTADO RESOLVIDO / CONFIRMADO: SIN BOTONES NI STEPPERS DE CAJA/UNIDADES */
+                      /* ESTADO RESOLVIDO / CONFIRMADO */
                       <View
                         style={{
                           flexDirection: "row",
                           alignItems: "center",
                           justifyContent: "space-between",
-                          backgroundColor: isSavedMatched ? theme.colors.successSoft : theme.colors.secondary,
-                          borderColor: isSavedMatched ? theme.colors.success : theme.colors.border,
+                          backgroundColor: isSavedMatched
+                            ? theme.colors.cardBackground
+                            : theme.colors.secondary,
+                          borderColor: isSavedMatched
+                            ? theme.colors.success
+                            : theme.colors.border,
                           borderWidth: 1,
                           borderRadius: 10,
                           paddingHorizontal: 12,
-                          paddingVertical: 9,
+                          paddingVertical: 10,
                           gap: 8,
                         }}
                       >
@@ -720,42 +783,53 @@ export default function ProductosFaltantesScreen() {
                           }}
                         >
                           <CheckCircle2
-                            size={16}
-                            color={isSavedMatched ? theme.colors.success : theme.colors.primary}
+                            size={18}
+                            color={
+                              isSavedMatched
+                                ? theme.colors.success
+                                : theme.colors.primary
+                            }
                           />
                           <View style={{ flex: 1, gap: 1 }}>
                             <Text
                               variant="label"
                               style={{
-                                fontSize: 12,
+                                fontSize: 13,
                                 fontWeight: "700",
-                                color: isSavedMatched ? theme.colors.success : theme.colors.foreground,
+                                color: isSavedMatched
+                                  ? theme.colors.success
+                                  : theme.colors.foreground,
                               }}
                             >
                               {isSavedMatched
-                                ? `Total conforme: ${formatBoxUnit(
+                                ? `Total Conforme: ${formatBoxUnit(
                                     parseInt(item.correctedBoxes || "0", 10),
                                     parseInt(item.correctedUnits || "0", 10),
-                                    item.expectedQty
+                                    item.expectedQty,
                                   )}`
-                                : `Total confirmado: ${formatBoxUnit(
+                                : `Total Confirmado: ${formatBoxUnit(
                                     parseInt(item.correctedBoxes || "0", 10),
                                     parseInt(item.correctedUnits || "0", 10),
-                                    boxUnitTotal(currentCorrection, item.cajaSize)
+                                    boxUnitTotal(
+                                      currentCorrection,
+                                      item.cajaSize,
+                                    ),
                                   )}`}
                             </Text>
                             <Text
                               variant="caption"
                               style={{
-                                fontSize: 10,
-                                color: theme.colors.mutedForeground,
+                                fontSize: 11,
+                                color: isSavedMatched
+                                  ? theme.colors.success
+                                  : theme.colors.mutedForeground,
                               }}
                             >
                               {item.selectedType
                                 ? `Clasificación: ${item.selectedType}`
                                 : isSavedMatched
-                                ? "Diferencia corregida sin observaciones"
-                                : "Diferencia confirmada"}
+                                  ? "Diferencia rectificada • Coincide con OT (0 dif.)"
+                                  : "Diferencia física confirmada"}
                             </Text>
                           </View>
                         </View>
@@ -769,7 +843,7 @@ export default function ProductosFaltantesScreen() {
                         />
                       </View>
                     ) : (
-                      /* MODO EDICIÓN: STEPPERS Y BOTÓN GUARDAR SIEMPRE DISPONIBLE */
+                      /* MODO EDICIÓN: STEPPERS INTERACTIVOS */
                       <View style={{ gap: 8 }}>
                         <BoxUnitCounter
                           value={currentCorrection}

@@ -15,9 +15,10 @@ import {
   Check,
   StickyNote,
   Lock,
-  ArrowLeft,
   Eye,
   AlertTriangle,
+  Pencil,
+  RotateCcw,
 } from 'lucide-react-native';
 
 import { findRouteById, navigateTo } from '@/navigation/registry';
@@ -33,7 +34,6 @@ import {
   boxUnitTotal,
   formatBoxUnit,
   type BoxUnitValue,
-  CountProgressHeader,
   type DialogType,
 } from '@/shared/ui';
 import { Box, Text, useAppTheme } from '@/theme';
@@ -133,8 +133,83 @@ export default function RevisionSemaforoExecuteScreen() {
       expectedQty: producto.expectedQty,
     };
 
-    setItemsAuditados((prev) => [...prev, nuevoRegistro]);
+    setItemsAuditados((prev) => {
+      const exists = prev.some((r) => r.codigo === producto.codigo);
+      if (exists) {
+        return prev.map((r) => (r.codigo === producto.codigo ? nuevoRegistro : r));
+      }
+      return [...prev, nuevoRegistro];
+    });
     setHighlightedCode(null);
+  };
+
+  const handleApplyExpectedDraft = (producto: SemaforoAuditProduct) => {
+    const expectedBoxes = Math.floor(producto.expectedQty / producto.cajaSize);
+    const expectedUnits = producto.expectedQty % producto.cajaSize;
+    setDraftCounts((prev) => ({
+      ...prev,
+      [producto.codigo]: {
+        cajas: expectedBoxes.toString(),
+        unidades: expectedUnits.toString(),
+      },
+    }));
+  };
+
+  const handleApplyExpectedEdit = (producto: SemaforoAuditProduct) => {
+    const expectedBoxes = Math.floor(producto.expectedQty / producto.cajaSize);
+    const expectedUnits = producto.expectedQty % producto.cajaSize;
+    setEditDrafts((prev) => ({
+      ...prev,
+      [producto.codigo]: {
+        cajas: expectedBoxes.toString(),
+        unidades: expectedUnits.toString(),
+      },
+    }));
+  };
+
+  const handleStartEdit = (producto: SemaforoAuditProduct, registro: CountedAuditRecord) => {
+    setEditDrafts((prev) => ({
+      ...prev,
+      [producto.codigo]: {
+        cajas: registro.numCajas.toString(),
+        unidades: registro.numUnidades.toString(),
+      },
+    }));
+  };
+
+  const handleCancelEdit = (codigo: string) => {
+    setEditDrafts((prev) => {
+      const next = { ...prev };
+      delete next[codigo];
+      return next;
+    });
+  };
+
+  const handleSaveEdit = (producto: SemaforoAuditProduct) => {
+    const draft = editDrafts[producto.codigo];
+    if (!draft) return;
+    const numCajas = parseInt(draft.cajas || '0', 10) || 0;
+    const numUnidades = parseInt(draft.unidades || '0', 10) || 0;
+    const totalContado = boxUnitTotal(draft, producto.cajaSize);
+
+    setItemsAuditados((prev) =>
+      prev.map((rec) =>
+        rec.codigo === producto.codigo
+          ? {
+              ...rec,
+              numCajas,
+              numUnidades,
+              totalContado,
+            }
+          : rec
+      )
+    );
+
+    setEditDrafts((prev) => {
+      const next = { ...prev };
+      delete next[producto.codigo];
+      return next;
+    });
   };
 
   const handleBarcodeScanned = (scannedCode: string) => {
@@ -146,66 +221,94 @@ export default function RevisionSemaforoExecuteScreen() {
     setHighlightedCode(found ? found.codigo : null);
   };
 
-  const getEditValue = (registro: CountedAuditRecord): BoxUnitValue =>
-    editDrafts[registro.codigo] ?? {
-      cajas: registro.numCajas.toString(),
-      unidades: registro.numUnidades.toString(),
-    };
-
   const setEditValue = (codigo: string, next: BoxUnitValue) =>
     setEditDrafts((prev) => ({ ...prev, [codigo]: next }));
 
-  const commitEdit = (registro: CountedAuditRecord) => {
-    const draft = editDrafts[registro.codigo];
-    if (!draft || consolidado) return;
-
-    setItemsAuditados((prev) =>
-      prev.map((rec) =>
-        rec.codigo === registro.codigo
-          ? {
-              ...rec,
-              numCajas: parseInt(draft.cajas || '0', 10) || 0,
-              numUnidades: parseInt(draft.unidades || '0', 10) || 0,
-              totalContado: boxUnitTotal(draft, registro.cajaSize),
-            }
-          : rec
-      )
-    );
-
-    setEditDrafts((prev) => {
-      const next = { ...prev };
-      delete next[registro.codigo];
-      return next;
-    });
-  };
-
   const handleSaveNote = (text: string) => {
     if (!noteCodigo) return;
-    setObservations((prev) => {
-      const next = { ...prev };
-      if (text.length === 0) delete next[noteCodigo];
-      else next[noteCodigo] = text;
-      return next;
-    });
+    const trimmed = text.trim();
+    if (noteCodigo === '__ORDER__') {
+      setObservations((prev) => {
+        const next = { ...prev };
+        if (trimmed.length === 0) {
+          delete next['__ORDER__'];
+        } else {
+          next['__ORDER__'] = trimmed;
+          activeOrder.products.forEach((p) => {
+            next[p.codigo] = trimmed;
+          });
+        }
+        return next;
+      });
+    } else {
+      setObservations((prev) => {
+        const next = { ...prev };
+        if (trimmed.length === 0) delete next[noteCodigo];
+        else next[noteCodigo] = trimmed;
+        return next;
+      });
+    }
     setNoteCodigo(null);
   };
 
-  // MÉTRICAS EN MODO EJECUCIÓN
+  // MÉTRICAS EN MODO EJECUCIÓN (Cálculo estricto considerando cajas y unidades)
+  const currentProductCounts = useMemo(() => {
+    return activeOrder.products.map((p) => {
+      const registro = itemsAuditados.find((r) => r.codigo === p.codigo);
+      const isEditing = !!editDrafts[p.codigo];
+      const draft = isEditing ? editDrafts[p.codigo] : draftCounts[p.codigo];
+
+      if (registro && !isEditing) {
+        return {
+          producto: p,
+          numCajas: registro.numCajas,
+          numUnidades: registro.numUnidades,
+          totalContado: registro.totalContado,
+          isStrictlyZero: registro.numCajas === 0 && registro.numUnidades === 0,
+          isMatch: registro.totalContado === p.expectedQty,
+          isRegistered: true,
+        };
+      }
+
+      const numCajas = draft ? parseInt(draft.cajas || '0', 10) || 0 : 0;
+      const numUnidades = draft ? parseInt(draft.unidades || '0', 10) || 0 : 0;
+      const totalContado = draft ? boxUnitTotal(draft, p.cajaSize) : 0;
+      const isStrictlyZero = numCajas === 0 && numUnidades === 0;
+
+      return {
+        producto: p,
+        numCajas,
+        numUnidades,
+        totalContado,
+        isStrictlyZero,
+        isMatch: totalContado === p.expectedQty,
+        isRegistered: false,
+      };
+    });
+  }, [activeOrder.products, itemsAuditados, editDrafts, draftCounts]);
+
   const stats = useMemo(() => {
     let matches = 0;
     let mismatches = 0;
-    itemsAuditados.forEach((item) => {
-      if (item.totalContado === item.expectedQty) matches++;
+    let strictlyZeroCount = 0;
+    let registeredCount = 0;
+
+    currentProductCounts.forEach((item) => {
+      if (item.isRegistered) registeredCount++;
+      if (item.isStrictlyZero) strictlyZeroCount++;
+      if (item.isMatch) matches++;
       else mismatches++;
     });
+
     return {
-      contados: itemsAuditados.length,
+      contados: registeredCount,
       total: activeOrder.products.length,
-      pendientes: activeOrder.products.length - itemsAuditados.length,
+      pendientes: activeOrder.products.length - registeredCount,
+      strictlyZeroCount,
       matches,
       mismatches,
     };
-  }, [itemsAuditados, activeOrder.products.length]);
+  }, [currentProductCounts, activeOrder.products.length]);
 
   // MÉTRICAS EN MODO AUDITORÍA COMPLETADA
   const completedStats = useMemo(() => {
@@ -240,32 +343,70 @@ export default function RevisionSemaforoExecuteScreen() {
     closeDialog();
   };
 
+  const handleApplyAllExpected = () => {
+    const nuevosRegistros: CountedAuditRecord[] = activeOrder.products.map((p) => {
+      const expectedBoxes = Math.floor(p.expectedQty / p.cajaSize);
+      const expectedUnits = p.expectedQty % p.cajaSize;
+      return {
+        id: `audit-${p.codigo}`,
+        codigo: p.codigo,
+        nombre: p.nombre,
+        numCajas: expectedBoxes,
+        numUnidades: expectedUnits,
+        totalContado: p.expectedQty,
+        cajaSize: p.cajaSize,
+        isCold: p.isCold,
+        expectedQty: p.expectedQty,
+      };
+    });
+    setItemsAuditados(nuevosRegistros);
+    setEditDrafts({});
+  };
+
   const confirmarConsolidacion = () => {
     setConsolidado(true);
-    completeSemaforoAudit(activeOrder.id, itemsAuditados, observations);
-    dialogSiguiente.current = {
+
+    const todosLosRegistros: CountedAuditRecord[] = currentProductCounts.map((item) => ({
+      id: `audit-${item.producto.codigo}`,
+      codigo: item.producto.codigo,
+      nombre: item.producto.nombre,
+      numCajas: item.numCajas,
+      numUnidades: item.numUnidades,
+      totalContado: item.totalContado,
+      cajaSize: item.producto.cajaSize,
+      isCold: item.producto.isCold,
+      expectedQty: item.producto.expectedQty,
+    }));
+
+    setItemsAuditados(todosLosRegistros);
+    completeSemaforoAudit(activeOrder.id, todosLosRegistros, observations);
+
+    setDialogConfig({
       visible: true,
-      title: 'Auditoría consolidada',
-      message: `Se consolidó la revisión de ${stats.contados} de ${stats.total} productos en la Orden ${activeOrder.orderCode}. El conteo queda cerrado y registrado en el historial.`,
+      title: 'Revisión consolidada',
+      message: `Se consolidó la revisión de ${todosLosRegistros.length} productos en la Orden ${activeOrder.orderCode}. El conteo queda cerrado y registrado en el historial.`,
       type: 'success',
+      buttonText: 'Aceptar',
       onConfirm: handleRedirectToList,
-    };
+    });
   };
 
   const handleConsolidar = () => {
     if (consolidado) return;
 
-    const pendientes =
-      stats.pendientes > 0
-        ? `Quedan ${stats.pendientes} de ${stats.total} productos sin registrar y quedarán fuera de la auditoría. `
-        : '';
+    const { strictlyZeroCount, total, matches, mismatches } = stats;
+
+    let mensaje = `Se consolidará la revisión de ${total} productos (${matches} conformes y ${mismatches} con diferencia).`;
+    if (strictlyZeroCount > 0) {
+      mensaje += `\n\nNota: ${strictlyZeroCount} producto${strictlyZeroCount > 1 ? 's tienen' : ' tiene'} conteo en 0 (tanto en cajas como en unidades).`;
+    }
 
     setDialogConfig({
       visible: true,
-      title: 'Consolidar auditoría',
-      message: `${pendientes}Al consolidar, el conteo queda cerrado oficialmente.`,
-      type: 'warning',
-      buttonText: 'Consolidar',
+      title: 'Consolidar revisión',
+      message: `${mensaje}\n\n¿Deseas finalizar y guardar la revisión?`,
+      type: strictlyZeroCount > 0 || mismatches > 0 ? 'warning' : 'info',
+      buttonText: 'Consolidar y Guardar',
       cancelText: 'Seguir revisando',
       onCancel: closeDialog,
       onConfirm: confirmarConsolidacion,
@@ -292,25 +433,7 @@ export default function RevisionSemaforoExecuteScreen() {
         }}
         keyboardShouldPersistTaps="handled"
       >
-        {/* BOTÓN VOLVER */}
-        <TouchableOpacity
-          onPress={handleRedirectToList}
-          activeOpacity={0.7}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 4,
-            alignSelf: 'flex-start',
-            paddingVertical: 2,
-          }}
-        >
-          <ArrowLeft size={16} color={theme.colors.primary} />
-          <Text style={{ color: theme.colors.primary, fontWeight: '700', fontSize: 13 }}>
-            Todas las revisiones
-          </Text>
-        </TouchableOpacity>
-
-        {/* HEADER DE LA ORDEN DE AUDITORÍA */}
+        {/* HEADER DE LA REVISIÓN SEMÁFORO */}
         <View
           style={{
             backgroundColor: theme.colors.cardBackground,
@@ -324,7 +447,7 @@ export default function RevisionSemaforoExecuteScreen() {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <View style={{ gap: 2, flex: 1 }}>
               <Text variant="header" style={{ fontSize: 17, fontWeight: '800', color: theme.colors.foreground }}>
-                {isAuditCompleted ? 'Detalle de Auditoría:' : 'Auditoría a Ciegas:'} {activeOrder.orderCode}
+                {isAuditCompleted ? 'Detalle de Revisión:' : 'Revisión Semáforo:'} {activeOrder.orderCode}
               </Text>
               <Text variant="caption" numberOfLines={1} style={{ color: theme.colors.mutedForeground, fontSize: 12 }}>
                 {activeOrder.driverName} • {activeOrder.zonaRuta}
@@ -339,7 +462,7 @@ export default function RevisionSemaforoExecuteScreen() {
             />
           </View>
 
-          {/* CADENA DE CONTEO / AUDITORÍA */}
+          {/* CADENA DE CONTEO / VERIFICACIÓN */}
           <View
             style={{
               backgroundColor: theme.colors.secondary,
@@ -379,10 +502,10 @@ export default function RevisionSemaforoExecuteScreen() {
                 <Lock size={13} color={theme.colors.primary} />
               )}
               <Text variant="caption" style={{ fontSize: 11, color: isAuditCompleted ? theme.colors.foreground : theme.colors.primary }}>
-                <Text style={{ fontWeight: '700' }}>Auditor Semáforo: </Text>
+                <Text style={{ fontWeight: '700' }}>Supervisor Semáforo: </Text>
                 {isAuditCompleted
                   ? `${activeOrder.counts.semaphoreAuditor.user} (${activeOrder.counts.semaphoreAuditor.time})`
-                  : 'Conteo ciego en proceso'}
+                  : 'Revisión en proceso'}
               </Text>
             </View>
           </View>
@@ -398,12 +521,12 @@ export default function RevisionSemaforoExecuteScreen() {
         {/* VISTA SEGÚN ESTADO DE LA AUDITORÍA */}
         {isAuditCompleted ? (
           /* ========================================================================= */
-          /* MODO LECTURA: DETALLE DE AUDITORÍA FINALIZADA                            */
+          /* MODO LECTURA: DETALLE DE REVISIÓN FINALIZADA                             */
           /* ========================================================================= */
           <View style={{ gap: 14 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text variant="label" style={{ fontSize: 13, fontWeight: '800', color: theme.colors.foreground }}>
-                Manifiesto auditado ({activeOrder.products.length} productos)
+                Manifiesto revisado ({activeOrder.products.length} productos)
               </Text>
               <View style={{ flexDirection: 'row', gap: 6 }}>
                 <Badge label={`${completedStats.matches} OK`} tone="success" size="sm" />
@@ -418,12 +541,6 @@ export default function RevisionSemaforoExecuteScreen() {
               const diff = auditorTotal - producto.expectedQty;
               const isMatch = diff === 0;
 
-              const driverQty = producto.driverQty ?? producto.expectedQty;
-              const driverBoxes =
-                producto.driverBoxes ?? Math.floor(driverQty / producto.cajaSize);
-              const driverUnits =
-                producto.driverUnits ?? driverQty % producto.cajaSize;
-
               const auditorBoxes =
                 producto.auditorBoxes ?? Math.floor(auditorTotal / producto.cajaSize);
               const auditorUnits =
@@ -431,16 +548,20 @@ export default function RevisionSemaforoExecuteScreen() {
 
               const expectedBoxes = Math.floor(producto.expectedQty / producto.cajaSize);
               const expectedUnits = producto.expectedQty % producto.cajaSize;
+              const diffLabel = diff > 0 ? `+${diff} Diferencias` : `${diff} Diferencias`;
 
               return (
                 <Card
                   key={producto.id}
                   padding="m"
                   borderRadius="xl"
-                  borderWidth={1}
+                  borderWidth={1.5}
                   style={{
                     gap: 10,
                     borderColor: isMatch ? theme.colors.success : theme.colors.danger,
+                    backgroundColor: isMatch ? theme.colors.successSoft : theme.colors.dangerSoft,
+                    borderLeftWidth: 5,
+                    borderLeftColor: isMatch ? theme.colors.success : theme.colors.danger,
                   }}
                 >
                   {/* FILA 1: SKU + FRÍO + BADGE RESULTADO */}
@@ -453,14 +574,8 @@ export default function RevisionSemaforoExecuteScreen() {
                     </View>
 
                     <Badge
-                      label={
-                        isMatch
-                          ? 'Conforme'
-                          : diff > 0
-                          ? `+${diff} Sobrante`
-                          : `${diff} Faltante`
-                      }
-                      tone={isMatch ? 'success' : diff > 0 ? 'warning' : 'danger'}
+                      label={isMatch ? 'Conforme' : diffLabel}
+                      tone={isMatch ? 'success' : 'danger'}
                       size="sm"
                       icon={isMatch ? CheckCircle2 : AlertTriangle}
                     />
@@ -471,7 +586,7 @@ export default function RevisionSemaforoExecuteScreen() {
                     {producto.nombre}
                   </Text>
 
-                  {/* FILA 3: COMPARATIVO COMPLETO DE LA CADENA DE CONTEO */}
+                  {/* FILA 3: COMPARATIVO ESPERADO VS REVISIÓN */}
                   <View
                     style={{
                       backgroundColor: isMatch ? theme.colors.successSoft : theme.colors.secondary,
@@ -492,15 +607,6 @@ export default function RevisionSemaforoExecuteScreen() {
                       </Text>
                     </View>
 
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
-                        Contado por el Chofer
-                      </Text>
-                      <Text variant="label" style={{ fontSize: 12, fontWeight: '700', color: theme.colors.foreground }}>
-                        {formatBoxUnit(driverBoxes, driverUnits, driverQty)}
-                      </Text>
-                    </View>
-
                     <View
                       style={{
                         flexDirection: 'row',
@@ -512,7 +618,7 @@ export default function RevisionSemaforoExecuteScreen() {
                       }}
                     >
                       <Text variant="caption" style={{ fontSize: 11, fontWeight: '800', color: isMatch ? theme.colors.success : theme.colors.danger }}>
-                        Auditoría Semáforo
+                        Revisión Semáforo
                       </Text>
                       <Text variant="label" style={{ fontSize: 13, fontWeight: '800', color: isMatch ? theme.colors.success : theme.colors.danger }}>
                         {formatBoxUnit(auditorBoxes, auditorUnits, auditorTotal)}
@@ -522,7 +628,9 @@ export default function RevisionSemaforoExecuteScreen() {
 
                   {/* OBSERVACIÓN REGISTRADA */}
                   {producto.observation ? (
-                    <View
+                    <TouchableOpacity
+                      onPress={() => setNoteCodigo(producto.codigo)}
+                      activeOpacity={0.7}
                       style={{
                         flexDirection: 'row',
                         alignItems: 'flex-start',
@@ -537,7 +645,7 @@ export default function RevisionSemaforoExecuteScreen() {
                         <Text style={{ fontWeight: '700' }}>Observación: </Text>
                         {producto.observation}
                       </Text>
-                    </View>
+                    </TouchableOpacity>
                   ) : null}
                 </Card>
               );
@@ -545,63 +653,121 @@ export default function RevisionSemaforoExecuteScreen() {
           </View>
         ) : (
           /* ========================================================================= */
-          /* MODO EJECUCIÓN: CONTEO A CIEGAS ACTIVO                                   */
+          /* MODO EJECUCIÓN: REVISIÓN SEMÁFORO ACTIVA                                 */
           /* ========================================================================= */
           <View style={{ gap: 14 }}>
-            {/* BARRA DE PROGRESO */}
-            <CountProgressHeader
-              title="Progreso de Auditoría"
-              counted={stats.contados}
-              total={stats.total}
-              unitLabel="productos"
-            />
+            {/* HERRAMIENTAS RÁPIDAS: COPIAR TODO DE OT, OBSERVACIÓN GENERAL Y ESCÁNER */}
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                onPress={handleApplyAllExpected}
+                activeOpacity={0.8}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  backgroundColor: theme.colors.secondary,
+                  borderRadius: 12,
+                  paddingVertical: 10,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                }}
+              >
+                <CheckCheck size={15} color={theme.colors.success} />
+                <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.foreground }}>
+                  Copiar OT
+                </Text>
+              </TouchableOpacity>
 
-            {/* BOTÓN DE ESCÁNER DE CÓDIGO DE BARRAS */}
-            <TouchableOpacity
-              onPress={() => setIsBarcodeScannerVisible(true)}
-              activeOpacity={0.8}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                backgroundColor: theme.colors.secondary,
-                borderRadius: 12,
-                paddingVertical: 10,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-              }}
-            >
-              <Camera size={16} color={theme.colors.primary} />
-              <Text variant="label" style={{ fontSize: 13, fontWeight: '700', color: theme.colors.primary }}>
-                Escanear Código de Barras
-              </Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setNoteCodigo('__ORDER__')}
+                activeOpacity={0.8}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  backgroundColor: observations['__ORDER__'] ? theme.colors.primarySoft : theme.colors.secondary,
+                  borderRadius: 12,
+                  paddingVertical: 10,
+                  borderWidth: 1,
+                  borderColor: observations['__ORDER__'] ? theme.colors.primary : theme.colors.border,
+                }}
+              >
+                <StickyNote size={15} color={theme.colors.primary} />
+                <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
+                  Observación
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setIsBarcodeScannerVisible(true)}
+                activeOpacity={0.8}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  backgroundColor: theme.colors.secondary,
+                  borderRadius: 12,
+                  paddingVertical: 10,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                }}
+              >
+                <Camera size={15} color={theme.colors.primary} />
+                <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
+                  Escanear
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {filteredProducts.map((producto) => {
               const registro = itemsAuditados.find((r) => r.codigo === producto.codigo);
-              const estaRegistrado = !!registro;
-              const draft = getDraft(producto.codigo);
-              const draftTotal = boxUnitTotal(draft, producto.cajaSize);
-              const puedeRegistrar = draftTotal > 0;
+              const isEditing = !!editDrafts[producto.codigo];
+              const estaRegistrado = !!registro && !isEditing;
+
+              const currentDraft = isEditing
+                ? editDrafts[producto.codigo]
+                : (draftCounts[producto.codigo] ?? EMPTY_BOX_UNIT);
+              const currentTotal = isEditing
+                ? boxUnitTotal(currentDraft, producto.cajaSize)
+                : (estaRegistrado ? registro.totalContado : boxUnitTotal(currentDraft, producto.cajaSize));
+
+              const expectedBoxes = Math.floor(producto.expectedQty / producto.cajaSize);
+              const expectedUnits = producto.expectedQty % producto.cajaSize;
+
+              const isMatch = currentTotal === producto.expectedQty;
+              const liveDiff = currentTotal - producto.expectedQty;
+              const diffLabel = liveDiff > 0 ? `+${liveDiff} Diferencias` : `${liveDiff} Diferencias`;
+
+              const hasValue = estaRegistrado || isEditing || currentTotal > 0 || !!currentDraft.cajas || !!currentDraft.unidades;
+
+              const cardBorderColor = hasValue
+                ? (isMatch ? theme.colors.success : theme.colors.danger)
+                : theme.colors.border;
+              const cardBgColor = hasValue
+                ? (isMatch ? theme.colors.successSoft : theme.colors.dangerSoft)
+                : theme.colors.cardBackground;
 
               return (
                 <Card
                   key={producto.id}
                   padding="m"
                   borderRadius="xl"
-                  borderWidth={1}
+                  borderWidth={hasValue ? 1.5 : 1}
                   style={{
                     gap: 10,
-                    borderColor: estaRegistrado
-                      ? registro.totalContado === registro.expectedQty
-                        ? theme.colors.success
-                        : theme.colors.danger
-                      : highlightedCode === producto.codigo
-                      ? theme.colors.primary
-                      : theme.colors.border,
+                    backgroundColor: cardBgColor,
+                    borderColor: cardBorderColor,
+                    borderLeftWidth: hasValue ? 5 : 1,
+                    borderLeftColor: cardBorderColor,
                   }}
                 >
+                  {/* FILA 1: SKU + FRÍO + BADGE */}
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
                       <Text variant="label" style={{ fontSize: 12, fontWeight: '800', color: theme.colors.mutedForeground }}>
@@ -612,68 +778,154 @@ export default function RevisionSemaforoExecuteScreen() {
 
                     {estaRegistrado ? (
                       <Badge
-                        label={
-                          registro.totalContado === registro.expectedQty
-                            ? 'Conforme'
-                            : `${registro.totalContado - registro.expectedQty > 0 ? '+' : ''}${
-                                registro.totalContado - registro.expectedQty
-                              } Dif.`
-                        }
-                        tone={registro.totalContado === registro.expectedQty ? 'success' : 'danger'}
+                        label={isMatch ? 'Conforme ✓' : diffLabel}
+                        tone={isMatch ? 'success' : 'danger'}
                         size="sm"
-                        icon={registro.totalContado === registro.expectedQty ? CheckCircle2 : AlertTriangle}
+                        icon={isMatch ? CheckCircle2 : AlertTriangle}
                       />
                     ) : (
-                      <Badge label="Pendiente de conteo" tone="neutral" size="sm" />
+                      <Badge
+                        label={
+                          currentTotal > 0
+                            ? (isMatch ? 'Conforme' : diffLabel)
+                            : 'Pendiente de conteo'
+                        }
+                        tone={currentTotal > 0 ? (isMatch ? 'success' : 'danger') : 'neutral'}
+                        size="sm"
+                        icon={currentTotal > 0 ? (isMatch ? CheckCircle2 : AlertTriangle) : undefined}
+                      />
                     )}
                   </View>
 
+                  {/* FILA 2: NOMBRE DEL PRODUCTO */}
                   <Text variant="subtitle" numberOfLines={2} style={{ fontSize: 14, fontWeight: '700', color: theme.colors.foreground }}>
                     {producto.nombre}
                   </Text>
 
-                  {estaRegistrado ? (
-                    <View style={{ gap: 8 }}>
+                  {/* FILA 3: COMPARATIVO ESPERADO EN OT & TU CONTEO */}
+                  <View
+                    style={{
+                      backgroundColor: estaRegistrado ? theme.colors.cardBackground : theme.colors.secondary,
+                      borderRadius: 10,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      gap: 8,
+                      borderWidth: 1,
+                      borderColor: estaRegistrado
+                        ? (isMatch ? theme.colors.success + '40' : theme.colors.danger + '40')
+                        : theme.colors.border,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text variant="caption" style={{ fontSize: 11, fontWeight: '600', color: theme.colors.mutedForeground }}>
+                          Esperado en OT
+                        </Text>
+                        {!estaRegistrado && (
+                          <TouchableOpacity
+                            onPress={() => isEditing ? handleApplyExpectedEdit(producto) : handleApplyExpectedDraft(producto)}
+                            activeOpacity={0.8}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 4,
+                              paddingHorizontal: 7,
+                              paddingVertical: 3,
+                              borderRadius: 6,
+                              backgroundColor: theme.colors.cardBackground,
+                              borderWidth: 1,
+                              borderColor: theme.colors.border,
+                            }}
+                          >
+                            <RotateCcw size={10} color={theme.colors.primary} />
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: theme.colors.primary }}>
+                              Aplicar OT
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <Text variant="label" style={{ fontSize: 13, fontWeight: '700', color: theme.colors.foreground }}>
+                        {formatBoxUnit(expectedBoxes, expectedUnits, producto.expectedQty)}
+                      </Text>
+                    </View>
+
+                    {estaRegistrado && (
                       <View
                         style={{
-                          backgroundColor:
-                            registro.totalContado === registro.expectedQty
-                              ? theme.colors.successSoft
-                              : theme.colors.secondary,
-                          borderRadius: 8,
-                          padding: 10,
-                          gap: 6,
-                          borderWidth: 1,
-                          borderColor:
-                            registro.totalContado === registro.expectedQty
-                              ? theme.colors.success
-                              : theme.colors.border,
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          paddingTop: 6,
+                          borderTopWidth: 1,
+                          borderTopColor: theme.colors.border + '80',
                         }}
                       >
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
-                            Esperado en OT
-                          </Text>
-                          <Text variant="label" style={{ fontSize: 12, fontWeight: '700', color: theme.colors.foreground }}>
-                            {formatBoxUnit(
-                              Math.floor(registro.expectedQty / registro.cajaSize),
-                              registro.expectedQty % registro.cajaSize,
-                              registro.expectedQty
-                            )}
-                          </Text>
-                        </View>
-
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Text variant="caption" style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
-                            Tu Conteo
-                          </Text>
-                          <Text variant="label" style={{ fontSize: 12, fontWeight: '800', color: theme.colors.primary }}>
-                            {formatBoxUnit(registro.numCajas, registro.numUnidades, registro.totalContado)}
-                          </Text>
-                        </View>
+                        <Text variant="caption" style={{ fontSize: 11, fontWeight: '800', color: isMatch ? theme.colors.success : theme.colors.danger }}>
+                          Tu Conteo (Supervisor)
+                        </Text>
+                        <Text variant="label" style={{ fontSize: 13, fontWeight: '800', color: isMatch ? theme.colors.success : theme.colors.danger }}>
+                          {formatBoxUnit(registro.numCajas, registro.numUnidades, registro.totalContado)}
+                        </Text>
                       </View>
+                    )}
+                  </View>
 
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  {/* FILA 4: CONTROLES DE CONTEO O BOTÓN MODIFICAR / OBSERVACIÓN */}
+                  {estaRegistrado ? (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 2 }}>
+                      <TouchableOpacity
+                        onPress={() => setNoteCodigo(producto.codigo)}
+                        activeOpacity={0.7}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                      >
+                        <StickyNote size={13} color={observations[producto.codigo] ? theme.colors.primary : theme.colors.mutedForeground} />
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: observations[producto.codigo] ? theme.colors.primary : theme.colors.mutedForeground }}>
+                          {observations[producto.codigo] ? 'Ver observación' : '+ Observación'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <Button
+                        label="Modificar"
+                        icon={Pencil}
+                        variant="secondary"
+                        size="xs"
+                        onPress={() => handleStartEdit(producto, registro)}
+                      />
+                    </View>
+                  ) : (
+                    <View style={{ gap: 8, paddingTop: 2 }}>
+                      <BoxUnitCounter
+                        value={currentDraft}
+                        onChange={(next) => {
+                          if (isEditing) {
+                            setEditValue(producto.codigo, next);
+                          } else {
+                            setDraftCounts((prev) => ({ ...prev, [producto.codigo]: next }));
+                          }
+                        }}
+                        cajaSize={producto.cajaSize}
+                        action={
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            {isEditing && (
+                              <Button
+                                label="Cancelar"
+                                variant="secondary"
+                                size="xs"
+                                onPress={() => handleCancelEdit(producto.codigo)}
+                              />
+                            )}
+                            <Button
+                              label="Guardar Conteo"
+                              icon={Check}
+                              variant="primary"
+                              size="xs"
+                              onPress={() => isEditing ? handleSaveEdit(producto) : handleRegisterRow(producto)}
+                            />
+                          </View>
+                        }
+                      />
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center', paddingTop: 2 }}>
                         <TouchableOpacity
                           onPress={() => setNoteCodigo(producto.codigo)}
                           activeOpacity={0.7}
@@ -681,32 +933,33 @@ export default function RevisionSemaforoExecuteScreen() {
                         >
                           <StickyNote size={13} color={observations[producto.codigo] ? theme.colors.primary : theme.colors.mutedForeground} />
                           <Text style={{ fontSize: 11, fontWeight: '700', color: observations[producto.codigo] ? theme.colors.primary : theme.colors.mutedForeground }}>
-                            {observations[producto.codigo] ? 'Ver observación' : 'Agregar observación'}
+                            {observations[producto.codigo] ? 'Ver observación' : '+ Observación'}
                           </Text>
                         </TouchableOpacity>
                       </View>
                     </View>
-                  ) : (
-                    <View style={{ gap: 8 }}>
-                      <BoxUnitCounter
-                        value={draft}
-                        onChange={(next) =>
-                          setDraftCounts((prev) => ({ ...prev, [producto.codigo]: next }))
-                        }
-                        cajaSize={producto.cajaSize}
-                        action={
-                          <Button
-                            label="Registrar"
-                            icon={Check}
-                            variant="primary"
-                            size="xs"
-                            disabled={!puedeRegistrar}
-                            onPress={() => handleRegisterRow(producto)}
-                          />
-                        }
-                      />
-                    </View>
                   )}
+
+                  {/* PREVIEW DE OBSERVACIÓN EN LA TARJETA */}
+                  {observations[producto.codigo] ? (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'flex-start',
+                        gap: 6,
+                        backgroundColor: theme.colors.secondary,
+                        borderRadius: 8,
+                        padding: 8,
+                        marginTop: 2,
+                      }}
+                    >
+                      <StickyNote size={13} color={theme.colors.primary} style={{ marginTop: 1 }} />
+                      <Text variant="caption" style={{ fontSize: 11, color: theme.colors.foreground, flex: 1 }}>
+                        <Text style={{ fontWeight: '700' }}>Observación: </Text>
+                        {observations[producto.codigo]}
+                      </Text>
+                    </View>
+                  ) : null}
                 </Card>
               );
             })}
@@ -717,19 +970,26 @@ export default function RevisionSemaforoExecuteScreen() {
       {/* BARRA INFERIOR DE ACCIÓN (SOLO EN MODO EJECUCIÓN) */}
       {!isAuditCompleted && (
         <ScreenActionBar
-          actionLabel={consolidado ? 'Consolidada' : 'Consolidar Auditoría'}
+          actionLabel={consolidado ? 'Consolidada' : 'Consolidar Revisión'}
           actionIcon={consolidado ? Lock : CheckCheck}
           tone={consolidado ? 'success' : 'primary'}
           onAction={handleConsolidar}
-          actionDisabled={consolidado || stats.contados === 0}
+          actionDisabled={consolidado}
         >
           <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.foreground }}>
-            {stats.contados} de {stats.total} contados
+            {stats.contados} de {stats.total} verificados
           </Text>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             {stats.matches > 0 && <Badge label={`${stats.matches} OK`} tone="success" size="sm" />}
-            {stats.mismatches > 0 && <Badge label={`${stats.mismatches} Dif.`} tone="danger" size="sm" />}
+            {stats.mismatches > 0 && (
+              <Badge
+                label={`${stats.mismatches} Diferencia${stats.mismatches > 1 ? 's' : ''}`}
+                tone="danger"
+                size="sm"
+                icon={AlertTriangle}
+              />
+            )}
           </View>
         </ScreenActionBar>
       )}
@@ -737,8 +997,12 @@ export default function RevisionSemaforoExecuteScreen() {
       {/* MODAL SHEET DE OBSERVACIÓN */}
       <ObservationSheet
         visible={noteCodigo !== null}
-        subtitle={noteCodigo ? `${noteCodigo} · ${activeOrder.orderCode}` : ''}
-        value={noteCodigo ? observations[noteCodigo] ?? '' : ''}
+        subtitle={
+          noteCodigo === '__ORDER__'
+            ? `Todos los productos · ${activeOrder.orderCode}`
+            : noteCodigo ? `${noteCodigo} · ${activeOrder.orderCode}` : ''
+        }
+        value={noteCodigo ? (observations[noteCodigo] ?? '') : ''}
         readOnly={isAuditCompleted || consolidado}
         onSave={handleSaveNote}
         onClose={() => setNoteCodigo(null)}

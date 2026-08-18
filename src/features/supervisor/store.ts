@@ -408,7 +408,7 @@ const SEED_SEMAFORO_ORDERS: SemaforoOrderItem[] = [
       },
       semaphoreAuditor: {
         status: 'COMPLETED',
-        user: 'Juan Pérez (Auditor)',
+        user: 'Juan Pérez (Supervisor)',
         time: '12:00',
       },
     },
@@ -516,7 +516,7 @@ const SEED_SEMAFORO_ORDERS: SemaforoOrderItem[] = [
       },
       semaphoreAuditor: {
         status: 'COMPLETED',
-        user: 'Juan Pérez (Auditor)',
+        user: 'Juan Pérez (Supervisor)',
         time: '13:30',
       },
     },
@@ -787,7 +787,7 @@ export const useSupervisorStore = create<SupervisorStoreState>((set) => ({
             ...order.counts,
             semaphoreAuditor: {
               status: 'COMPLETED' as const,
-              user: 'Juan Pérez (Auditor)',
+              user: 'Juan Pérez (Supervisor)',
               time: new Date().toLocaleTimeString([], {
                 hour: '2-digit',
                 minute: '2-digit',

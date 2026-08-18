@@ -69,7 +69,19 @@ export default function ConsolidacionConteoScreen() {
   };
 
   const commitCorrection = (itemId: string) => {
-    setPickerState({ visible: true, activeItemId: itemId });
+    const item = allItems.find((i) => i.id === itemId);
+    if (!item) return;
+    const currentCorrection: BoxUnitValue = {
+      cajas: item.correctedBoxes,
+      unidades: item.correctedUnits,
+    };
+    const isMatched =
+      boxUnitTotal(currentCorrection, item.cajaSize) === item.expectedQty;
+    if (isMatched) {
+      confirmItem(itemId, "Error de Conteo Chofer");
+    } else {
+      setPickerState({ visible: true, activeItemId: itemId });
+    }
   };
 
   const handleSelectType = (type: string) => {
@@ -121,7 +133,12 @@ export default function ConsolidacionConteoScreen() {
             </View>
 
             <View style={{ flexDirection: 'row', gap: 6, flexShrink: 0 }}>
-              <Badge label={`${totalDiscrepancyCount} Dif.`} tone="danger" size="sm" icon={AlertTriangle} />
+              <Badge
+                label={`${totalDiscrepancyCount} Diferencia${totalDiscrepancyCount > 1 ? 's' : ''}`}
+                tone="danger"
+                size="sm"
+                icon={AlertTriangle}
+              />
               <Badge label={`${totalOkCount} OK`} tone="success" size="sm" icon={CheckCircle2} />
             </View>
           </View>
@@ -232,26 +249,35 @@ export default function ConsolidacionConteoScreen() {
             const currentSelectedType =
               item.selectedType || (isOkItem ? COUNT_OK_LABEL : DISCREPANCY_CAUSES[1]);
 
-            // EL ACENTO DEL BORDE RESUME EL ESTADO DEL ÍTEM DE UN VISTAZO
-            const accentColor =
-              isOkItem || isSavedMatched
-                ? theme.colors.success
-                : item.difference < 0
-                ? theme.colors.danger
-                : theme.colors.warning;
+            const isShortage = item.difference < 0;
+            const isConfirmedAndSaved = isConfirmed && !isEditing;
+            const isRectified = isConfirmedAndSaved && (isOkItem || isSavedMatched);
+            const isConfirmedDiscrepancy = isConfirmedAndSaved && !isOkItem && !isSavedMatched;
+
+            const cardBorderColor = isRectified
+              ? theme.colors.success
+              : isConfirmedDiscrepancy
+                ? (isShortage ? theme.colors.danger : theme.colors.warning)
+                : theme.colors.border;
+
+            const cardBgColor = isRectified
+              ? theme.colors.successSoft
+              : isConfirmedDiscrepancy
+                ? (isShortage ? theme.colors.dangerSoft : theme.colors.cardBackground)
+                : theme.colors.cardBackground;
 
             return (
               <Card
                 key={item.id}
                 padding="m"
                 borderRadius="xl"
-                borderWidth={1}
+                borderWidth={isConfirmedAndSaved ? 1.5 : 1}
                 style={{
-                  gap: 8,
-                  borderColor:
-                    isSavedMatched && !isEditing
-                      ? theme.colors.success
-                      : theme.colors.border,
+                  gap: 10,
+                  backgroundColor: cardBgColor,
+                  borderColor: cardBorderColor,
+                  borderLeftWidth: isConfirmedAndSaved ? 5 : 1,
+                  borderLeftColor: cardBorderColor,
                 }}
               >
                 {/* FILA 1: SKU + FRÍO + ESTADO DEL ÍTEM */}
@@ -276,12 +302,19 @@ export default function ConsolidacionConteoScreen() {
                   <View style={{ flexShrink: 0 }}>
                     {isOkItem ? (
                       <Badge label="Conteo OK" tone="success" size="sm" icon={CheckCircle2} />
-                    ) : isSavedMatched && !isEditing ? (
-                      <Badge label="Ajustado" tone="success" size="sm" icon={CheckCircle2} />
+                    ) : isRectified ? (
+                      <Badge label="Rectificado (Conforme ✓)" tone="success" size="sm" icon={CheckCircle2} />
+                    ) : isConfirmedDiscrepancy ? (
+                      <Badge
+                        label={item.difference > 0 ? `+${item.difference} Sobrante Confirmado` : `${item.difference} Faltante Confirmado`}
+                        tone={item.difference > 0 ? 'warning' : 'danger'}
+                        size="sm"
+                        icon={AlertTriangle}
+                      />
                     ) : (
                       <Badge
                         label={item.difference > 0 ? `+${item.difference} Sobrante` : `${item.difference} Faltante`}
-                        tone={item.difference > 0 ? 'warning' : 'danger'}
+                        tone="neutral"
                         size="sm"
                       />
                     )}
@@ -300,17 +333,18 @@ export default function ConsolidacionConteoScreen() {
                 {/* FILA 3: COMPARATIVO ESPERADO VS CONTADO */}
                 <View
                   style={{
-                    backgroundColor: isOkItem ? theme.colors.successSoft : theme.colors.secondary,
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    gap: 6,
+                    backgroundColor: isConfirmedAndSaved ? theme.colors.cardBackground : theme.colors.secondary,
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    gap: 8,
+                    borderWidth: 1,
+                    borderColor: isConfirmedAndSaved
+                      ? (isRectified ? theme.colors.success + '40' : theme.colors.danger + '40')
+                      : theme.colors.border,
                   }}
                 >
-                  <TouchableOpacity
-                    disabled={isOkItem || !isEditing || isSavedMatched}
-                    onPress={() => handleSetExpectedItem(item)}
-                    activeOpacity={0.7}
+                  <View
                     style={{
                       flexDirection: 'row',
                       justifyContent: 'space-between',
@@ -319,19 +353,25 @@ export default function ConsolidacionConteoScreen() {
                     }}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
-                      <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
+                      <Text variant="caption" style={{ fontSize: 11, fontWeight: '600', color: theme.colors.mutedForeground }}>
                         Esperado en OT
                       </Text>
-                      {!isOkItem && isEditing && !isSavedMatched && (
-                        <View
+                      {!isOkItem && !isConfirmedAndSaved && (
+                        <TouchableOpacity
+                          onPress={() => {
+                            handleSetExpectedItem(item);
+                          }}
+                          activeOpacity={0.8}
                           style={{
                             flexDirection: 'row',
                             alignItems: 'center',
-                            gap: 3,
-                            paddingHorizontal: 6,
-                            paddingVertical: 2,
-                            borderRadius: 4,
-                            backgroundColor: theme.colors.primarySoft,
+                            gap: 4,
+                            paddingHorizontal: 7,
+                            paddingVertical: 3,
+                            borderRadius: 6,
+                            backgroundColor: theme.colors.cardBackground,
+                            borderWidth: 1,
+                            borderColor: theme.colors.border,
                           }}
                         >
                           <RotateCcw size={10} color={theme.colors.primary} />
@@ -342,37 +382,52 @@ export default function ConsolidacionConteoScreen() {
                               color: theme.colors.primary,
                             }}
                           >
-                            Aplicar
+                            Rectificar a OT
                           </Text>
-                        </View>
+                        </TouchableOpacity>
                       )}
                     </View>
                     <Text
                       variant="label"
                       numberOfLines={1}
                       style={{
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: '700',
-                        color:
-                          !isOkItem && isEditing && !isSavedMatched
-                            ? theme.colors.primary
-                            : theme.colors.foreground,
-                        textDecorationLine:
-                          !isOkItem && isEditing && !isSavedMatched ? 'underline' : 'none',
+                        color: isRectified ? theme.colors.success : theme.colors.foreground,
                       }}
                     >
                       {formatBoxUnit(item.expectedBoxes, item.expectedQty - item.expectedBoxes * item.cajaSize, item.expectedQty)}
                     </Text>
-                  </TouchableOpacity>
+                  </View>
 
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 8,
+                      paddingTop: 6,
+                      borderTopWidth: 1,
+                      borderTopColor: theme.colors.border + '80',
+                    }}
+                  >
                     <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
                       Contado por el chofer
                     </Text>
                     <Text
                       variant="label"
                       numberOfLines={1}
-                      style={{ fontSize: 12, fontWeight: '800', color: accentColor }}
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '700',
+                        color: isConfirmedAndSaved
+                          ? (isRectified
+                              ? theme.colors.success
+                              : isShortage
+                                ? theme.colors.danger
+                                : theme.colors.warning)
+                          : theme.colors.foreground,
+                      }}
                     >
                       {formatBoxUnit(item.driverBoxes, item.driverUnits, item.driverQty)}
                     </Text>
@@ -384,48 +439,46 @@ export default function ConsolidacionConteoScreen() {
                   <View
                     style={{
                       gap: 8,
-                      paddingTop: 8,
-                      borderTopWidth: 1,
-                      borderTopColor: theme.colors.border,
+                      paddingTop: 4,
                     }}
                   >
                     {!isEditing && isConfirmed ? (
-                      /* ESTADO RESOLVIDO / CONFIRMADO: SIN STEPPERS */
+                      /* ESTADO RESOLVIDO / CONFIRMADO */
                       <View
                         style={{
                           flexDirection: 'row',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          backgroundColor: isSavedMatched ? theme.colors.successSoft : theme.colors.secondary,
+                          backgroundColor: isSavedMatched ? theme.colors.cardBackground : theme.colors.secondary,
                           borderColor: isSavedMatched ? theme.colors.success : theme.colors.border,
                           borderWidth: 1,
                           borderRadius: 10,
                           paddingHorizontal: 12,
-                          paddingVertical: 9,
+                          paddingVertical: 10,
                           gap: 8,
                         }}
                       >
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
                           <CheckCircle2
-                            size={16}
+                            size={18}
                             color={isSavedMatched ? theme.colors.success : theme.colors.primary}
                           />
                           <View style={{ flex: 1, gap: 1 }}>
                             <Text
                               variant="label"
                               style={{
-                                fontSize: 12,
+                                fontSize: 13,
                                 fontWeight: '700',
                                 color: isSavedMatched ? theme.colors.success : theme.colors.foreground,
                               }}
                             >
                               {isSavedMatched
-                                ? `Total conforme: ${formatBoxUnit(
+                                ? `Total Conforme: ${formatBoxUnit(
                                     parseInt(item.correctedBoxes || '0', 10),
                                     parseInt(item.correctedUnits || '0', 10),
                                     item.expectedQty
                                   )}`
-                                : `Total confirmado: ${formatBoxUnit(
+                                : `Total Confirmado: ${formatBoxUnit(
                                     parseInt(item.correctedBoxes || '0', 10),
                                     parseInt(item.correctedUnits || '0', 10),
                                     boxUnitTotal(currentCorrection, item.cajaSize)
@@ -433,13 +486,16 @@ export default function ConsolidacionConteoScreen() {
                             </Text>
                             <Text
                               variant="caption"
-                              style={{ fontSize: 10, color: theme.colors.mutedForeground }}
+                              style={{
+                                fontSize: 11,
+                                color: isSavedMatched ? theme.colors.success : theme.colors.mutedForeground,
+                              }}
                             >
                               {item.selectedType
                                 ? `Clasificación: ${item.selectedType}`
                                 : isSavedMatched
-                                ? 'Diferencia corregida sin observaciones'
-                                : 'Diferencia confirmada'}
+                                ? 'Diferencia rectificada • Coincide con OT (0 dif.)'
+                                : 'Diferencia física confirmada'}
                             </Text>
                           </View>
                         </View>

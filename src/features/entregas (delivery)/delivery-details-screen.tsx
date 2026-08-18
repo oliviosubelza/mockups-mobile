@@ -6,7 +6,6 @@ import {
   Camera,
   Check,
   CheckCircle2,
-  CheckSquare,
   ChevronDown,
   ChevronRight,
   ChevronUp,
@@ -26,7 +25,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Snowflake,
-  Square,
   Trash2,
   Truck,
   X,
@@ -45,11 +43,7 @@ import {
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
-import {
-  findRouteById,
-  goBackOrNavigate,
-  navigateTo,
-} from "@/navigation/registry";
+import { goBackOrNavigate } from "@/navigation/registry";
 import { AppDialog, Badge, Button, type DialogType } from "@/shared/ui";
 import { SuccessDialog } from "@/shared/ui/SuccessDialog";
 import { Text, useAppTheme } from "@/theme";
@@ -59,6 +53,7 @@ import {
 } from "./components/DeliveryActionBar";
 import { DeliveryProgressHeader } from "./components/DeliveryProgressHeader";
 import { PaymentMethodModal } from "./components/PaymentMethodModal";
+import { ProductsChecklistModal } from "./components/ProductsChecklistModal";
 import {
   SIGNATURE_INK_COLOR,
   SIGNATURE_PAPER_COLOR,
@@ -78,7 +73,11 @@ type DeliveryItem = {
   nombre: string;
   plannedQty: number;
   deliveredQty: number;
+  boxes?: number;
+  looseUnits?: number;
+  unitsPerBox?: number;
   isCold: boolean;
+  category?: string;
   unit: string;
   unitPrice?: number;
 };
@@ -206,29 +205,293 @@ const MOCK_ITEMS: DeliveryItem[] = [
     nombre: "Crema Bettercreme Chocolate 1L",
     plannedQty: 8,
     deliveredQty: 8,
+    boxes: 8,
+    looseUnits: 0,
+    unitsPerBox: 1,
     isCold: true,
+    category: "Frío",
     unit: "cajas",
     unitPrice: 280.0,
   },
   {
     id: "2",
-    codigo: "7790025",
-    nombre: "Levadura Fresca Fleischmann 500g",
-    plannedQty: 15,
-    deliveredQty: 15,
+    codigo: "7790011",
+    nombre: "Crema Bettercreme Vainilla 1L",
+    plannedQty: 10,
+    deliveredQty: 10,
+    boxes: 10,
+    looseUnits: 0,
+    unitsPerBox: 1,
     isCold: true,
-    unit: "packs",
-    unitPrice: 110.0,
+    category: "Frío",
+    unit: "cajas",
+    unitPrice: 280.0,
   },
   {
     id: "3",
+    codigo: "7790020",
+    nombre: "Levadura Fresca Fleischmann 500g",
+    plannedQty: 24,
+    deliveredQty: 24,
+    boxes: 2,
+    looseUnits: 0,
+    unitsPerBox: 12,
+    isCold: true,
+    category: "Frío",
+    unit: "bloques",
+    unitPrice: 18.5,
+  },
+  {
+    id: "4",
+    codigo: "7790025",
+    nombre: "Levadura Seca Instantánea Fleischmann 500g",
+    plannedQty: 20,
+    deliveredQty: 20,
+    boxes: 1,
+    looseUnits: 8,
+    unitsPerBox: 12,
+    isCold: false,
+    category: "Panadería",
+    unit: "paquetes",
+    unitPrice: 28.0,
+  },
+  {
+    id: "5",
+    codigo: "7790030",
+    nombre: "Polvo de Hornear Royal Lata 1kg",
+    plannedQty: 12,
+    deliveredQty: 12,
+    boxes: 1,
+    looseUnits: 0,
+    unitsPerBox: 12,
+    isCold: false,
+    category: "Panadería",
+    unit: "latas",
+    unitPrice: 42.0,
+  },
+  {
+    id: "6",
+    codigo: "7790036",
+    nombre: "Crema de Leche Tolón Doypack 1L",
+    plannedQty: 12,
+    deliveredQty: 12,
+    boxes: 1,
+    looseUnits: 0,
+    unitsPerBox: 12,
+    isCold: true,
+    category: "Frío",
+    unit: "doypacks",
+    unitPrice: 34.0,
+  },
+  {
+    id: "7",
     codigo: "7790040",
     nombre: "Ketchup Kris Galón Institucional 4kg",
+    plannedQty: 15,
+    deliveredQty: 15,
+    boxes: 2,
+    looseUnits: 3,
+    unitsPerBox: 6,
+    isCold: false,
+    category: "Salsas",
+    unit: "galones",
+    unitPrice: 95.0,
+  },
+  {
+    id: "8",
+    codigo: "7790041",
+    nombre: "Ketchup Kris Doypack Económico 1000g",
+    plannedQty: 18,
+    deliveredQty: 18,
+    boxes: 1,
+    looseUnits: 6,
+    unitsPerBox: 12,
+    isCold: false,
+    category: "Salsas",
+    unit: "doypacks",
+    unitPrice: 24.5,
+  },
+  {
+    id: "9",
+    codigo: "7790045",
+    nombre: "Mayonesa Kris Galón Institucional 3.8kg",
+    plannedQty: 10,
+    deliveredQty: 10,
+    boxes: 1,
+    looseUnits: 4,
+    unitsPerBox: 6,
+    isCold: false,
+    category: "Salsas",
+    unit: "galones",
+    unitPrice: 105.0,
+  },
+  {
+    id: "10",
+    codigo: "7790048",
+    nombre: "Mayonesa Real Doypack Familiar 900g",
+    plannedQty: 24,
+    deliveredQty: 24,
+    boxes: 2,
+    looseUnits: 0,
+    unitsPerBox: 12,
+    isCold: false,
+    category: "Salsas",
+    unit: "doypacks",
+    unitPrice: 26.0,
+  },
+  {
+    id: "11",
+    codigo: "7790050",
+    nombre: "Mostaza Kris Galón Institucional 4kg",
+    plannedQty: 6,
+    deliveredQty: 6,
+    isCold: false,
+    category: "Salsas",
+    unit: "galones",
+    unitPrice: 88.0,
+  },
+  {
+    id: "12",
+    codigo: "7790055",
+    nombre: "Salsa Barbacoa Kris Galón 4kg",
+    plannedQty: 5,
+    deliveredQty: 5,
+    isCold: false,
+    category: "Salsas",
+    unit: "galones",
+    unitPrice: 115.0,
+  },
+  {
+    id: "13",
+    codigo: "7790058",
+    nombre: "Salsa Golf Kris Galón 3.8kg",
+    plannedQty: 4,
+    deliveredQty: 4,
+    isCold: false,
+    category: "Salsas",
+    unit: "galones",
+    unitPrice: 102.0,
+  },
+  {
+    id: "14",
+    codigo: "7790062",
+    nombre: "Extracto de Tomate Kris Galón 4kg",
+    plannedQty: 8,
+    deliveredQty: 8,
+    isCold: false,
+    category: "Salsas",
+    unit: "galones",
+    unitPrice: 92.0,
+  },
+  {
+    id: "15",
+    codigo: "7790070",
+    nombre: "Polvo para Hornear Royal Lata 1kg",
     plannedQty: 12,
     deliveredQty: 12,
     isCold: false,
-    unit: "galones",
-    unitPrice: 95.0,
+    category: "Panificación",
+    unit: "latas",
+    unitPrice: 48.0,
+  },
+  {
+    id: "16",
+    codigo: "7790074",
+    nombre: "Mejorador de Masa Magimix Pan 500g",
+    plannedQty: 10,
+    deliveredQty: 10,
+    isCold: false,
+    category: "Panificación",
+    unit: "packs",
+    unitPrice: 65.0,
+  },
+  {
+    id: "17",
+    codigo: "7790080",
+    nombre: "Gelatina Kris Frutilla Caja 1kg",
+    plannedQty: 15,
+    deliveredQty: 15,
+    isCold: false,
+    category: "Repostería",
+    unit: "cajas",
+    unitPrice: 38.0,
+  },
+  {
+    id: "18",
+    codigo: "7790082",
+    nombre: "Gelatina Kris Piña Caja 1kg",
+    plannedQty: 10,
+    deliveredQty: 10,
+    isCold: false,
+    category: "Repostería",
+    unit: "cajas",
+    unitPrice: 38.0,
+  },
+  {
+    id: "19",
+    codigo: "7790088",
+    nombre: "Flan Vainilla Kris con Caramelo 1kg",
+    plannedQty: 8,
+    deliveredQty: 8,
+    isCold: false,
+    category: "Repostería",
+    unit: "cajas",
+    unitPrice: 42.0,
+  },
+  {
+    id: "20",
+    codigo: "7790092",
+    nombre: "Refresco en Polvo Frussion Naranja 1kg",
+    plannedQty: 12,
+    deliveredQty: 12,
+    isCold: false,
+    category: "Bebidas",
+    unit: "bolsas",
+    unitPrice: 32.0,
+  },
+  {
+    id: "21",
+    codigo: "7790095",
+    nombre: "Refresco en Polvo Frussion Durazno 1kg",
+    plannedQty: 10,
+    deliveredQty: 10,
+    isCold: false,
+    category: "Bebidas",
+    unit: "bolsas",
+    unitPrice: 32.0,
+  },
+  {
+    id: "22",
+    codigo: "7790102",
+    nombre: "Achocolatado Chocolisto Bolsa 1kg",
+    plannedQty: 14,
+    deliveredQty: 14,
+    isCold: false,
+    category: "Bebidas",
+    unit: "bolsas",
+    unitPrice: 54.0,
+  },
+  {
+    id: "23",
+    codigo: "7790110",
+    nombre: "Atún en Aceite Vegetal Kris Pack x6",
+    plannedQty: 12,
+    deliveredQty: 12,
+    isCold: false,
+    category: "Abarrotes",
+    unit: "packs",
+    unitPrice: 72.0,
+  },
+  {
+    id: "24",
+    codigo: "7790118",
+    nombre: "Aceite de Oliva Extra Virgen Real 500ml",
+    plannedQty: 16,
+    deliveredQty: 16,
+    isCold: false,
+    category: "Abarrotes",
+    unit: "botellas",
+    unitPrice: 68.0,
   },
 ];
 
@@ -266,9 +529,10 @@ export const DeliveryDetailScreen = () => {
   const isPaymentEnabled =
     currentStatus === "ARRIVED" || currentStatus === "DELIVERED";
 
-  // Estado de Productos y POD
+  // Estado de Productos y Checklist
   const [items, setItems] = useState<DeliveryItem[]>(MOCK_ITEMS);
   const [checkedItemIds, setCheckedItemIds] = useState<string[]>([]);
+  const [isProductsModalOpen, setIsProductsModalOpen] = useState(false);
 
   // CÁLCULO DINÁMICO DEL TOTAL A COBRAR EN BASE A LOS PRODUCTOS MARCADOS (TICKEADOS) POR EL CHOFER
   const TOTAL_ORDER_AMOUNT = useMemo(() => {
@@ -299,6 +563,21 @@ export const DeliveryDetailScreen = () => {
     "productos",
   );
 
+  const checkedCount = checkedItemIds.length;
+  const pendingCount = items.length - checkedCount;
+  const coldCount = useMemo(
+    () => items.filter((i) => i.isCold).length,
+    [items],
+  );
+
+  const totalPlannedUnits = useMemo(
+    () => items.reduce((acc, i) => acc + (i.plannedQty || 0), 0),
+    [items],
+  );
+
+  const verificationPercent =
+    items.length > 0 ? Math.round((checkedCount / items.length) * 100) : 0;
+
   const isAllChecked =
     items.length > 0 && checkedItemIds.length === items.length;
 
@@ -324,6 +603,13 @@ export const DeliveryDetailScreen = () => {
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
   const [signaturePaths, setSignaturePaths] = useState<string[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
+
+  // RESTRICCIONES OBLIGATORIAS PARA PROCEDER AL COBRO:
+  // 1. Al menos 1 producto marcado / verificado en el checklist
+  // 2. Al menos 1 comprobante POD registrado (foto o firma digital)
+  const hasAtLeastOneProductChecked = checkedItemIds.length > 0;
+  const hasAtLeastOnePOD = hasPhoto || hasSignature;
+  const canProceedToPayment = hasAtLeastOneProductChecked && hasAtLeastOnePOD;
 
   // Estado del Módulo de Registro de Incidencias
   const [isIncidentModalOpen, setIsIncidentModalOpen] = useState(false);
@@ -489,11 +775,6 @@ export const DeliveryDetailScreen = () => {
     Linking.openURL(`tel:${stop.contactPhone}`);
   };
 
-  const handleGoRegistrarVisita = () => {
-    const route = findRouteById("entregas.registrarVisita");
-    if (route) navigateTo(route);
-  };
-
   const handleOpenGoogleMaps = () => {
     // Ubicación actual del chofer (GPS)
     const driverLat = -17.805;
@@ -567,13 +848,36 @@ export const DeliveryDetailScreen = () => {
   };
 
   const handleSelectTab = (tab: "productos" | "cobro") => {
-    if (tab === "cobro" && !isPaymentEnabled) {
-      showDialog(
-        "Cobro Deshabilitado",
-        `El registro de cobro solo esta permitido para la parada en descarga donde se encuentra el chofer (Estado: En Descarga).\n\nEsta parada se encuentra actualmente en estado: ${getStatusLabel(stop.status)}.`,
-        "warning",
-      );
-      return;
+    if (tab === "cobro") {
+      if (!isPaymentEnabled) {
+        showDialog(
+          "Cobro Deshabilitado",
+          `El registro de cobro solo está permitido para la parada en sitio donde se encuentra el chofer (Estado: En Descarga).\n\nEsta parada se encuentra actualmente en estado: ${getStatusLabel(stop.status)}.`,
+          "warning",
+        );
+        return;
+      }
+
+      if (!hasAtLeastOneProductChecked) {
+        showDialog(
+          "Productos Requeridos",
+          "Debes marcar al menos un producto verificado en el checklist de carga antes de proceder a la fase de cobro.",
+          "warning",
+          () => {
+            setIsProductsModalOpen(true);
+          },
+        );
+        return;
+      }
+
+      if (!hasAtLeastOnePOD) {
+        showDialog(
+          "Comprobante POD Requerido",
+          "Debes registrar al menos un comprobante de entrega (evidencia fotográfica o firma digital del receptor) antes de proceder a la fase de cobro.",
+          "warning",
+        );
+        return;
+      }
     }
     setActiveTab(tab);
   };
@@ -885,10 +1189,21 @@ export const DeliveryDetailScreen = () => {
   };
 
   const handleConfirmFinalDelivery = () => {
-    if (!hasPhoto && !hasSignature) {
+    if (!hasAtLeastOneProductChecked) {
+      showDialog(
+        "Verificación Requerida",
+        "Debes marcar al menos un producto verificado en el checklist antes de finalizar la entrega.",
+        "warning",
+        () => {
+          setActiveTab("productos");
+        },
+      );
+      return;
+    }
+    if (!hasAtLeastOnePOD) {
       showDialog(
         "POD Requerido",
-        "Registra la foto o firma de recepcion en el tab de Productos.",
+        "Registra la foto o firma de recepción en el tab de Productos.",
         "warning",
         () => {
           setActiveTab("productos");
@@ -1860,32 +2175,18 @@ export const DeliveryDetailScreen = () => {
             </View>
           )}
 
-          {/* BOTONES DE ACCIÓN — SIGUEN DISPONIBLES CON LA TARJETA COLAPSADA */}
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <View style={{ flex: 1 }}>
-              <Button
-                label="Registrar Visita"
-                icon={ClipboardList}
-                variant="secondary"
-                size="sm"
-                fullWidth
-                onPress={handleGoRegistrarVisita}
-              />
-            </View>
-            <View style={{ flex: 1.2 }}>
-              <Button
-                label="Reportar Incidencia"
-                icon={AlertTriangle}
-                variant="danger"
-                size="sm"
-                fullWidth
-                onPress={() => {
-                  setIncidentItemName("Toda la Entrega");
-                  setIsIncidentModalOpen(true);
-                }}
-              />
-            </View>
-          </View>
+          {/* BOTÓN DE ACCIÓN: REPORTAR INCIDENCIA */}
+          <Button
+            label="Reportar Incidencia"
+            icon={AlertTriangle}
+            variant="danger"
+            size="sm"
+            fullWidth
+            onPress={() => {
+              setIncidentItemName("Toda la Entrega");
+              setIsIncidentModalOpen(true);
+            }}
+          />
         </View>
 
         {/* BANNER DE ALERTA SI LA PARADA TIENE UNA INCIDENCIA REGISTRADA */}
@@ -2042,14 +2343,14 @@ export const DeliveryDetailScreen = () => {
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 2,
-                opacity: isPaymentEnabled ? 1 : 0.5,
+                opacity: isPaymentEnabled ? (canProceedToPayment ? 1 : 0.8) : 0.5,
                 elevation: activeTab === "cobro" ? 1 : 0,
               }}
             >
               <View
                 style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
               >
-                {isPaymentEnabled ? (
+                {isPaymentEnabled && canProceedToPayment ? (
                   <DollarSign
                     size={16}
                     color={
@@ -2099,237 +2400,282 @@ export const DeliveryDetailScreen = () => {
 
         {/* TAB 1: PRODUCTOS A DESCARGAR Y PROOF OF DELIVERY (POD) */}
         {activeTab === "productos" && (
-          <View style={{ gap: 16 }}>
-            {/* LISTA DE PRODUCTOS CON CHECKBOX DE VERIFICACIÓN */}
-            <View style={{ gap: 10 }}>
-              {/* ENCABEZADO CON TITULO LIMPIO Y BOTÓN DE MARCAR TODOS */}
-              <View style={{ gap: 4 }}>
+          <View style={{ gap: 14 }}>
+            {/* TARJETA RESUMEN COMPACTA DE PRODUCTOS (OPCIÓN 1: CHECKLIST DEDICADO) */}
+            <View
+              style={{
+                backgroundColor: theme.colors.cardBackground,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor:
+                  verificationPercent === 100
+                    ? theme.colors.success + "40"
+                    : theme.colors.border,
+                padding: 16,
+                gap: 12,
+              }}
+            >
+              {/* CABECERA: TÍTULO, CANTIDAD TOTAL Y BADGE DE ESTADO */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                  <View
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 10,
+                      backgroundColor:
+                        verificationPercent === 100
+                          ? theme.colors.successSoft
+                          : theme.colors.primarySoft,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Package
+                      size={20}
+                      color={
+                        verificationPercent === 100
+                          ? theme.colors.success
+                          : theme.colors.primary
+                      }
+                    />
+                  </View>
+
+                  <View style={{ flex: 1, gap: 2, marginRight: 6 }}>
+                    <Text
+                      variant="title"
+                      style={{ fontSize: 16, color: theme.colors.foreground }}
+                      numberOfLines={1}
+                    >
+                      Productos a Descargar
+                    </Text>
+                    <Text
+                      variant="caption"
+                      style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
+                      numberOfLines={1}
+                    >
+                      {items.length} productos • {totalPlannedUnits} unid. totales
+                    </Text>
+                  </View>
+                </View>
+
+                {/* BADGE DE ESTADO */}
+                <View
+                  style={{
+                    backgroundColor:
+                      verificationPercent === 100
+                        ? theme.colors.successSoft
+                        : theme.colors.secondary,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor:
+                      verificationPercent === 100
+                        ? theme.colors.success + "40"
+                        : theme.colors.border,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                    flexShrink: 0,
+                  }}
+                >
+                  {verificationPercent === 100 ? (
+                    <Check size={12} color={theme.colors.success} />
+                  ) : null}
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: "700",
+                      color:
+                        verificationPercent === 100
+                          ? theme.colors.success
+                          : theme.colors.mutedForeground,
+                    }}
+                  >
+                    {verificationPercent === 100
+                      ? "Completo"
+                      : `${pendingCount} pend.`}
+                  </Text>
+                </View>
+              </View>
+
+              {/* BARRA DE PROGRESO DE VERIFICACIÓN */}
+              <View style={{ gap: 5 }}>
+                <View
+                  style={{
+                    height: 6,
+                    borderRadius: 3,
+                    backgroundColor: theme.colors.secondary,
+                    overflow: "hidden",
+                  }}
+                >
+                  <View
+                    style={{
+                      height: "100%",
+                      width: `${verificationPercent}%`,
+                      backgroundColor:
+                        verificationPercent === 100
+                          ? theme.colors.success
+                          : theme.colors.primary,
+                      borderRadius: 3,
+                    }}
+                  />
+                </View>
+
                 <View
                   style={{
                     flexDirection: "row",
                     justifyContent: "space-between",
                     alignItems: "center",
+                    gap: 6,
                   }}
                 >
                   <Text
-                    variant="title"
-                    style={{ fontSize: 16, color: theme.colors.foreground }}
+                    variant="caption"
+                    style={{
+                      fontSize: 11,
+                      fontWeight: "700",
+                      color:
+                        verificationPercent === 100
+                          ? theme.colors.success
+                          : theme.colors.foreground,
+                      flex: 1,
+                    }}
+                    numberOfLines={1}
                   >
-                    Productos a Descargar
+                    {checkedCount} de {items.length} ({verificationPercent}%)
                   </Text>
 
-                  <TouchableOpacity
-                    onPress={toggleCheckAll}
-                    activeOpacity={0.7}
+                  <Text
+                    variant="caption"
                     style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 6,
-                      backgroundColor: isAllChecked
-                        ? theme.colors.primarySoft
-                        : theme.colors.secondary,
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderColor: isAllChecked
-                        ? theme.colors.primary
-                        : theme.colors.border,
+                      fontSize: 11,
+                      color: theme.colors.mutedForeground,
+                      flexShrink: 0,
                     }}
+                    numberOfLines={1}
                   >
-                    {isAllChecked ? (
-                      <CheckSquare size={15} color={theme.colors.primary} />
-                    ) : (
-                      <Square size={15} color={theme.colors.mutedForeground} />
-                    )}
+                    Subtotal:{" "}
                     <Text
-                      variant="caption"
                       style={{
                         fontWeight: "700",
-                        color: isAllChecked
-                          ? theme.colors.primary
-                          : theme.colors.foreground,
-                        fontSize: 12,
+                        color: theme.colors.foreground,
                       }}
                     >
-                      {isAllChecked ? "Todos verificados" : "Marcar Todos"}
+                      Bs. {formatMoney(TOTAL_ORDER_AMOUNT)}
                     </Text>
-                  </TouchableOpacity>
-                </View>
-
-                <Text
-                  variant="caption"
-                  style={{ color: theme.colors.mutedForeground, fontSize: 12 }}
-                >
-                  Progreso:{" "}
-                  <Text
-                    variant="label"
-                    style={{
-                      fontSize: 12,
-                      color: theme.colors.primary,
-                      fontWeight: "700",
-                    }}
-                  >
-                    {checkedItemIds.length} de {items.length} verificados
                   </Text>
-                </Text>
+                </View>
               </View>
 
-              <View
+              {/* BOTÓN PRINCIPAL PARA ABRIR EL CHECKLIST DEDICADO */}
+              <TouchableOpacity
+                onPress={() => setIsProductsModalOpen(true)}
+                activeOpacity={0.8}
                 style={{
-                  backgroundColor: theme.colors.cardBackground,
-                  borderRadius: 14,
+                  backgroundColor:
+                    pendingCount > 0
+                      ? theme.colors.primary
+                      : theme.colors.successSoft,
+                  paddingVertical: 12,
+                  paddingHorizontal: 12,
+                  borderRadius: 10,
                   borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  overflow: "hidden",
+                  borderColor:
+                    pendingCount > 0
+                      ? theme.colors.primary
+                      : theme.colors.success + "50",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginTop: 2,
+                  gap: 8,
                 }}
               >
-                {items.map((item, index) => {
-                  const isLast = index === items.length - 1;
-                  const isChecked = checkedItemIds.includes(item.id);
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 8,
+                    flex: 1,
+                    marginRight: 4,
+                  }}
+                >
+                  <ClipboardList
+                    size={18}
+                    color={
+                      pendingCount > 0
+                        ? "#FFFFFF"
+                        : theme.colors.success
+                    }
+                  />
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: "700",
+                      color:
+                        pendingCount > 0
+                          ? "#FFFFFF"
+                          : theme.colors.success,
+                      flex: 1,
+                    }}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {pendingCount > 0
+                      ? `Abrir Checklist (${pendingCount} pendientes)`
+                      : `Ver Checklist Completo (${items.length} unid.)`}
+                  </Text>
+                </View>
 
-                  return (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 5,
+                    flexShrink: 0,
+                  }}
+                >
+                  {pendingCount > 0 ? (
                     <View
-                      key={item.id}
                       style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        paddingVertical: 12,
-                        paddingHorizontal: 12,
-                        borderBottomWidth: isLast ? 0 : 1,
-                        borderBottomColor: theme.colors.border,
-                        backgroundColor: isChecked
-                          ? "transparent"
-                          : theme.colors.secondary + "40",
-                        gap: 10,
+                        backgroundColor: "rgba(255, 255, 255, 0.25)",
+                        paddingHorizontal: 7,
+                        paddingVertical: 2,
+                        borderRadius: 10,
                       }}
                     >
-                      {/* CHECKBOX A LA IZQUIERDA */}
-                      <TouchableOpacity
-                        onPress={() => toggleCheckItem(item.id)}
-                        activeOpacity={0.7}
-                        style={{ paddingVertical: 4 }}
-                      >
-                        {isChecked ? (
-                          <CheckSquare size={22} color={theme.colors.primary} />
-                        ) : (
-                          <Square
-                            size={22}
-                            color={theme.colors.mutedForeground}
-                          />
-                        )}
-                      </TouchableOpacity>
-
-                      {/* DETALLE DEL PRODUCTO (FLEX 1 CON TRUNCADO CONTROLADO) */}
-                      <View style={{ flex: 1, gap: 3, overflow: "hidden" }}>
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            gap: 5,
-                          }}
-                        >
-                          <Text
-                            variant="label"
-                            style={{
-                              fontWeight: "700",
-                              fontSize: 12,
-                              color: isChecked
-                                ? theme.colors.foreground
-                                : theme.colors.mutedForeground,
-                            }}
-                          >
-                            {item.codigo}
-                          </Text>
-                          <Text
-                            style={{
-                              fontSize: 12,
-                              color: theme.colors.mutedForeground,
-                            }}
-                          >
-                            •
-                          </Text>
-                          <Text
-                            variant="bodySmall"
-                            style={{
-                              flex: 1,
-                              fontSize: 13,
-                              fontWeight: "500",
-                              color: isChecked
-                                ? theme.colors.foreground
-                                : theme.colors.mutedForeground,
-                            }}
-                            numberOfLines={1}
-                            ellipsizeMode="tail"
-                          >
-                            {item.nombre}
-                          </Text>
-                          {item.isCold && (
-                            <View style={{ flexShrink: 0, marginLeft: 2 }}>
-                              <Snowflake
-                                size={14}
-                                color={theme.colors.primary}
-                              />
-                            </View>
-                          )}
-                        </View>
-
-                        <Text
-                          variant="caption"
-                          style={{
-                            color: theme.colors.mutedForeground,
-                            fontSize: 11,
-                          }}
-                        >
-                          Bs. {formatMoney(item.unitPrice)} c/u •{" "}
-                          <Text
-                            variant="label"
-                            style={{
-                              fontSize: 11,
-                              fontWeight: "700",
-                              color: theme.colors.foreground,
-                            }}
-                          >
-                            Subtotal: Bs.{" "}
-                            {formatMoney(
-                              (item.deliveredQty || 0) * (item.unitPrice || 0),
-                            )}
-                          </Text>
-                        </Text>
-                      </View>
-
-                      {/* BADGE DE CANTIDAD ENTREGADA (ANCHO FIJO A LA DERECHA SIN TRASLAPE) */}
-                      <View
+                      <Text
                         style={{
-                          flexShrink: 0,
-                          backgroundColor: isChecked
-                            ? theme.colors.successSoft
-                            : theme.colors.secondary,
-                          paddingHorizontal: 10,
-                          paddingVertical: 5,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: isChecked
-                            ? theme.colors.success + "40"
-                            : theme.colors.border,
+                          fontSize: 11,
+                          fontWeight: "700",
+                          color: "#FFFFFF",
                         }}
                       >
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            fontWeight: "700",
-                            color: isChecked
-                              ? theme.colors.success
-                              : theme.colors.mutedForeground,
-                          }}
-                        >
-                          {item.deliveredQty} {item.unit || "unid"}
-                        </Text>
-                      </View>
+                        {pendingCount}
+                      </Text>
                     </View>
-                  );
-                })}
-              </View>
+                  ) : (
+                    <Check size={16} color={theme.colors.success} />
+                  )}
+                  <ChevronRight
+                    size={18}
+                    color={
+                      pendingCount > 0
+                        ? "#FFFFFF"
+                        : theme.colors.success
+                    }
+                  />
+                </View>
+              </TouchableOpacity>
             </View>
 
             {/* COMPROBANTE POD */}
@@ -2338,14 +2684,54 @@ export const DeliveryDetailScreen = () => {
                 backgroundColor: theme.colors.cardBackground,
                 borderRadius: 16,
                 borderWidth: 1,
-                borderColor: theme.colors.border,
+                borderColor: hasAtLeastOnePOD
+                  ? theme.colors.success + "40"
+                  : theme.colors.border,
                 padding: 16,
                 gap: 12,
               }}
             >
-              <Text variant="title" style={{ fontSize: 16 }}>
-                Comprobante de Recepcion (POD)
-              </Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    flex: 1,
+                    flexShrink: 1,
+                  }}
+                >
+                  <ShieldCheck
+                    size={18}
+                    color={
+                      hasAtLeastOnePOD
+                        ? theme.colors.success
+                        : theme.colors.primary
+                    }
+                  />
+                  <Text
+                    variant="title"
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                    style={{ fontSize: 15, fontWeight: "700", flex: 1 }}
+                  >
+                    Comprobante (POD)
+                  </Text>
+                </View>
+
+                <Badge
+                  label={hasAtLeastOnePOD ? "Registrado" : "Requerido"}
+                  tone={hasAtLeastOnePOD ? "success" : "neutral"}
+                  size="sm"
+                />
+              </View>
 
               <View style={{ gap: 10 }}>
                 <View>
@@ -3060,7 +3446,7 @@ export const DeliveryDetailScreen = () => {
                         variant="caption"
                         style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
                       >
-                        Presiona "Validar pago" para continuar.
+                        {'Presiona "Validar pago" para continuar.'}
                       </Text>
                     </View>
                   )}
@@ -3910,6 +4296,17 @@ export const DeliveryDetailScreen = () => {
           </View>
         </View>
       </Modal>
+
+      {/* MODAL DEDICADO DE VERIFICACIÓN DE PRODUCTOS (CHECKLIST COMPLETO) */}
+      <ProductsChecklistModal
+        visible={isProductsModalOpen}
+        onClose={() => setIsProductsModalOpen(false)}
+        items={items}
+        checkedItemIds={checkedItemIds}
+        onToggleItem={toggleCheckItem}
+        onToggleAll={toggleCheckAll}
+        clientName={stop.clientName}
+      />
     </View>
   );
 };

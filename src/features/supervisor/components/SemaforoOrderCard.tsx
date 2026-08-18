@@ -116,15 +116,15 @@ export function SemaforoOrderCard({ order, onStart }: Props) {
           detail={detalle(consolidator, "Sin consolidar")}
         />
         <Etapa
-          label="Auditoría"
+          label="Semáforo"
           done={auditada}
-          detail={detalle(semaphoreAuditor, "Sin auditar")}
+          detail={detalle(semaphoreAuditor, "Sin revisar")}
         />
       </View>
 
-      {/* La orden ya auditada no vuelve a ofrecer un inicio que no corresponde. */}
+      {/* La orden ya revisada ofrece Ver revisión */}
       <Button
-        label={auditada ? "Ver auditoría" : "Iniciar conteo"}
+        label={auditada ? "Ver revisión" : "Iniciar conteo"}
         icon={auditada ? Eye : ClipboardCheck}
         variant={auditada ? "secondary" : "primary"}
         size="sm"

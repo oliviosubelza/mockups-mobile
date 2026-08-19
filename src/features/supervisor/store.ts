@@ -40,7 +40,7 @@ const SEED_ITEMS: SupervisorDiscrepancyItem[] = [
     id: 'ot4892-prod002',
     orderId: 'sup-1',
     orderCode: 'OT-4892',
-    driverName: 'Cristhian Macchiavelli',
+    driverName: 'Cristhian ',
     zonaRuta: 'Ruta Norte • Santa Cruz',
     date: '2026-08-05',
     dateFormatted: 'Hoy, 14:20',
@@ -66,7 +66,7 @@ const SEED_ITEMS: SupervisorDiscrepancyItem[] = [
     id: 'ot4892-prod005',
     orderId: 'sup-1',
     orderCode: 'OT-4892',
-    driverName: 'Cristhian Macchiavelli',
+    driverName: 'Cristhian ',
     zonaRuta: 'Ruta Norte • Santa Cruz',
     date: '2026-08-05',
     dateFormatted: 'Hoy, 14:20',
@@ -92,7 +92,7 @@ const SEED_ITEMS: SupervisorDiscrepancyItem[] = [
     id: 'ot4892-prod001',
     orderId: 'sup-1',
     orderCode: 'OT-4892',
-    driverName: 'Cristhian Macchiavelli',
+    driverName: 'Cristhian ',
     zonaRuta: 'Ruta Norte • Santa Cruz',
     date: '2026-08-05',
     dateFormatted: 'Hoy, 14:20',
@@ -118,7 +118,7 @@ const SEED_ITEMS: SupervisorDiscrepancyItem[] = [
     id: 'ot4892-prod008',
     orderId: 'sup-1',
     orderCode: 'OT-4892',
-    driverName: 'Cristhian Macchiavelli',
+    driverName: 'Cristhian ',
     zonaRuta: 'Ruta Norte • Santa Cruz',
     date: '2026-08-05',
     dateFormatted: 'Hoy, 14:20',
@@ -200,7 +200,7 @@ const SEED_ITEMS: SupervisorDiscrepancyItem[] = [
     id: 'ot5011-prod014',
     orderId: 'sup-2',
     orderCode: 'OT-5011',
-    driverName: 'Cristhian Macchiavelli',
+    driverName: 'Cristhian ',
     zonaRuta: 'Ruta Equipetrol',
     date: '2026-08-01',
     dateFormatted: '01 Ago 12:45',
@@ -228,7 +228,7 @@ const SEED_ITEMS: SupervisorDiscrepancyItem[] = [
     id: 'ot4750-prod033',
     orderId: 'sup-4',
     orderCode: 'OT-4750',
-    driverName: 'Cristhian Macchiavelli',
+    driverName: 'Cristhian ',
     zonaRuta: 'Ruta Equipetrol',
     date: '2026-07-28',
     dateFormatted: '28 Jul 09:30',
@@ -300,7 +300,7 @@ const SEED_SEMAFORO_ORDERS: SemaforoOrderItem[] = [
   {
     id: 'sem-1',
     orderCode: 'OT-4892',
-    driverName: 'Cristhian Macchiavelli',
+    driverName: 'Cristhian ',
     zonaRuta: 'Ruta Norte • Santa Cruz',
     date: '2026-08-05',
     dateFormatted: 'Hoy, 14:20',
@@ -311,7 +311,7 @@ const SEED_SEMAFORO_ORDERS: SemaforoOrderItem[] = [
     counts: {
       driver: {
         status: 'COMPLETED',
-        user: 'Cristhian Macchiavelli (Chofer)',
+        user: 'Cristhian  (Chofer)',
         time: '13:10',
       },
       consolidator: {
@@ -495,7 +495,7 @@ const SEED_SEMAFORO_ORDERS: SemaforoOrderItem[] = [
   {
     id: 'sem-3',
     orderCode: 'OT-5011',
-    driverName: 'Cristhian Macchiavelli',
+    driverName: 'Cristhian',
     zonaRuta: 'Ruta Equipetrol',
     date: '2026-08-01',
     dateFormatted: '01 Ago 12:45',
@@ -506,7 +506,7 @@ const SEED_SEMAFORO_ORDERS: SemaforoOrderItem[] = [
     counts: {
       driver: {
         status: 'COMPLETED',
-        user: 'Cristhian Macchiavelli (Chofer)',
+        user: 'Cristhian  (Chofer)',
         time: '12:00',
       },
       consolidator: {
@@ -601,7 +601,7 @@ const SEED_SEMAFORO_ORDERS: SemaforoOrderItem[] = [
   {
     id: 'sem-4',
     orderCode: 'OT-4750',
-    driverName: 'Cristhian Macchiavelli',
+    driverName: 'Cristhian ',
     zonaRuta: 'Ruta Equipetrol',
     date: '2026-07-28',
     dateFormatted: '28 Jul 09:30',
@@ -612,7 +612,7 @@ const SEED_SEMAFORO_ORDERS: SemaforoOrderItem[] = [
     counts: {
       driver: {
         status: 'COMPLETED',
-        user: 'Cristhian Macchiavelli (Chofer)',
+        user: 'Cristhian  (Chofer)',
         time: '09:00',
       },
       consolidator: { status: 'PENDING' },

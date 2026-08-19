@@ -13,7 +13,7 @@ export type User = {
 
 export const DEMO_CHOFER: User = {
   id: 'u-1',
-  name: 'Cristhian Macchiavelli',
+  name: 'Cristhian ',
   email: 'chofer@empresa.com',
   role: 'CHOFER',
   roleLabel: 'Chofer / Despachador',

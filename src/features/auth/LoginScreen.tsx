@@ -144,7 +144,7 @@ export function LoginScreen() {
                     variant="label"
                     style={{ fontSize: 14, fontWeight: '700', color: theme.colors.foreground }}
                   >
-                    Cristhian Macchiavelli
+                    Cristhian
                   </Text>
                   <Text variant="caption" style={{ fontSize: 11, color: theme.colors.primary }}>
                     Rol: Chofer / Despachador

@@ -658,7 +658,7 @@ export default function RevisionSemaforoExecuteScreen() {
           <View style={{ gap: 14 }}>
             {/* HERRAMIENTAS RÁPIDAS: COPIAR TODO DE OT, OBSERVACIÓN GENERAL Y ESCÁNER */}
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TouchableOpacity
+              {/* <TouchableOpacity
                 onPress={handleApplyAllExpected}
                 activeOpacity={0.8}
                 style={{
@@ -700,7 +700,7 @@ export default function RevisionSemaforoExecuteScreen() {
                 <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
                   Observación
                 </Text>
-              </TouchableOpacity>
+              </TouchableOpacity> */}
 
               <TouchableOpacity
                 onPress={() => setIsBarcodeScannerVisible(true)}

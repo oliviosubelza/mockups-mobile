@@ -23,6 +23,29 @@ export const INITIAL_STOPS: DeliveryStop[] = [
     notes: 'Recibe en rampa de frío con sello.',
     latitude: -17.768,
     longitude: -63.195,
+    referencePhotos: [
+      {
+        id: 'PH-101-1',
+        tag: 'Fachada',
+        url: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=800&q=80',
+        caption: 'Fachada principal sobre Av. San Martín frente al camellón central.',
+        takenAt: '12 Ago 2026',
+      },
+      {
+        id: 'PH-101-2',
+        tag: 'Portón de Carga',
+        url: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800&q=80',
+        caption: 'Portón metálico posterior. Rampa #2 exclusiva para cadena de frío.',
+        takenAt: '12 Ago 2026',
+      },
+      {
+        id: 'PH-101-3',
+        tag: 'Referencia',
+        url: 'https://images.unsplash.com/photo-1519074069444-1ba4fff16def?w=800&q=80',
+        caption: 'Esquina farmacia y letrero luminoso Hipermaxi.',
+        takenAt: '05 Jul 2026',
+      },
+    ],
   },
   {
     id: 'DEL-102',
@@ -45,6 +68,22 @@ export const INITIAL_STOPS: DeliveryStop[] = [
     notes: 'Descarga por rampa trasera de proveedores.',
     latitude: -17.752,
     longitude: -63.181,
+    referencePhotos: [
+      {
+        id: 'PH-102-1',
+        tag: 'Fachada',
+        url: 'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?w=800&q=80',
+        caption: 'Fachada comercial IC Norte sobre la Av. Banzer.',
+        takenAt: '28 Jul 2026',
+      },
+      {
+        id: 'PH-102-2',
+        tag: 'Portón de Carga',
+        url: 'https://images.unsplash.com/photo-1587293852726-70cdb56c2866?w=800&q=80',
+        caption: 'Rampa de proveedores y zona de descarga de abarrotes.',
+        takenAt: '28 Jul 2026',
+      },
+    ],
   },
   {
     id: 'DEL-103',
@@ -67,6 +106,22 @@ export const INITIAL_STOPS: DeliveryStop[] = [
     notes: 'Revisar temperatura de bultos al entregar.',
     latitude: -17.792,
     longitude: -63.184,
+    referencePhotos: [
+      {
+        id: 'PH-103-1',
+        tag: 'Fachada',
+        url: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&q=80',
+        caption: 'Nave 3 de distribución y sector de hortalizas.',
+        takenAt: '15 Jul 2026',
+      },
+      {
+        id: 'PH-103-2',
+        tag: 'Portón de Carga',
+        url: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800&q=80',
+        caption: 'Portón corredizo lateral para ingreso de camiones refrigerados.',
+        takenAt: '15 Jul 2026',
+      },
+    ],
   },
   {
     id: 'DEL-104',
@@ -89,6 +144,22 @@ export const INITIAL_STOPS: DeliveryStop[] = [
     notes: 'Ingreso por portón lateral de carga.',
     latitude: -17.805,
     longitude: -63.201,
+    referencePhotos: [
+      {
+        id: 'PH-104-1',
+        tag: 'Portón de Carga',
+        url: 'https://images.unsplash.com/photo-1587293852726-70cdb56c2866?w=800&q=80',
+        caption: 'Portón verde lateral sobre pasillo de carga de abarrotes.',
+        takenAt: '10 Ago 2026',
+      },
+      {
+        id: 'PH-104-2',
+        tag: 'Referencia',
+        url: 'https://images.unsplash.com/photo-1519074069444-1ba4fff16def?w=800&q=80',
+        caption: 'Caseta de seguridad y control de balanza.',
+        takenAt: '10 Ago 2026',
+      },
+    ],
   },
   {
     id: 'DEL-105',
@@ -111,6 +182,15 @@ export const INITIAL_STOPS: DeliveryStop[] = [
     notes: 'Ingreso por parqueo de clientes.',
     latitude: -17.741,
     longitude: -63.17,
+    referencePhotos: [
+      {
+        id: 'PH-105-1',
+        tag: 'Fachada',
+        url: 'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?w=800&q=80',
+        caption: 'Fachada vidriada en esquina con estacionamiento frontal.',
+        takenAt: '02 Ago 2026',
+      },
+    ],
   },
   {
     id: 'DEL-106',
@@ -133,20 +213,50 @@ export const INITIAL_STOPS: DeliveryStop[] = [
     notes: 'Recepción hasta las 17:30 imprevistos.',
     latitude: -17.789,
     longitude: -63.138,
+    referencePhotos: [
+      {
+        id: 'PH-106-1',
+        tag: 'Fachada',
+        url: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=800&q=80',
+        caption: 'Acceso vehicular sobre Av. Cumavi.',
+        takenAt: '18 Jul 2026',
+      },
+    ],
   },
 ];
+
+type StartRouteSignatureData = {
+  paths: string[];
+  strokeCount: number;
+  signedBy: string;
+  signedAt: string;
+  orderCode: string;
+};
 
 type DeliveryStoreState = {
   stops: DeliveryStop[];
   selectedStopId: string;
+  startRouteSignature?: StartRouteSignatureData;
   setSelectedStop: (stop: DeliveryStop) => void;
   getSelectedStop: () => DeliveryStop;
   updateStopStatus: (stopId: string, status: EstadoEntrega) => void;
+  addStopReferencePhoto: (stopId: string, photo: import('../types').StopReferencePhoto) => void;
+  setStartRouteSignature: (sig: StartRouteSignatureData) => void;
 };
 
 export const useDeliveryStore = create<DeliveryStoreState>((set, get) => ({
   stops: INITIAL_STOPS,
   selectedStopId: INITIAL_STOPS[0].id,
+  startRouteSignature: {
+    paths: [
+      'M 50 120 Q 80 60 110 90 Q 140 120 170 70 L 220 130',
+      'M 90 100 L 190 100',
+    ],
+    strokeCount: 2,
+    signedBy: 'Gino Baptista (Chofer)',
+    signedAt: '07:30 hs',
+    orderCode: '98421',
+  },
 
   setSelectedStop: (stop) => set({ selectedStopId: stop.id }),
 
@@ -154,6 +264,8 @@ export const useDeliveryStore = create<DeliveryStoreState>((set, get) => ({
     const { stops, selectedStopId } = get();
     return stops.find((s) => s.id === selectedStopId) || stops[0];
   },
+
+  setStartRouteSignature: (sig) => set({ startRouteSignature: sig }),
 
   updateStopStatus: (stopId, status) =>
     set((state) => {
@@ -178,6 +290,18 @@ export const useDeliveryStore = create<DeliveryStoreState>((set, get) => ({
         selectedStopId: nextSelectedId,
       };
     }),
+
+  addStopReferencePhoto: (stopId, photo) =>
+    set((state) => ({
+      stops: state.stops.map((s) =>
+        s.id === stopId
+          ? {
+              ...s,
+              referencePhotos: [...(s.referencePhotos || []), photo],
+            }
+          : s
+      ),
+    })),
 }));
 
 export function setSelectedStop(stop: DeliveryStop): void {
@@ -190,4 +314,8 @@ export function getSelectedStop(): DeliveryStop {
 
 export function updateStopStatus(stopId: string, status: EstadoEntrega): void {
   useDeliveryStore.getState().updateStopStatus(stopId, status);
+}
+
+export function addStopReferencePhoto(stopId: string, photo: import('../types').StopReferencePhoto): void {
+  useDeliveryStore.getState().addStopReferencePhoto(stopId, photo);
 }

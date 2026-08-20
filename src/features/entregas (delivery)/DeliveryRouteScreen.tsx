@@ -7,15 +7,19 @@ import {
   List as ListIcon,
   Map as MapIcon,
   MapPin,
+  Navigation,
   Phone,
   Snowflake,
   Store,
   Truck,
   User,
-  Weight
+  Weight,
+  FileSignature,
+  Eye,
 } from "lucide-react-native";
 import { useMemo, useState } from "react";
-import { Linking, ScrollView, TouchableOpacity, View } from "react-native";
+import { Linking, Modal, ScrollView, TouchableOpacity, View } from "react-native";
+import Svg, { Path } from "react-native-svg";
 
 import { findRouteById, navigateTo } from "@/navigation/registry";
 import {
@@ -24,9 +28,13 @@ import {
   Button,
   FilterChips,
   SearchField,
+  getSignatureViewBox,
+  SIGNATURE_PAPER_COLOR,
+  SIGNATURE_INK_COLOR,
   type DialogType,
   type FilterChipOption,
 } from "@/shared/ui";
+
 import { Text, useAppTheme } from "@/theme";
 import { router } from "expo-router";
 import { RouteMapView } from "./components/RouteMapView";
@@ -34,6 +42,7 @@ import {
   setSelectedStop,
   useDeliveryStore
 } from "./data/delivery-store";
+import { SANTA_CRUZ_STOPS_COORDINATES } from "./data/santa-cruz-route";
 import type { ActiveTrip, DeliveryStop, EstadoEntrega } from "./types";
 
 const INITIAL_TRIP: ActiveTrip = {
@@ -49,145 +58,14 @@ const INITIAL_TRIP: ActiveTrip = {
   departureTime: "07:30 hs",
 };
 
-const INITIAL_STOPS: DeliveryStop[] = [
-  {
-    id: "DEL-101",
-    sequence: 1,
-    clientName: "Hipermaxi - Equipetrol Norte",
-    deliveryPointId: "DP-4401",
-    address: "Av. San Martín #1420, Equipetrol Norte",
-    contactName: "Lic. Roberto Gómez (Almacén Alimentos)",
-    contactPhone: "+591 71234567",
-    deliveryWindow: "08:00 - 09:30 hs",
-    status: "PENDING",
-    isCold: true,
-    packagesCount: "180.5 kg • 0.6 m³",
-    weightKg: 180.5,
-    volumeM3: 0.6,
-    totalUnits: 96,
-    netTotal: "Bs. 5,030.00",
-    invoiceTotal: 5030,
-    advanceAmount: 800,
-    notes: "Recibe en rampa de frío con sello.",
-    latitude: -17.768,
-    longitude: -63.195,
-  },
-  {
-    id: "DEL-102",
-    sequence: 2,
-    clientName: "Supermercados IC Norte - Banzer",
-    deliveryPointId: "DP-4402",
-    address: "Av. Cristo Redentor y 3er Anillo Norte",
-    contactName: "Marcos Vargas (Recepción Abarrotes)",
-    contactPhone: "+591 72345678",
-    deliveryWindow: "09:30 - 11:00 hs",
-    status: "PENDING",
-    isCold: false,
-    packagesCount: "340.0 kg • 1.1 m³",
-    weightKg: 340.0,
-    volumeM3: 1.1,
-    totalUnits: 180,
-    netTotal: "Bs. 3,450.00",
-    invoiceTotal: 3450,
-    advanceAmount: 450,
-    notes: "Descarga por rampa trasera de proveedores.",
-    latitude: -17.752,
-    longitude: -63.181,
-  },
-  {
-    id: "DEL-103",
-    sequence: 3,
-    clientName: "Mercado Abasto Norte - Hortalizas",
-    deliveryPointId: "DP-4403",
-    address: "Av. Cristo Redentor y 5to Anillo Norte",
-    contactName: "Ing. Fernando Roca",
-    contactPhone: "+591 73456789",
-    deliveryWindow: "11:00 - 12:30 hs",
-    status: "PENDING",
-    isCold: true,
-    packagesCount: "520.0 kg • 1.8 m³",
-    weightKg: 520.0,
-    volumeM3: 1.8,
-    totalUnits: 264,
-    netTotal: "Bs. 9,800.00",
-    invoiceTotal: 9800,
-    advanceAmount: 200,
-    notes: "Revisar temperatura de bultos al entregar.",
-    latitude: -17.792,
-    longitude: -63.184,
-  },
-  {
-    id: "DEL-104",
-    sequence: 4,
-    clientName: "Mercado Mutualista - Sector Alimentos",
-    deliveryPointId: "DP-4404",
-    address: "Av. Mutualista y 3er Anillo Este",
-    contactName: "Lucía Fernández",
-    contactPhone: "+591 74567890",
-    deliveryWindow: "13:00 - 14:30 hs",
-    status: "PENDING",
-    isCold: false,
-    packagesCount: "210.0 kg • 0.7 m³",
-    weightKg: 210.0,
-    volumeM3: 0.7,
-    totalUnits: 120,
-    netTotal: "Bs. 2,150.00",
-    invoiceTotal: 2150,
-    advanceAmount: 2150,
-    notes: "Ingreso por portón lateral de carga.",
-    latitude: -17.805,
-    longitude: -63.201,
-  },
-  {
-    id: "DEL-105",
-    sequence: 5,
-    clientName: "Micromarket Fidalga - 4to Anillo",
-    deliveryPointId: "DP-4405",
-    address: "Av. Banzer esquina 4to Anillo Norte",
-    contactName: "Gonzalo Morales",
-    contactPhone: "+591 75678901",
-    deliveryWindow: "15:00 - 16:30 hs",
-    status: "PENDING",
-    isCold: true,
-    packagesCount: "95.0 kg • 0.3 m³",
-    weightKg: 95.0,
-    volumeM3: 0.3,
-    totalUnits: 60,
-    netTotal: "Bs. 1,680.00",
-    invoiceTotal: 1680,
-    advanceAmount: 1650,
-    notes: "Ingreso por parqueo de clientes.",
-    latitude: -17.741,
-    longitude: -63.17,
-  },
-  {
-    id: "DEL-106",
-    sequence: 6,
-    clientName: "Hipermaxi - Villa 1ro de Mayo",
-    deliveryPointId: "DP-4406",
-    address: "Av. Cumavi #5200, 3er Anillo Este",
-    contactName: "Dra. Patricia Silva",
-    contactPhone: "+591 76789012",
-    deliveryWindow: "16:30 - 17:30 hs",
-    status: "PENDING",
-    isCold: false,
-    packagesCount: "310.0 kg • 0.9 m³",
-    weightKg: 310.0,
-    volumeM3: 0.9,
-    totalUnits: 168,
-    netTotal: "Bs. 7,320.00",
-    invoiceTotal: 7320,
-    advanceAmount: 0,
-    notes: "Recepción hasta las 17:30 imprevistos.",
-    latitude: -17.789,
-    longitude: -63.138,
-  },
-];
+
 
 export function DeliveryRouteScreen() {
   const theme = useAppTheme();
   const [trip] = useState<ActiveTrip>(INITIAL_TRIP);
   const { stops, updateStopStatus: updateStoreStatus } = useDeliveryStore();
+  const startRouteSignature = useDeliveryStore((state) => state.startRouteSignature);
+  const [isSignaturePreviewOpen, setIsSignaturePreviewOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<"todos" | EstadoEntrega>(
     "todos",
@@ -271,6 +149,14 @@ export function DeliveryRouteScreen() {
 
   const handleCall = (phone: string) => {
     Linking.openURL(`tel:${phone}`);
+  };
+
+  const handleOpenGoogleMaps = (stop: DeliveryStop) => {
+    const coords = SANTA_CRUZ_STOPS_COORDINATES[stop.sequence];
+    const lat = coords?.latitude ?? stop.latitude ?? -17.783;
+    const lng = coords?.longitude ?? stop.longitude ?? -63.182;
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+    Linking.openURL(url).catch(() => {});
   };
 
   const handleOpenDetail = (stop: DeliveryStop) => {
@@ -516,6 +402,38 @@ export function DeliveryRouteScreen() {
               {trip.assignedWeightKg} kg • {trip.assignedVolumeM3} m³
             </Text>
           </View>
+
+          {startRouteSignature && (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => setIsSignaturePreviewOpen(true)}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                backgroundColor: theme.colors.successSoft,
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: theme.colors.success + '40',
+                alignSelf: 'flex-start',
+              }}
+            >
+              <FileSignature size={13} color={theme.colors.success} />
+              <Text
+                variant="caption"
+                style={{
+                  fontSize: 11,
+                  fontWeight: "700",
+                  color: theme.colors.success,
+                }}
+              >
+                Firma de salida: {startRouteSignature.signedBy} ({startRouteSignature.signedAt})
+              </Text>
+              <Eye size={12} color={theme.colors.success} />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={{ gap: 6, marginTop: 2 }}>
@@ -681,12 +599,12 @@ export function DeliveryRouteScreen() {
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <View style={{ flex: 1 }}>
                   <Button
-                    label="Llamar"
-                    icon={Phone}
+                    label="Cómo llegar"
+                    icon={Navigation}
                     variant="outline"
                     size="md"
                     fullWidth
-                    onPress={() => handleCall(activeStop.contactPhone)}
+                    onPress={() => handleOpenGoogleMaps(activeStop)}
                   />
                 </View>
                 <View style={{ flex: 1.5 }}>
@@ -706,12 +624,12 @@ export function DeliveryRouteScreen() {
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <View style={{ flex: 1 }}>
                   <Button
-                    label="Llamar"
-                    icon={Phone}
+                    label="Cómo llegar"
+                    icon={Navigation}
                     variant="outline"
                     size="md"
                     fullWidth
-                    onPress={() => handleCall(activeStop.contactPhone)}
+                    onPress={() => handleOpenGoogleMaps(activeStop)}
                   />
                 </View>
                 <View style={{ flex: 1.5 }}>
@@ -732,12 +650,12 @@ export function DeliveryRouteScreen() {
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <View style={{ flex: 1 }}>
                   <Button
-                    label="Llamar"
-                    icon={Phone}
+                    label="Cómo llegar"
+                    icon={Navigation}
                     variant="outline"
                     size="md"
                     fullWidth
-                    onPress={() => handleCall(activeStop.contactPhone)}
+                    onPress={() => handleOpenGoogleMaps(activeStop)}
                   />
                 </View>
                 <View style={{ flex: 1.5 }}>
@@ -985,6 +903,55 @@ export function DeliveryRouteScreen() {
         )}
       </View>
 
+      {/* ACCESO A LA PANTALLA DE FINALIZACIÓN Y LIQUIDACIÓN */}
+      <View
+        style={{
+          backgroundColor: theme.colors.cardBackground,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: theme.colors.borderStrong,
+          padding: 16,
+          gap: 12,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              backgroundColor: theme.colors.primarySoft,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <CheckCircle2 size={22} color={theme.colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text variant="label" style={{ fontSize: 14, fontWeight: "700" }}>
+              Cierre de Jornada y Retorno
+            </Text>
+            <Text variant="caption" style={{ color: theme.colors.mutedForeground }}>
+              Conteo de bandeo/activos, arqueo de dinero y liquidación.
+            </Text>
+          </View>
+        </View>
+
+        <Button
+          label="Finalizar Ruta y Liquidar"
+          icon={CheckCircle2}
+          variant="primary"
+          size="lg"
+          onPress={() => {
+            const finalizacionRoute = findRouteById("entregas.finalizacion");
+            if (finalizacionRoute) {
+              navigateTo(finalizacionRoute);
+            }
+          }}
+          fullWidth
+        />
+      </View>
+
       <AppDialog
         visible={dialogConfig.visible}
         title={dialogConfig.title}
@@ -992,6 +959,133 @@ export function DeliveryRouteScreen() {
         type={dialogConfig.type}
         onClose={() => setDialogConfig((prev) => ({ ...prev, visible: false }))}
       />
+
+      {/* MODAL DE PREVISUALIZACIÓN DE FIRMA DE INICIO */}
+      <Modal
+        visible={isSignaturePreviewOpen}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={() => setIsSignaturePreviewOpen(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.65)",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              backgroundColor: theme.colors.cardBackground,
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+              padding: 20,
+              gap: 14,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <View
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 19,
+                    backgroundColor: theme.colors.primarySoft,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <FileSignature size={20} color={theme.colors.primary} />
+                </View>
+                <View>
+                  <Text
+                    variant="title"
+                    style={{
+                      fontSize: 16,
+                      fontWeight: "700",
+                      color: theme.colors.foreground,
+                    }}
+                  >
+                    Firma de Salida Registrada
+                  </Text>
+                  <Text
+                    variant="caption"
+                    style={{ fontSize: 12, color: theme.colors.mutedForeground }}
+                  >
+                    {startRouteSignature?.signedBy} • {startRouteSignature?.signedAt}
+                  </Text>
+                </View>
+              </View>
+              <Badge label="Validada ✓" tone="success" size="sm" />
+            </View>
+
+            {startRouteSignature?.paths && (
+              <View
+                style={{
+                  height: 120,
+                  backgroundColor: SIGNATURE_PAPER_COLOR,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  borderRadius: 12,
+                  overflow: "hidden",
+                }}
+              >
+                <Svg
+                  width="100%"
+                  height="100%"
+                  viewBox={getSignatureViewBox(startRouteSignature.paths)}
+                  preserveAspectRatio="xMidYMid meet"
+                >
+                  {startRouteSignature.paths.map((d, idx) => (
+                    <Path
+                      key={`start-sig-${idx}`}
+                      d={d}
+                      stroke={SIGNATURE_INK_COLOR}
+                      strokeWidth={2.5}
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  ))}
+                </Svg>
+              </View>
+            )}
+
+            <Text
+              variant="caption"
+              style={{ fontSize: 11, color: theme.colors.mutedForeground }}
+            >
+              Firma capturada digitalmente al momento de iniciar la hoja de ruta oficial.
+            </Text>
+
+            <Button
+              label="Cerrar"
+              variant="secondary"
+              fullWidth
+              onPress={() => setIsSignaturePreviewOpen(false)}
+            />
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
+

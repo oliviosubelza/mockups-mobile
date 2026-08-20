@@ -294,6 +294,12 @@ export interface SemaforoOrderItem {
     };
   };
   products: SemaforoAuditProduct[];
+  signature?: {
+    paths: string[];
+    strokeCount: number;
+    signedBy?: string;
+    signedAt?: string;
+  };
 }
 
 const SEED_SEMAFORO_ORDERS: SemaforoOrderItem[] = [
@@ -411,6 +417,15 @@ const SEED_SEMAFORO_ORDERS: SemaforoOrderItem[] = [
         user: 'Juan Pérez (Supervisor)',
         time: '12:00',
       },
+    },
+    signature: {
+      paths: [
+        'M 50 120 Q 80 60 110 90 Q 140 120 170 70 L 220 130',
+        'M 90 100 L 190 100',
+      ],
+      strokeCount: 2,
+      signedBy: 'Juan Pérez (Supervisor)',
+      signedAt: '12:00',
     },
     products: [
       {
@@ -683,7 +698,13 @@ interface SupervisorStoreState {
       numUnidades: number;
       totalContado: number;
     }[],
-    observations: Record<string, string>
+    observations: Record<string, string>,
+    signature?: {
+      paths: string[];
+      strokeCount: number;
+      signedBy?: string;
+      signedAt?: string;
+    }
   ) => void;
 
   resetAll: () => void;
@@ -765,7 +786,7 @@ export const useSupervisorStore = create<SupervisorStoreState>((set) => ({
 
   setActiveSemaforoId: (id) => set({ activeSemaforoId: id }),
 
-  completeSemaforoAudit: (orderId, auditedProducts, observations) =>
+  completeSemaforoAudit: (orderId, auditedProducts, observations, signature) =>
     set((state) => ({
       semaforoOrders: state.semaforoOrders.map((order) => {
         if (order.id !== orderId) return order;
@@ -780,6 +801,15 @@ export const useSupervisorStore = create<SupervisorStoreState>((set) => ({
           };
         });
 
+        const auditTime =
+          signature?.signedAt ||
+          new Date().toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+
+        const auditorUser = signature?.signedBy || 'Juan Pérez (Supervisor)';
+
         return {
           ...order,
           status: 'COMPLETED' as const,
@@ -787,13 +817,17 @@ export const useSupervisorStore = create<SupervisorStoreState>((set) => ({
             ...order.counts,
             semaphoreAuditor: {
               status: 'COMPLETED' as const,
-              user: 'Juan Pérez (Supervisor)',
-              time: new Date().toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              }),
+              user: auditorUser,
+              time: auditTime,
             },
           },
+          signature: signature
+            ? {
+                ...signature,
+                signedBy: auditorUser,
+                signedAt: auditTime,
+              }
+            : order.signature,
           products: updatedProducts,
         };
       }),

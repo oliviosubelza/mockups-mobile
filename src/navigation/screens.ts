@@ -5,6 +5,7 @@ import DespachosScreen from '@/features/despachos/screen';
 import { DeliveryRouteScreen } from '@/features/entregas (delivery)/DeliveryRouteScreen';
 import { DeliveryDetailScreen } from '@/features/entregas (delivery)/delivery-details-screen';
 import { DeliveryScreen } from '@/features/entregas (delivery)/delivery-screen';
+import { FinalizacionEntregasScreen } from '@/features/entregas (delivery)/FinalizacionEntregasScreen';
 import { RegistrarVisitaScreen } from '@/features/entregas (delivery)/RegistrarVisitaScreen';
 import GalleryScreen from '@/features/gallery/screen';
 import SettingsScreen from '@/features/settings/screen';
@@ -36,6 +37,7 @@ export const screens: Record<string, ComponentType> = {
   'entregas.ruta': DeliveryRouteScreen,
   'entregas.registrarVisita': RegistrarVisitaScreen,
   'entregas.detalle': DeliveryDetailScreen,
+  'entregas.finalizacion': FinalizacionEntregasScreen,
   gallery: GalleryScreen,
   settings: SettingsScreen,
 };

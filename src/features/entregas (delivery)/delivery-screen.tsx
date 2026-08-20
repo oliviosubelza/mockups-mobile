@@ -16,10 +16,12 @@ import {
 } from 'lucide-react-native';
 
 import { findRouteById, navigateTo } from '@/navigation/registry';
-import { Badge, SearchField, AppDialog } from '@/shared/ui';
+import { Badge, SearchField, AppDialog, SignaturePadModal } from '@/shared/ui';
 import { Text, useAppTheme } from '@/theme';
 import { useDespachos } from '@/features/despachos/store';
 import type { Despacho } from '@/features/despachos/types';
+import { useDeliveryStore } from './data/delivery-store';
+
 
 const INITIAL_DELIVERY_ORDERS: Despacho[] = [
   {
@@ -100,6 +102,10 @@ export function DeliveryScreen() {
     );
   }, [ordenesAprobadas, searchQuery]);
 
+  const setStartRouteSignature = useDeliveryStore((state) => state.setStartRouteSignature);
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
+  const [successDialog, setSuccessDialog] = useState(false);
+
   const handleSelectOrder = (order: Despacho) => {
     setSelectedOrder(order);
     setIsOptionsModalOpen(true);
@@ -107,6 +113,26 @@ export function DeliveryScreen() {
 
   const handleIniciarRuta = () => {
     setIsOptionsModalOpen(false);
+    setIsSignatureModalOpen(true);
+  };
+
+  const handleConfirmSignature = (signature: { paths: string[]; strokeCount: number }) => {
+    setIsSignatureModalOpen(false);
+
+    const orderCode = selectedOrder?.codigo || '98421';
+    setStartRouteSignature({
+      paths: signature.paths,
+      strokeCount: signature.strokeCount,
+      signedBy: 'Gino Baptista (Chofer)',
+      signedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' hs',
+      orderCode,
+    });
+
+    setSuccessDialog(true);
+  };
+
+  const handleNavigateToRoute = () => {
+    setSuccessDialog(false);
     const route = findRouteById('entregas.ruta');
     if (route) navigateTo(route);
   };
@@ -429,6 +455,27 @@ export function DeliveryScreen() {
         type="warning"
         onClose={() => setToastConfig((prev) => ({ ...prev, visible: false }))}
       />
+
+      {/* MODAL DE FIRMA DE INICIO DE RUTA */}
+      <SignaturePadModal
+        visible={isSignatureModalOpen}
+        title="Firma de Inicio de Ruta"
+        subtitle={selectedOrder ? `Chofer: Gino Baptista • OT-${selectedOrder.codigo}` : 'Chofer: Gino Baptista'}
+        onClose={() => setIsSignatureModalOpen(false)}
+        onConfirm={handleConfirmSignature}
+      />
+
+      {/* DIÁLOGO DE CONFIRMACIÓN DE FIRMA Y SALIDA */}
+      <AppDialog
+        visible={successDialog}
+        title="Ruta Iniciada y Firmada"
+        message={`Firma digital de salida registrada correctamente para la OT-${selectedOrder?.codigo || '98421'}.\n\nTu viaje ha comenzado.`}
+        type="success"
+        buttonText="Ver Hoja de Ruta"
+        onConfirm={handleNavigateToRoute}
+        onClose={handleNavigateToRoute}
+      />
     </View>
   );
 }
+

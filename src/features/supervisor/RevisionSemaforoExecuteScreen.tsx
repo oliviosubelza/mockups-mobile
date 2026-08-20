@@ -19,7 +19,9 @@ import {
   AlertTriangle,
   Pencil,
   RotateCcw,
+  FileSignature,
 } from 'lucide-react-native';
+import Svg, { Path } from 'react-native-svg';
 
 import { findRouteById, navigateTo } from '@/navigation/registry';
 import {
@@ -33,9 +35,14 @@ import {
   EMPTY_BOX_UNIT,
   boxUnitTotal,
   formatBoxUnit,
+  SignaturePadModal,
+  getSignatureViewBox,
+  SIGNATURE_PAPER_COLOR,
+  SIGNATURE_INK_COLOR,
   type BoxUnitValue,
   type DialogType,
 } from '@/shared/ui';
+
 import { Box, Text, useAppTheme } from '@/theme';
 
 import { ObservationSheet } from './components/ObservationSheet';
@@ -93,6 +100,10 @@ export default function RevisionSemaforoExecuteScreen() {
   // ESCÁNER DE CÓDIGO DE BARRAS
   const [isBarcodeScannerVisible, setIsBarcodeScannerVisible] = useState(false);
   const [highlightedCode, setHighlightedCode] = useState<string | null>(null);
+
+  // MODAL DE FIRMA DIGITAL DE AUDITORÍA
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
+  const [signaturePaths, setSignaturePaths] = useState<string[]>([]);
 
   // DIÁLOGOS
   type DialogConfig = {
@@ -363,7 +374,19 @@ export default function RevisionSemaforoExecuteScreen() {
     setEditDrafts({});
   };
 
-  const confirmarConsolidacion = () => {
+  const handleConfirmSignature = (signature: {
+    paths: string[];
+    strokeCount: number;
+  }) => {
+    setSignaturePaths(signature.paths);
+    setIsSignatureModalOpen(false);
+    confirmarConsolidacion(signature);
+  };
+
+  const confirmarConsolidacion = (signatureData?: {
+    paths: string[];
+    strokeCount: number;
+  }) => {
     setConsolidado(true);
 
     const todosLosRegistros: CountedAuditRecord[] = currentProductCounts.map((item) => ({
@@ -379,12 +402,30 @@ export default function RevisionSemaforoExecuteScreen() {
     }));
 
     setItemsAuditados(todosLosRegistros);
-    completeSemaforoAudit(activeOrder.id, todosLosRegistros, observations);
+
+    const signatureToSave = signatureData
+      ? {
+          paths: signatureData.paths,
+          strokeCount: signatureData.strokeCount,
+          signedBy: 'Juan Pérez (Supervisor)',
+          signedAt: new Date().toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+        }
+      : undefined;
+
+    completeSemaforoAudit(
+      activeOrder.id,
+      todosLosRegistros,
+      observations,
+      signatureToSave
+    );
 
     setDialogConfig({
       visible: true,
-      title: 'Revisión consolidada',
-      message: `Se consolidó la revisión de ${todosLosRegistros.length} productos en la Orden ${activeOrder.orderCode}. El conteo queda cerrado y registrado en el historial.`,
+      title: 'Revisión consolidada y firmada',
+      message: `Se consolidó y firmó la revisión de ${todosLosRegistros.length} productos en la Orden ${activeOrder.orderCode}. El conteo y acta digital quedan registrados en el historial.`,
       type: 'success',
       buttonText: 'Aceptar',
       onConfirm: handleRedirectToList,
@@ -403,13 +444,16 @@ export default function RevisionSemaforoExecuteScreen() {
 
     setDialogConfig({
       visible: true,
-      title: 'Consolidar revisión',
-      message: `${mensaje}\n\n¿Deseas finalizar y guardar la revisión?`,
+      title: 'Consolidar y Firmar Revisión',
+      message: `${mensaje}\n\nPara cerrar el acta de auditoría semáforo se registrará tu firma digital.`,
       type: strictlyZeroCount > 0 || mismatches > 0 ? 'warning' : 'info',
-      buttonText: 'Consolidar y Guardar',
+      buttonText: 'Continuar a Firma',
       cancelText: 'Seguir revisando',
       onCancel: closeDialog,
-      onConfirm: confirmarConsolidacion,
+      onConfirm: () => {
+        closeDialog();
+        setIsSignatureModalOpen(true);
+      },
     });
   };
 
@@ -650,6 +694,96 @@ export default function RevisionSemaforoExecuteScreen() {
                 </Card>
               );
             })}
+
+            {/* TARJETA DE FIRMA DIGITAL DE AUDITORÍA REGISTRADA */}
+            <Card
+              padding="m"
+              borderRadius="xl"
+              borderWidth={1}
+              style={{
+                gap: 12,
+                backgroundColor: theme.colors.cardBackground,
+                borderColor: theme.colors.border,
+              }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      backgroundColor: theme.colors.primarySoft,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <FileSignature size={18} color={theme.colors.primary} />
+                  </View>
+                  <View>
+                    <Text variant="label" style={{ fontSize: 13, fontWeight: '800', color: theme.colors.foreground }}>
+                      Firma de Auditoría Registrada
+                    </Text>
+                    <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
+                      {activeOrder.signature?.signedBy || activeOrder.counts.semaphoreAuditor.user || 'Juan Pérez (Supervisor)'} • {activeOrder.signature?.signedAt || activeOrder.counts.semaphoreAuditor.time || '12:00'}
+                    </Text>
+                  </View>
+                </View>
+
+                <Badge
+                  label="Firmada ✓"
+                  tone="success"
+                  size="sm"
+                  icon={CheckCircle2}
+                />
+              </View>
+
+              {/* PREVISUALIZACIÓN DE LA FIRMA VECTORIAL SVG */}
+              {activeOrder.signature?.paths && activeOrder.signature.paths.length > 0 ? (
+                <View
+                  style={{
+                    height: 75,
+                    backgroundColor: SIGNATURE_PAPER_COLOR,
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    borderRadius: 10,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <Svg
+                    width="100%"
+                    height="100%"
+                    viewBox={getSignatureViewBox(activeOrder.signature.paths)}
+                    preserveAspectRatio="xMidYMid meet"
+                  >
+                    {activeOrder.signature.paths.map((d, idx) => (
+                      <Path
+                        key={`audit-signature-stroke-${idx}`}
+                        d={d}
+                        stroke={SIGNATURE_INK_COLOR}
+                        strokeWidth={2.5}
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    ))}
+                  </Svg>
+                </View>
+              ) : (
+                <View
+                  style={{
+                    padding: 10,
+                    borderRadius: 8,
+                    backgroundColor: theme.colors.secondary,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text variant="caption" style={{ fontSize: 11, color: theme.colors.mutedForeground }}>
+                    Firma digital registrada durante la consolidación de semáforo.
+                  </Text>
+                </View>
+              )}
+            </Card>
           </View>
         ) : (
           /* ========================================================================= */
@@ -1100,6 +1234,16 @@ export default function RevisionSemaforoExecuteScreen() {
         onCancel={dialogConfig.onCancel}
         onConfirm={dialogConfig.onConfirm}
       />
+
+      {/* MODAL DE FIRMA DIGITAL DE AUDITORÍA */}
+      <SignaturePadModal
+        visible={isSignatureModalOpen}
+        title="Firma Cierre de Auditoría"
+        subtitle={`Supervisor: Juan Pérez • Orden ${activeOrder.orderCode}`}
+        onClose={() => setIsSignatureModalOpen(false)}
+        onConfirm={handleConfirmSignature}
+      />
     </View>
   );
 }
+

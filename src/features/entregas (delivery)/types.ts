@@ -3,6 +3,16 @@ export type EstadoEntrega = 'PENDING' | 'EN_ROUTE' | 'ARRIVED' | 'DELIVERED' | '
 /** Metodo de cobro en sitio. Compartido entre la pantalla y el modal de cobro. */
 export type PaymentMethodType = 'CASH' | 'TRANSFER' | 'QR' | 'CHECK';
 
+export type StopReferencePhotoTag = 'Fachada' | 'Portón de Carga' | 'Referencia' | 'Recepción' | 'Otro';
+
+export type StopReferencePhoto = {
+  id: string;
+  tag: StopReferencePhotoTag;
+  url: string;
+  caption?: string;
+  takenAt?: string;
+};
+
 export type DeliveryStop = {
   id: string;
   sequence: number;
@@ -27,6 +37,7 @@ export type DeliveryStop = {
   notes?: string;
   latitude?: number;
   longitude?: number;
+  referencePhotos?: StopReferencePhoto[];
 };
 
 export type ActiveTrip = {
@@ -40,4 +51,11 @@ export type ActiveTrip = {
   assignedWeightKg: number;
   assignedVolumeM3: number;
   departureTime: string;
+  startSignature?: {
+    paths: string[];
+    strokeCount: number;
+    signedBy: string;
+    signedAt: string;
+  };
 };
+

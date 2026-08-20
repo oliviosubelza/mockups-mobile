@@ -129,8 +129,10 @@ export function PaymentMethodModal({
             borderLeftWidth: 1,
             borderRightWidth: 1,
             borderColor: theme.colors.border,
-            height: keyboardHeight > 0 ? "70%" : "54%",
-            maxHeight: keyboardHeight > 0 ? "78%" : "60%",
+            height:
+              keyboardHeight > 0 ? "75%" : method === "QR" ? "68%" : "54%",
+            maxHeight:
+              keyboardHeight > 0 ? "82%" : method === "QR" ? "74%" : "60%",
             minHeight: "48%",
             overflow: "hidden",
             elevation: 24,

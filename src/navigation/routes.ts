@@ -8,6 +8,7 @@ import {
   CheckSquare,
   PackageSearch,
   ShieldAlert,
+  CheckCircle2,
 } from 'lucide-react-native';
 
 import type { RouteInterface } from './types';
@@ -120,6 +121,12 @@ export const routes: RouteInterface[] = [
         path: '/entregas/detalle',
         title: 'Detalle de Entrega',
         icon: ClipboardCheck,
+      },
+      {
+        id: 'entregas.finalizacion',
+        path: '/entregas/finalizacion',
+        title: 'Liquidación y Retorno',
+        icon: CheckCircle2,
       },
     ],
   },

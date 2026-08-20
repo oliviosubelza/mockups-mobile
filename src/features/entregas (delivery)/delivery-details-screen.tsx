@@ -16,6 +16,7 @@ import {
   FileText,
   Lock,
   MapPin,
+  MessageCircle,
   Navigation,
   Package,
   Phone,
@@ -30,8 +31,9 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react-native";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Linking,
   Modal,
   ScrollView,
@@ -54,18 +56,25 @@ import {
 import { DeliveryProgressHeader } from "./components/DeliveryProgressHeader";
 import { PaymentMethodModal } from "./components/PaymentMethodModal";
 import { ProductsChecklistModal } from "./components/ProductsChecklistModal";
+import { SendInvoiceWhatsAppModal } from "./components/SendInvoiceWhatsAppModal";
 import {
   SIGNATURE_INK_COLOR,
   SIGNATURE_PAPER_COLOR,
   SignaturePadModal,
 } from "./components/SignaturePadModal";
+import { StopReferenceCarousel } from "./components/StopReferenceCarousel";
 import {
+  addStopReferencePhoto,
   getSelectedStop,
   updateStopStatus,
   useDeliveryStore,
 } from "./data/delivery-store";
 import { SANTA_CRUZ_STOPS_COORDINATES } from "./data/santa-cruz-route";
-import type { EstadoEntrega, PaymentMethodType } from "./types";
+import type {
+  EstadoEntrega,
+  PaymentMethodType,
+  StopReferencePhoto,
+} from "./types";
 
 type DeliveryItem = {
   id: string;
@@ -663,23 +672,14 @@ export const DeliveryDetailScreen = () => {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
 
-  // PAGOS AGREGADOS ANTES DE PROCESAR EL COBRO DEFINITIVO
-  const [stagedPayments, setStagedPayments] = useState<PaymentRecord[]>([]);
-
   // SELECT DROPDOWN DE MÉTODOS DE PAGO
   const [isSelectMethodOpen, setIsSelectMethodOpen] = useState(false);
   const [methodSelectValue, setMethodSelectValue] = useState<
     PaymentMethodType | ""
   >("");
 
-  // FLUKO SECUENCIAL DE PROCESAMIENTO DE COBRO
   const scrollViewRef = useRef<ScrollView>(null);
   const [isHeaderSummaryExpanded, setIsHeaderSummaryExpanded] = useState(false);
-  const [isProcessingFlow, setIsProcessingFlow] = useState(false);
-  const [currentProcessingIndex, setCurrentProcessingIndex] = useState(0);
-  const [processingStepStatus, setProcessingStepStatus] = useState<
-    "PENDING" | "VALIDATING" | "APPROVED"
-  >("PENDING");
 
   // Formularios de Cobro
   const [cashAmount, setCashAmount] = useState(netAmountToCollect.toString());
@@ -704,49 +704,44 @@ export const DeliveryDetailScreen = () => {
   );
   const [checkPhoto, setCheckPhoto] = useState(false);
 
-  // Estado de Pago por QR
+  // Estado de Pago por QR en tiempo real
   const [qrAmount, setQrAmount] = useState(netAmountToCollect.toString());
-  const [qrStatus, setQrStatus] = useState<
-    "PENDING" | "VALIDATING" | "APPROVED"
-  >("PENDING");
+  const [qrStep, setQrStep] = useState<"INPUT" | "GENERATING" | "WAITING" | "CONFIRMED">("INPUT");
+  const qrTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // CÁLCULOS DINÁMICOS DE SALDO PENDIENTE Y AGREGADO
-  const totalPaid = payments.reduce((acc, p) => acc + (p.amount || 0), 0);
-  const totalStaged = stagedPayments.reduce((acc, p) => acc + (p.amount || 0), 0);
-  const unallocatedBalance = Math.max(
-    0,
-    netAmountToCollect - totalPaid - totalStaged,
+  useEffect(() => {
+    return () => {
+      if (qrTimeoutRef.current) clearTimeout(qrTimeoutRef.current);
+    };
+  }, []);
+
+  // Referencias visuales del punto de entrega
+  const [stopPhotos, setStopPhotos] = useState<StopReferencePhoto[]>(
+    stop.referencePhotos || [],
   );
+
+  const handleAddReferencePhoto = (newPhoto: StopReferencePhoto) => {
+    setStopPhotos((prev) => [...prev, newPhoto]);
+    addStopReferencePhoto(stop.id, newPhoto);
+    showDialog(
+      "Foto de Referencia Guardada",
+      `Se agregó la foto de "${newPhoto.tag}" para el punto de entrega de ${stop.clientName}.`,
+      "success",
+    );
+  };
+
+  const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+
+  // CÁLCULOS DINÁMICOS DE SALDO PENDIENTE Y COBRADO DIRECTO
+  const totalPaid = payments.reduce((acc, p) => acc + (p.amount || 0), 0);
+  const unallocatedBalance = Math.max(0, netAmountToCollect - totalPaid);
   const pendingBalance = unallocatedBalance;
-
-  // MONTO PROGRESIVO VALIDADO EN TIEMPO REAL DURANTE EL FLUJO DE VALIDACIÓN (isProcessingFlow)
-  const approvedCurrentAmount =
-    isProcessingFlow &&
-    processingStepStatus === "APPROVED" &&
-    stagedPayments[currentProcessingIndex]
-      ? stagedPayments[currentProcessingIndex].amount || 0
-      : 0;
-
-  const previousCompletedStepsAmount = isProcessingFlow
-    ? stagedPayments
-        .slice(0, currentProcessingIndex)
-        .reduce((acc, p) => acc + (p.amount || 0), 0)
-    : 0;
-
-  const validatedProgressAmount =
-    totalPaid +
-    (isProcessingFlow
-      ? previousCompletedStepsAmount + approvedCurrentAmount
-      : totalStaged);
-
+  const validatedProgressAmount = totalPaid;
   const validatedProgressPercent =
     netAmountToCollect > 0
       ? Math.min(
           100,
-          Math.max(
-            0,
-            Math.round((validatedProgressAmount / netAmountToCollect) * 100),
-          ),
+          Math.max(0, Math.round((totalPaid / netAmountToCollect) * 100)),
         )
       : isFullyCoveredByAdvance
         ? 100
@@ -940,46 +935,66 @@ export const DeliveryDetailScreen = () => {
     if (method === "CHECK") setCheckAmount(seededAmount);
     if (method === "QR") {
       setQrAmount(seededAmount);
-      setQrStatus("PENDING");
+      setQrStep("INPUT");
     }
     setSelectedMethod(method);
     setIsPaymentModalOpen(true);
     setIsSelectMethodOpen(false);
   };
 
-  // AGREGAR PAGO POR QR A LA LISTA DE PAGOS AGREGADOS (STAGED)
-  const handlePayWithQr = () => {
+  // INICIAR FLUJO DE COBRO POR QR EN TIEMPO REAL
+  const handleStartQrFlow = () => {
     if (blockChargeIfCoveredByAdvance()) return;
     const amt = parseFloat(qrAmount);
     if (isNaN(amt) || amt <= 0) {
       showDialog(
-        "Monto Invalido",
-        "Ingresa un monto valido a cobrar por QR.",
+        "Monto Inválido",
+        "Ingresa un monto válido a cobrar por QR.",
         "danger",
       );
       return;
     }
-    const newStaged: PaymentRecord = {
-      id: Date.now().toString(),
-      method: "QR",
-      amount: amt,
-      currency: "BOB",
-      originalAmount: amt,
-      exchangeRate: 1,
-      reference: `QR-BCO-${Math.floor(100000 + Math.random() * 900000)}`,
-      isVerified: false,
-    };
-    setStagedPayments((prev) => [...prev, newStaged]);
-    setIsPaymentModalOpen(false);
-    setMethodSelectValue("");
-    showDialog(
-      "Pago Agregado",
-      `Se agrego el cobro por QR de Bs. ${formatMoney(amt)} a la lista. Puedes seguir agregando mas pagos o presionar Realizar Cobro.`,
-      "info",
-    );
+
+    if (qrTimeoutRef.current) clearTimeout(qrTimeoutRef.current);
+    setQrStep("GENERATING");
+
+    // 1. Simulación de conexión y generación bancaria (1.2s)
+    qrTimeoutRef.current = setTimeout(() => {
+      setQrStep("WAITING");
+
+      // 2. Simulación de detección automática de pago en tiempo real (3.5s)
+      qrTimeoutRef.current = setTimeout(() => {
+        setQrStep("CONFIRMED");
+
+        // 3. Confirmación visual y guardado automático (1.3s)
+        qrTimeoutRef.current = setTimeout(() => {
+          const newPayment: PaymentRecord = {
+            id: Date.now().toString(),
+            method: "QR",
+            amount: amt,
+            currency: "BOB",
+            originalAmount: amt,
+            exchangeRate: 1,
+            reference: `QR-BCO-${Math.floor(100000 + Math.random() * 900000)}`,
+            isVerified: true,
+          };
+          setPayments((prev) => [...prev, newPayment]);
+          setIsPaymentModalOpen(false);
+          setMethodSelectValue("");
+          setQrStep("INPUT");
+        }, 1300);
+      }, 3500);
+    }, 1200);
   };
 
-  // AGREGAR EFECTIVO A LA LISTA DE PAGOS AGREGADOS
+  const handleClosePaymentModal = () => {
+    if (qrTimeoutRef.current) clearTimeout(qrTimeoutRef.current);
+    setIsPaymentModalOpen(false);
+    setQrStep("INPUT");
+    setMethodSelectValue("");
+  };
+
+  // REGISTRAR Y VALIDAR EFECTIVO DIRECTO (1 SOLO FLUJO)
   const handleAddCashPayment = () => {
     if (blockChargeIfCoveredByAdvance()) return;
     const originalAmount = parseFloat(cashAmount);
@@ -994,7 +1009,7 @@ export const DeliveryDetailScreen = () => {
     const rate = cashCurrency === "USD" ? USD_TO_BOB_BUY_RATE : 1;
     const bobAmount = Math.round(originalAmount * rate * 100) / 100;
     const paidCurrency = cashCurrency;
-    const newStaged: PaymentRecord = {
+    const newPayment: PaymentRecord = {
       id: Date.now().toString(),
       method: "CASH",
       amount: bobAmount,
@@ -1003,21 +1018,14 @@ export const DeliveryDetailScreen = () => {
       exchangeRate: rate,
       reference: cashReceiptNo || "Recibo Manual",
       hasPhoto: false,
-      isVerified: false,
+      isVerified: true,
     };
-    setStagedPayments((prev) => [...prev, newStaged]);
+    setPayments((prev) => [...prev, newPayment]);
     setIsPaymentModalOpen(false);
     setMethodSelectValue("");
-    showDialog(
-      "Pago Agregado",
-      paidCurrency === "USD"
-        ? `Se agregaron USD ${formatMoney(originalAmount)} (Bs. ${formatMoney(bobAmount)}) a la lista de cobro.`
-        : `Se agregaron Bs. ${formatMoney(bobAmount)} en efectivo a la lista.`,
-      "info",
-    );
   };
 
-  // AGREGAR TRANSFERENCIA A LA LISTA DE PAGOS AGREGADOS
+  // REGISTRAR Y VALIDAR TRANSFERENCIA DIRECTO (1 SOLO FLUJO)
   const handleAddTransferPayment = () => {
     if (blockChargeIfCoveredByAdvance()) return;
     const amt = parseFloat(transferAmount);
@@ -1037,7 +1045,7 @@ export const DeliveryDetailScreen = () => {
       );
       return;
     }
-    const newStaged: PaymentRecord = {
+    const newPayment: PaymentRecord = {
       id: Date.now().toString(),
       method: "TRANSFER",
       amount: amt,
@@ -1047,19 +1055,14 @@ export const DeliveryDetailScreen = () => {
       bank: transferBank,
       reference: transferRef,
       hasPhoto: true,
-      isVerified: false,
+      isVerified: true,
     };
-    setStagedPayments((prev) => [...prev, newStaged]);
+    setPayments((prev) => [...prev, newPayment]);
     setIsPaymentModalOpen(false);
     setMethodSelectValue("");
-    showDialog(
-      "Transferencia Agregada",
-      `Se agregaron Bs. ${formatMoney(amt)} por transferencia a la lista.`,
-      "info",
-    );
   };
 
-  // AGREGAR CHEQUE A LA LISTA DE PAGOS AGREGADOS
+  // REGISTRAR Y VALIDAR CHEQUE DIRECTO (1 SOLO FLUJO)
   const handleAddCheckPayment = () => {
     if (blockChargeIfCoveredByAdvance()) return;
     const amt = parseFloat(checkAmount);
@@ -1079,7 +1082,7 @@ export const DeliveryDetailScreen = () => {
       );
       return;
     }
-    const newStaged: PaymentRecord = {
+    const newPayment: PaymentRecord = {
       id: Date.now().toString(),
       method: "CHECK",
       amount: amt,
@@ -1089,103 +1092,17 @@ export const DeliveryDetailScreen = () => {
       bank: checkBank,
       reference: `Cheque #${checkNo}`,
       hasPhoto: true,
-      isVerified: false,
+      isVerified: true,
     };
-    setStagedPayments((prev) => [...prev, newStaged]);
+    setPayments((prev) => [...prev, newPayment]);
     setIsPaymentModalOpen(false);
     setMethodSelectValue("");
-    showDialog(
-      "Cheque Agregado",
-      `Se agrego el cheque #${checkNo} por Bs. ${formatMoney(amt)} a la lista.`,
-      "info",
-    );
-  };
-
-  // QUITAR UN PAGO DE LA LISTA DE STAGED
-  const handleRemoveStagedPayment = (id: string) => {
-    setStagedPayments((prev) => prev.filter((p) => p.id !== id));
   };
 
   // QUITAR UN PAGO YA PROCESADO DE LA LISTA DEFINITIVA
   const handleRemovePayment = (id: string) => {
     const newPayments = payments.filter((p) => p.id !== id);
     setPayments(newPayments);
-  };
-
-  // INICIAR EL PROCESAMIENTO SECUENCIAL DE COBRO
-  // (REGLA: EL COBRO POR QR DEBE SER LO PRIMERO EN MOSTRARSE SI EXISTE)
-  const handleStartPaymentProcessing = () => {
-    if (blockChargeIfCoveredByAdvance()) return;
-    if (stagedPayments.length === 0) {
-      showDialog(
-        "Sin Pagos Agregados",
-        "Selecciona un metodo de pago del select e ingresa el monto para agregar al menos un pago antes de realizar el cobro.",
-        "warning",
-      );
-      return;
-    }
-    if (unallocatedBalance > 0) {
-      showDialog(
-        "Saldo Incompleto",
-        `Debes ingresar y asignar la totalidad del saldo a cobrar (Bs. ${formatMoney(netAmountToCollect)}) antes de procesar el cobro.\n\nFaltan por asignar: Bs. ${formatMoney(unallocatedBalance)}.`,
-        "warning",
-      );
-      return;
-    }
-    const sorted = [...stagedPayments].sort((a, b) => {
-      if (a.method === "QR" && b.method !== "QR") return -1;
-      if (a.method !== "QR" && b.method === "QR") return 1;
-      return 0;
-    });
-    setStagedPayments(sorted);
-    setIsProcessingFlow(true);
-    setCurrentProcessingIndex(0);
-    setProcessingStepStatus("PENDING");
-    setIsHeaderSummaryExpanded(false);
-    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-  };
-
-  // VALIDAR EL PASO ACTUAL CON EL BANCO / CONFIRMAR PAGO
-  const handleValidateCurrentStep = () => {
-    const currentPayment = stagedPayments[currentProcessingIndex];
-    if (!currentPayment) return;
-
-    if (currentPayment.method === "QR") {
-      setProcessingStepStatus("VALIDATING");
-      setTimeout(() => {
-        setProcessingStepStatus("APPROVED");
-      }, 1800);
-    } else {
-      setProcessingStepStatus("APPROVED");
-    }
-  };
-
-  // AVANZAR AL SIGUIENTE PASO ("CONTINUAR CON EL COBRO") O FINALIZAR
-  const handleContinueProcessing = () => {
-    if (currentProcessingIndex < stagedPayments.length - 1) {
-      setCurrentProcessingIndex((prev) => prev + 1);
-      setProcessingStepStatus("PENDING");
-    } else {
-      // REGISTRAR TODOS LOS PAGOS DE LA SECUENCIA COMO VERIFICADOS
-      const verified = stagedPayments.map((p) => ({ ...p, isVerified: true }));
-      setPayments((prev) => [...prev, ...verified]);
-      setStagedPayments([]);
-      setIsProcessingFlow(false);
-      setCurrentProcessingIndex(0);
-      setProcessingStepStatus("PENDING");
-      showDialog(
-        "Cobro Realizado con Exito",
-        "Todos los pagos agregados han sido procesados y verificados correctamente.",
-        "success",
-      );
-    }
-  };
-
-  // CANCELAR Y REGRESAR A EDICIÓN DE PAGOS AGREGADOS
-  const handleCancelProcessingFlow = () => {
-    setIsProcessingFlow(false);
-    setCurrentProcessingIndex(0);
-    setProcessingStepStatus("PENDING");
   };
 
   const handleConfirmFinalDelivery = () => {
@@ -1568,36 +1485,230 @@ export const DeliveryDetailScreen = () => {
     </View>
   );
 
-  // 3. PAGO POR QR (FLUJO 1: SÓLO DIGITAR MONTO A COBRAR)
-  const renderQrForm = () => (
-    <View style={{ gap: 12, paddingVertical: 4 }}>
-      {renderAmountField({
-        label: "Monto a Cobrar por QR (Bs.)",
-        value: qrAmount,
-        onChangeText: (val) => setQrAmount(val),
-        onHalf: () => setQrAmount((unallocatedBalance / 2).toString()),
-        onPending: () => setQrAmount(unallocatedBalance.toString()),
-      })}
-      <View
-        style={{
-          backgroundColor: theme.colors.primarySoft,
-          borderRadius: 10,
-          padding: 12,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 10,
-        }}
-      >
-        <QrCode size={20} color={theme.colors.primary} />
-        <Text
-          variant="caption"
-          style={{ flex: 1, fontSize: 12, color: theme.colors.primary, fontWeight: "600" }}
+  // 3. PAGO POR QR EN TIEMPO REAL
+  const renderQrForm = () => {
+    const amt = parseFloat(qrAmount) || unallocatedBalance;
+
+    if (qrStep === "GENERATING") {
+      return (
+        <View
+          style={{
+            alignItems: "center",
+            justifyContent: "center",
+            paddingVertical: 32,
+            gap: 14,
+          }}
         >
-          El código QR de cobro se generará automáticamente en la pantalla principal al presionar Realizar Cobro.
-        </Text>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <View style={{ alignItems: "center", gap: 4 }}>
+            <Text variant="title" style={{ fontSize: 16, fontWeight: "700" }}>
+              Generando Cobro QR...
+            </Text>
+            <Text
+              variant="caption"
+              style={{
+                color: theme.colors.mutedForeground,
+                textAlign: "center",
+                fontSize: 12,
+                paddingHorizontal: 20,
+              }}
+            >
+              Conectando con la pasarela bancaria para emitir el código interoperable...
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
+    if (qrStep === "WAITING") {
+      return (
+        <View style={{ alignItems: "center", gap: 12, paddingVertical: 2 }}>
+          {/* MONTO DESTACADO A COBRAR */}
+          <View style={{ alignItems: "center", gap: 1 }}>
+            <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>
+              Monto a Pagar por QR
+            </Text>
+            <Text
+              variant="header"
+              style={{
+                fontSize: 22,
+                fontWeight: "800",
+                color: theme.colors.primary,
+                fontVariant: ["tabular-nums"],
+              }}
+            >
+              Bs. {formatMoney(amt)}
+            </Text>
+          </View>
+
+          {/* CÓDIGO QR GENERADO */}
+          <View
+            style={{
+              backgroundColor: "#ffffff",
+              padding: 12,
+              borderRadius: 16,
+              borderWidth: 2,
+              borderColor: theme.colors.primary,
+              alignItems: "center",
+              justifyContent: "center",
+              elevation: 4,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.15,
+              shadowRadius: 6,
+            }}
+          >
+            <View
+              style={{
+                width: 140,
+                height: 140,
+                backgroundColor: "#0f172a",
+                borderRadius: 10,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <QrCode size={110} color="#ffffff" />
+            </View>
+          </View>
+
+          {/* RADAR DE ESCUCHA ACTIVA EN TIEMPO REAL */}
+          <View
+            style={{
+              backgroundColor: theme.colors.primarySoft,
+              borderRadius: 10,
+              paddingVertical: 9,
+              paddingHorizontal: 12,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              borderWidth: 1,
+              borderColor: theme.colors.primary + "30",
+              alignSelf: "stretch",
+              justifyContent: "center",
+            }}
+          >
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+            <Text
+              variant="label"
+              style={{
+                fontSize: 12,
+                color: theme.colors.primary,
+                fontWeight: "700",
+              }}
+            >
+              Esperando confirmación del banco en tiempo real...
+            </Text>
+          </View>
+
+          <Text
+            variant="caption"
+            style={{
+              color: theme.colors.mutedForeground,
+              textAlign: "center",
+              fontSize: 11,
+              paddingHorizontal: 16,
+            }}
+          >
+            Muestra el código al cliente. Al transferir, el sistema lo detectará automáticamente.
+          </Text>
+        </View>
+      );
+    }
+
+    if (qrStep === "CONFIRMED") {
+      return (
+        <View
+          style={{
+            alignItems: "center",
+            justifyContent: "center",
+            paddingVertical: 24,
+            gap: 12,
+          }}
+        >
+          <View
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: 32,
+              backgroundColor: theme.colors.successSoft,
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 2,
+              borderColor: theme.colors.success,
+            }}
+          >
+            <CheckCircle2 size={38} color={theme.colors.success} />
+          </View>
+
+          <View style={{ alignItems: "center", gap: 3 }}>
+            <Text
+              variant="header"
+              style={{ fontSize: 18, fontWeight: "800", color: theme.colors.success }}
+            >
+              ¡Pago Realizado!
+            </Text>
+            <Text
+              variant="caption"
+              style={{
+                color: theme.colors.foreground,
+                fontWeight: "700",
+                fontSize: 13,
+                fontVariant: ["tabular-nums"],
+              }}
+            >
+              Monto confirmado: Bs. {formatMoney(amt)}
+            </Text>
+            <Text
+              variant="caption"
+              style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
+            >
+              Comprobante bancario verificado por la pasarela.
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
+    // ESTADO "INPUT" (POR DEFECTO): DIGITAR MONTO
+    return (
+      <View style={{ gap: 12, paddingVertical: 4 }}>
+        {renderAmountField({
+          label: "Monto a Cobrar por QR (Bs.)",
+          value: qrAmount,
+          onChangeText: (val) => setQrAmount(val),
+          onHalf: () => setQrAmount((unallocatedBalance / 2).toString()),
+          onPending: () => setQrAmount(unallocatedBalance.toString()),
+        })}
+
+        <View
+          style={{
+            backgroundColor: theme.colors.secondary,
+            borderRadius: 12,
+            padding: 12,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+          }}
+        >
+          <QrCode size={22} color={theme.colors.primary} />
+          <Text
+            variant="caption"
+            style={{
+              flex: 1,
+              fontSize: 12,
+              color: theme.colors.mutedForeground,
+              lineHeight: 16,
+            }}
+          >
+            Al presionar <Text style={{ fontWeight: "700", color: theme.colors.foreground }}>Generar QR</Text>, se creará el código de cobro conectado con el banco y se validará en tiempo real.
+          </Text>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   // 4. CHEQUE
   const renderCheckForm = () => (
@@ -1663,10 +1774,10 @@ export const DeliveryDetailScreen = () => {
     (option) => option.method === selectedMethod,
   );
 
-  // ACCIÓN PRINCIPAL DEL MODAL SEGÚN EL MÉTODO SELECCIONADO
+  // ACCIÓN PRINCIPAL DEL MODAL DE COBRO (NOMBRES CORTOS Y ACCIONABLES)
   const paymentSubmit: {
     label: string;
-    icon: LucideIcon;
+    icon?: LucideIcon;
     disabled: boolean;
     loading: boolean;
     onPress: () => void;
@@ -1674,33 +1785,60 @@ export const DeliveryDetailScreen = () => {
     switch (selectedMethod) {
       case "TRANSFER":
         return {
-          label: "Agregar Transferencia",
-          icon: Plus,
+          label: "Confirmar Transferencia",
+          icon: Check,
           disabled: false,
           loading: false,
           onPress: handleAddTransferPayment,
         };
       case "CHECK":
         return {
-          label: "Agregar Cobro con Cheque",
-          icon: Plus,
+          label: "Confirmar Cheque",
+          icon: Check,
           disabled: false,
           loading: false,
           onPress: handleAddCheckPayment,
         };
       case "QR":
+        if (qrStep === "GENERATING") {
+          return {
+            label: "Generando...",
+            icon: RefreshCw,
+            disabled: true,
+            loading: true,
+            onPress: () => {},
+          };
+        }
+        if (qrStep === "WAITING") {
+          return {
+            label: "Esperando Pago...",
+            icon: RefreshCw,
+            disabled: true,
+            loading: true,
+            onPress: () => {},
+          };
+        }
+        if (qrStep === "CONFIRMED") {
+          return {
+            label: "Pago Realizado",
+            icon: CheckCircle2,
+            disabled: true,
+            loading: false,
+            onPress: () => {},
+          };
+        }
         return {
-          label: "Agregar Pago QR",
-          icon: Plus,
+          label: "Generar QR",
+          icon: QrCode,
           disabled: false,
           loading: false,
-          onPress: handlePayWithQr,
+          onPress: handleStartQrFlow,
         };
       case "CASH":
       default:
         return {
-          label: "Agregar Pago en Efectivo",
-          icon: Plus,
+          label: "Confirmar Efectivo",
+          icon: Check,
           disabled: false,
           loading: false,
           onPress: handleAddCashPayment,
@@ -1708,12 +1846,10 @@ export const DeliveryDetailScreen = () => {
     }
   })();
 
-  // EL QR NO PUEDE CERRARSE MIENTRAS EL BANCO ESTA VALIDANDO
   const isPaymentModalLocked =
-    selectedMethod === "QR" && qrStatus === "VALIDATING";
+    selectedMethod === "QR" && (qrStep === "GENERATING" || qrStep === "CONFIRMED");
 
-  // MONTO Y ACCION DE LA BARRA FIJA SEGUN LA FASE DE LA ENTREGA.
-  // SOLO REUSA LOS HANDLERS EXISTENTES, NO AGREGA REGLAS DE NEGOCIO.
+  // MONTO Y ACCION DE LA BARRA FIJA SEGUN LA FASE DE LA ENTREGA
   const actionBar: DeliveryActionBarProps = (() => {
     if (currentStatus === "DELIVERED") {
       return {
@@ -1769,58 +1905,12 @@ export const DeliveryDetailScreen = () => {
       };
     }
 
-    if (isProcessingFlow && stagedPayments.length > 0) {
-      const currentStep = stagedPayments[currentProcessingIndex];
-      const isLastStep = currentProcessingIndex === stagedPayments.length - 1;
-      const isApproved = processingStepStatus === "APPROVED";
-      const isValidating = processingStepStatus === "VALIDATING";
-
-      let nextLabel = "Continuar cobro";
-      if (isLastStep) {
-        nextLabel = "Finalizar cobro";
-      }
-
-      return {
-        amountValue: `Bs. ${formatMoney(currentStep?.amount ?? 0)}`,
-        amountLabel: `Paso ${currentProcessingIndex + 1} de ${stagedPayments.length} (${currentStep?.method === "QR" ? "QR" : currentStep?.method === "CASH" ? "Efectivo" : currentStep?.method === "TRANSFER" ? "Transferencia" : "Cheque"})`,
-        actionLabel: isApproved
-          ? nextLabel
-          : isValidating
-            ? "Validando banco..."
-            : "Validar pago",
-        actionIcon: isApproved
-          ? isLastStep
-            ? CheckCircle2
-            : ChevronRight
-          : ShieldCheck,
-        actionDisabled: isValidating,
-        tone: isApproved ? "success" : "primary",
-        onAction: isApproved
-          ? handleContinueProcessing
-          : handleValidateCurrentStep,
-      };
-    }
-
-    if (stagedPayments.length > 0) {
-      const isComplete = unallocatedBalance === 0;
-      return {
-        amountValue: `Bs. ${formatMoney(totalStaged)}`,
-        amountLabel: isComplete
-          ? `${stagedPayments.length} ${stagedPayments.length === 1 ? "pago listo (100%)" : "pagos listos (100%)"}`
-          : `Faltan Bs. ${formatMoney(unallocatedBalance)} por asignar`,
-        actionLabel: "Procesar cobro",
-        actionIcon: ArrowRight,
-        actionDisabled: !isComplete,
-        onAction: handleStartPaymentProcessing,
-      };
-    }
-
     if (unallocatedBalance > 0) {
       return {
         amountValue: `Bs. ${formatMoney(unallocatedBalance)}`,
         amountLabel: "por cobrar",
-        actionLabel: "Agregar pago",
-        actionIcon: Plus,
+        actionLabel: "Cobrar",
+        actionIcon: DollarSign,
         onAction: () => setIsSelectMethodOpen(true),
       };
     }
@@ -1828,7 +1918,7 @@ export const DeliveryDetailScreen = () => {
     if (TOTAL_ORDER_AMOUNT > 0) {
       return {
         amountValue: `Bs. ${formatMoney(totalPaid)}`,
-        amountLabel: "cobrado",
+        amountLabel: "cobrado 100%",
         actionLabel: "Finalizar entrega",
         actionIcon: CheckCircle2,
         tone: "success",
@@ -1860,92 +1950,13 @@ export const DeliveryDetailScreen = () => {
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 16 }}
       >
-        {/* EXPANSION PANEL COMPACTO DE CLIENTE Y ENTREGA EN MODO DE PROCESAMIENTO DE COBRO */}
-        {isProcessingFlow ? (
-          <View
-            style={{
-              backgroundColor: theme.colors.cardBackground,
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              overflow: "hidden",
-              elevation: 2,
-            }}
-          >
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => setIsHeaderSummaryExpanded((prev) => !prev)}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                backgroundColor: theme.colors.secondary,
-              }}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
-                <MapPin size={16} color={theme.colors.primary} />
-                <Text
-                  variant="label"
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                  style={{ fontSize: 13, fontWeight: "700", flex: 1, color: theme.colors.foreground }}
-                >
-                  Parada #{stop.sequence} • {stop.clientName}
-                </Text>
-              </View>
-
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Badge
-                  label={`Bs. ${formatMoney(netAmountToCollect)}`}
-                  tone="primary"
-                  size="sm"
-                />
-                {isHeaderSummaryExpanded ? (
-                  <ChevronUp size={18} color={theme.colors.mutedForeground} />
-                ) : (
-                  <ChevronDown size={18} color={theme.colors.mutedForeground} />
-                )}
-              </View>
-            </TouchableOpacity>
-
-            {isHeaderSummaryExpanded && (
-              <View
-                style={{
-                  padding: 14,
-                  gap: 10,
-                  borderTopWidth: 1,
-                  borderTopColor: theme.colors.border,
-                  backgroundColor: theme.colors.cardBackground,
-                }}
-              >
-                <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 12 }}>
-                  📍 {stop.address}
-                </Text>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <Text variant="caption" style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>
-                    Factura: Bs. {formatMoney(invoiceTotal)} • Anticipo: Bs. {formatMoney(appliedAdvance)}
-                  </Text>
-                  <TouchableOpacity onPress={handleCall} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                    <Phone size={14} color={theme.colors.primary} />
-                    <Text variant="label" style={{ color: theme.colors.primary, fontSize: 12 }}>
-                      Llamar
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-          </View>
-        ) : (
-          <>
-            {/* 0. ESPINA DE PROGRESO DE LA ENTREGA */}
-            <DeliveryProgressHeader
-              sequence={stop.sequence}
-              totalStops={totalStops}
-              status={progressStatus}
-              arrivedAtLabel={arrivedAtLabel}
-            />
+        {/* 0. ESPINA DE PROGRESO DE LA ENTREGA */}
+        <DeliveryProgressHeader
+          sequence={stop.sequence}
+          totalStops={totalStops}
+          status={progressStatus}
+          arrivedAtLabel={arrivedAtLabel}
+        />
 
             {/* 1. TARJETA PRINCIPAL DINÁMICA DEL CLIENTE SELECCIONADO */}
             <View
@@ -2024,22 +2035,13 @@ export const DeliveryDetailScreen = () => {
                   size="md"
                 />
               ) : (
-                <>
-                  <TouchableOpacity
-                    onPress={handleCall}
-                    hitSlop={8}
-                    style={{ padding: 4 }}
-                  >
-                    <Phone size={18} color={theme.colors.primary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={handleOpenGoogleMaps}
-                    hitSlop={8}
-                    style={{ padding: 4 }}
-                  >
-                    <Navigation size={18} color={theme.colors.primary} />
-                  </TouchableOpacity>
-                </>
+                <TouchableOpacity
+                  onPress={handleCall}
+                  hitSlop={8}
+                  style={{ padding: 4 }}
+                >
+                  <Phone size={18} color={theme.colors.primary} />
+                </TouchableOpacity>
               )}
 
               <TouchableOpacity
@@ -2162,14 +2164,21 @@ export const DeliveryDetailScreen = () => {
                 </View>
               )}
 
-              <View style={{ marginTop: 4 }}>
+              {/* CARRUSEL DE REFERENCIAS VISUALES (FACHADA, PORTÓN, ACCESO) */}
+              <StopReferenceCarousel
+                photos={stopPhotos}
+                stopName={stop.clientName}
+                onAddPhoto={handleAddReferencePhoto}
+              />
+
+              <View style={{ marginTop: 2 }}>
                 <Button
-                  label="Cómo llegar"
-                  icon={Navigation}
+                  label={stop.contactPhone ? `Llamar (${stop.contactPhone})` : "Llamar al cliente"}
+                  icon={Phone}
                   variant="secondary"
                   size="sm"
                   fullWidth
-                  onPress={handleOpenGoogleMaps}
+                  onPress={handleCall}
                 />
               </View>
             </View>
@@ -2251,12 +2260,8 @@ export const DeliveryDetailScreen = () => {
           </View>
         )}
 
-          </>
-        )}
-
-        {/* 2. DUAL-TAB CONTROL: [PRODUCTOS & POD] vs [REGISTRO DE COBRO] (Solo fuera del procesamiento) */}
-        {!isProcessingFlow && (
-          <View
+        {/* 2. DUAL-TAB CONTROL: [PRODUCTOS & POD] vs [REGISTRO DE COBRO] */}
+        <View
             style={{
               flexDirection: "row",
               backgroundColor: theme.colors.secondary,
@@ -2396,7 +2401,6 @@ export const DeliveryDetailScreen = () => {
               </Text>
             </TouchableOpacity>
           </View>
-        )}
 
         {/* TAB 1: PRODUCTOS A DESCARGAR Y PROOF OF DELIVERY (POD) */}
         {activeTab === "productos" && (
@@ -2875,111 +2879,108 @@ export const DeliveryDetailScreen = () => {
           </View>
         )}
 
-        {/* TAB 2: MÓDULO COMPLETO DE REGISTRO DE COBRO (Habilitado en ARRIVED) */}
+        {/* TAB 2: MÓDULO COMPLETO DE REGISTRO DE COBRO DIRECTO (1 SOLO FLUJO) */}
         {activeTab === "cobro" && (
           <View style={{ gap: 16 }}>
-            {/* DESGLOSE DE FACTURA Y ANTICIPO (SE OCULTA DURANTE LA VALIDACIÓN DE PAGOS) */}
-            {!isProcessingFlow && (
+            {/* DESGLOSE DE FACTURA Y ANTICIPO */}
+            <View
+              style={{
+                backgroundColor: theme.colors.cardBackground,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                padding: 12,
+                borderRadius: 12,
+                gap: 8,
+                marginTop: 4,
+              }}
+            >
               <View
                 style={{
-                  backgroundColor: theme.colors.cardBackground,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  padding: 12,
-                  borderRadius: 12,
-                  gap: 8,
-                  marginTop: 4,
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
                 }}
               >
-                <View
+                <Text
+                  variant="caption"
+                  style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
+                >
+                  Factura
+                </Text>
+                <Text
+                  variant="label"
                   style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "center",
+                    fontSize: 13,
+                    color: theme.colors.foreground,
+                    fontVariant: ["tabular-nums"],
                   }}
                 >
-                  <Text
-                    variant="caption"
-                    style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
-                  >
-                    Factura
-                  </Text>
-                  <Text
-                    variant="label"
-                    style={{
-                      fontSize: 13,
-                      color: theme.colors.foreground,
-                      fontVariant: ["tabular-nums"],
-                    }}
-                  >
-                    Bs. {formatMoney(invoiceTotal)}
-                  </Text>
-                </View>
-
-                {/* EL ANTICIPO SE MUESTRA SIEMPRE, INCLUSO EN CERO, PARA QUE EL CHOFER
-                    SEPA QUE EL DATO SE CONSULTO Y NO QUE FALTA EN PANTALLA. */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <Text
-                    variant="caption"
-                    style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
-                  >
-                    Anticipo
-                  </Text>
-                  <Text
-                    variant="label"
-                    style={{
-                      fontSize: 13,
-                      color:
-                        appliedAdvance > 0
-                          ? theme.colors.success
-                          : theme.colors.mutedForeground,
-                      fontVariant: ["tabular-nums"],
-                    }}
-                  >
-                    {appliedAdvance > 0
-                      ? `- Bs. ${formatMoney(appliedAdvance)}`
-                      : `Bs. ${formatMoney(0)}`}
-                  </Text>
-                </View>
-
-                {advanceAmount > 0 && (
-                  <Text
-                    variant="caption"
-                    style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
-                  >
-                    Anticipo registrado previamente a favor del cliente.
-                  </Text>
-                )}
-
-                {remainingAdvance > 0 && (
-                  <Text
-                    variant="caption"
-                    style={{
-                      color: theme.colors.warning,
-                      fontSize: 11,
-                    }}
-                  >
-                    {`Saldo de anticipo no aplicado: Bs. ${formatMoney(remainingAdvance)}. Queda como credito a favor del cliente para la siguiente factura.`}
-                  </Text>
-                )}
-
-                {hasInvalidAdvance && (
-                  <Badge
-                    label="Anticipo mayor a la factura"
-                    tone="danger"
-                    size="sm"
-                  />
-                )}
+                  Bs. {formatMoney(invoiceTotal)}
+                </Text>
               </View>
-            )}
 
-            {/* RESUMEN FINANCIERO DINÁMICO DE COBRO CON PROGRESS BAR (COMPACTO Y REACTIVO A LA VALIDACIÓN) */}
+              {/* EL ANTICIPO SE MUESTRA SIEMPRE */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <Text
+                  variant="caption"
+                  style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
+                >
+                  Anticipo
+                </Text>
+                <Text
+                  variant="label"
+                  style={{
+                    fontSize: 13,
+                    color:
+                      appliedAdvance > 0
+                        ? theme.colors.success
+                        : theme.colors.mutedForeground,
+                    fontVariant: ["tabular-nums"],
+                  }}
+                >
+                  {appliedAdvance > 0
+                    ? `- Bs. ${formatMoney(appliedAdvance)}`
+                    : `Bs. ${formatMoney(0)}`}
+                </Text>
+              </View>
+
+              {advanceAmount > 0 && (
+                <Text
+                  variant="caption"
+                  style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
+                >
+                  Anticipo registrado previamente a favor del cliente.
+                </Text>
+              )}
+
+              {remainingAdvance > 0 && (
+                <Text
+                  variant="caption"
+                  style={{
+                    color: theme.colors.warning,
+                    fontSize: 11,
+                  }}
+                >
+                  {`Saldo de anticipo no aplicado: Bs. ${formatMoney(remainingAdvance)}. Queda como credito a favor del cliente para la siguiente factura.`}
+                </Text>
+              )}
+
+              {hasInvalidAdvance && (
+                <Badge
+                  label="Anticipo mayor a la factura"
+                  tone="danger"
+                  size="sm"
+                />
+              )}
+            </View>
+
+            {/* RESUMEN FINANCIERO DINÁMICO DE COBRO CON PROGRESS BAR */}
             <View
               style={{
                 backgroundColor: theme.colors.secondary,
@@ -3023,7 +3024,7 @@ export const DeliveryDetailScreen = () => {
                   </Text>
                 </View>
 
-                {/* BADGE ALINEADO A LA ESQUINA SUPERIOR DERECHA (ACTUALIZADO EN TIEMPO REAL AL VALIDAR) */}
+                {/* BADGE DE ESTADO */}
                 <View style={{ flexShrink: 0 }}>
                   <Badge
                     label={
@@ -3033,25 +3034,21 @@ export const DeliveryDetailScreen = () => {
                           ? "Cubierto por Anticipo"
                           : validatedProgressPercent >= 100
                             ? "Cobrado 100%"
-                            : isProcessingFlow
-                              ? `Validando (${validatedProgressPercent}%)`
-                              : `Pendiente: Bs. ${formatMoney(pendingBalance)}`
+                            : `Pendiente: Bs. {formatMoney(pendingBalance)}`
                     }
                     tone={
                       TOTAL_ORDER_AMOUNT === 0
                         ? "warning"
                         : isFullyCoveredByAdvance || validatedProgressPercent >= 100
                           ? "success"
-                          : isProcessingFlow
-                            ? "primary"
-                            : "danger"
+                          : "danger"
                     }
                     size="sm"
                   />
                 </View>
               </View>
 
-              {/* BARRA VISUAL DE DESGLOSE DE COBRO EN TIEMPO REAL */}
+              {/* BARRA VISUAL DE DESGLOSE DE COBRO */}
               <View style={{ gap: 3 }}>
                 <View
                   style={{
@@ -3067,7 +3064,7 @@ export const DeliveryDetailScreen = () => {
                       color: theme.colors.mutedForeground,
                     }}
                   >
-                    {isProcessingFlow ? "Validado: " : "Cobrado: "}
+                    Cobrado:{" "}
                     <Text
                       variant="label"
                       style={{
@@ -3077,7 +3074,7 @@ export const DeliveryDetailScreen = () => {
                         fontWeight: "700",
                       }}
                     >
-                      Bs. {formatMoney(validatedProgressAmount)}
+                      Bs. {formatMoney(totalPaid)}
                     </Text>
                   </Text>
                   <Text
@@ -3115,752 +3112,317 @@ export const DeliveryDetailScreen = () => {
               </View>
             </View>
 
-            {/* VISTA DE PROCESAMIENTO SECUENCIAL DE COBRO */}
-            {isProcessingFlow ? (
-              <View style={{ gap: 12 }}>
-                {/* CABECERA CON PASO Y BARRA DE PROGRESO */}
+            {/* BANNER DE COBRO COMPLETADO AL 100% CON BOTÓN DE WHATSAPP */}
+            {validatedProgressPercent >= 100 && (
+              <View
+                style={{
+                  backgroundColor: theme.colors.cardBackground,
+                  borderRadius: 14,
+                  borderWidth: 1.5,
+                  borderColor: theme.colors.success,
+                  padding: 14,
+                  gap: 10,
+                  alignItems: "center",
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <CheckCircle2 size={22} color={theme.colors.success} />
+                  <Text variant="title" style={{ fontSize: 15, color: theme.colors.success, fontWeight: "700" }}>
+                    Cobro Completado al 100%
+                  </Text>
+                </View>
+
+                <Text
+                  variant="caption"
+                  style={{
+                    color: theme.colors.mutedForeground,
+                    textAlign: "center",
+                    fontSize: 12,
+                  }}
+                >
+                  Se ha registrado el pago completo por Bs. {formatMoney(totalPaid)}. Puedes enviar o reenviar la factura y el comprobante por WhatsApp al cliente.
+                </Text>
+
+                <View style={{ width: "100%", marginTop: 2 }}>
+                  <Button
+                    label="Enviar Factura por WhatsApp"
+                    variant="outline"
+                    size="md"
+                    icon={MessageCircle}
+                    onPress={() => setIsWhatsAppModalOpen(true)}
+                    fullWidth
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* SELECT DROPDOWN DE MÉTODOS DE PAGO (CUANDO QUEDA SALDO PENDIENTE) */}
+            {unallocatedBalance > 0 && !isFullyCoveredByAdvance && (
+              <View
+                style={{
+                  backgroundColor: theme.colors.cardBackground,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  padding: 16,
+                  gap: 12,
+                  zIndex: 100,
+                  position: "relative",
+                }}
+              >
+                <View style={{ gap: 2 }}>
+                  <Text variant="title" style={{ fontSize: 16 }}>
+                    Seleccionar Método de Pago
+                  </Text>
+                  <Text
+                    variant="caption"
+                    style={{ fontSize: 11, color: theme.colors.mutedForeground }}
+                  >
+                    Selecciona un método para registrar el cobro directamente.
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  disabled={isFullyCoveredByAdvance || unallocatedBalance === 0}
+                  onPress={() => setIsSelectMethodOpen(!isSelectMethodOpen)}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    backgroundColor: theme.colors.secondary,
+                    borderRadius: 12,
+                    borderWidth: 1.5,
+                    borderColor: isSelectMethodOpen
+                      ? theme.colors.primary
+                      : theme.colors.border,
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1, flexShrink: 1 }}>
+                    <DollarSign size={20} color={theme.colors.primary} />
+                    <Text
+                      variant="bodySmall"
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      style={{
+                        fontSize: 14,
+                        color: theme.colors.foreground,
+                        fontWeight: "600",
+                        flex: 1,
+                      }}
+                    >
+                      Efectivo, Pago QR, Transferencia o Cheque...
+                    </Text>
+                  </View>
+                  <ChevronDown
+                    size={20}
+                    color={theme.colors.mutedForeground}
+                    style={{
+                      flexShrink: 0,
+                      transform: [{ rotate: isSelectMethodOpen ? "180deg" : "0deg" }],
+                    }}
+                  />
+                </TouchableOpacity>
+
+                {/* OPCIONES FLOTANTES DEL SELECT */}
+                {isSelectMethodOpen && (
+                  <View
+                    style={{
+                      position: "absolute",
+                      top: 78,
+                      left: 16,
+                      right: 16,
+                      zIndex: 9999,
+                      backgroundColor: theme.colors.cardBackground,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: theme.colors.border,
+                      overflow: "hidden",
+                      elevation: 12,
+                      shadowColor: "#000",
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.25,
+                      shadowRadius: 8,
+                    }}
+                  >
+                    {PAYMENT_METHOD_OPTIONS.map((option, idx) => {
+                      const OptionIcon = option.icon;
+                      const isLast = idx === PAYMENT_METHOD_OPTIONS.length - 1;
+                      return (
+                        <TouchableOpacity
+                          key={option.method}
+                          activeOpacity={0.7}
+                          onPress={() => {
+                            setMethodSelectValue(option.method);
+                            handleSelectPaymentMethod(option.method);
+                          }}
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 12,
+                            paddingVertical: 14,
+                            paddingHorizontal: 16,
+                            borderBottomWidth: isLast ? 0 : 1,
+                            borderBottomColor: theme.colors.border,
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: 17,
+                              backgroundColor: theme.colors.secondary,
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <OptionIcon size={18} color={theme.colors.primary} />
+                          </View>
+                          <Text
+                            variant="label"
+                            style={{
+                              fontSize: 14,
+                              fontWeight: "600",
+                              color: theme.colors.foreground,
+                            }}
+                          >
+                            {option.pickerLabel}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* AVISO: EL ANTICIPO CUBRE TODA LA ENTREGA */}
+            {isFullyCoveredByAdvance && (
+              <View
+                style={{
+                  backgroundColor: theme.colors.successSoft,
+                  borderWidth: 1,
+                  borderColor: theme.colors.success,
+                  borderRadius: 10,
+                  padding: 12,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <ShieldCheck size={18} color={theme.colors.success} />
+                <Text
+                  variant="label"
+                  style={{
+                    flex: 1,
+                    fontSize: 12,
+                    color: theme.colors.success,
+                  }}
+                >
+                  Esta entrega queda cubierta por el anticipo. No corresponde cobro en sitio.
+                </Text>
+              </View>
+            )}
+
+            {/* HISTORIAL DE PAGOS REGISTRADOS */}
+            <View style={{ gap: 10 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <Text variant="title" style={{ fontSize: 16 }}>
+                  Pagos Registrados ({payments.length})
+                </Text>
+                {payments.length > 0 && (
+                  <Text
+                    variant="caption"
+                    style={{ color: theme.colors.success, fontWeight: "700" }}
+                  >
+                    Total: Bs. {formatMoney(totalPaid)}
+                  </Text>
+                )}
+              </View>
+
+              {payments.length === 0 ? (
                 <View
                   style={{
                     backgroundColor: theme.colors.cardBackground,
                     borderRadius: 14,
                     borderWidth: 1,
-                    borderColor: theme.colors.primary,
-                    padding: 12,
-                    gap: 8,
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text
-                      variant="caption"
-                      style={{
-                        color: theme.colors.primary,
-                        fontWeight: "700",
-                        fontSize: 12,
-                      }}
-                    >
-                      PROCESANDO COBRO EN SITIO
-                    </Text>
-                    <Text
-                      variant="label"
-                      style={{
-                        fontSize: 13,
-                        color: theme.colors.foreground,
-                        fontWeight: "700",
-                      }}
-                    >
-                      Paso {currentProcessingIndex + 1} de {stagedPayments.length}:{" "}
-                      {stagedPayments[currentProcessingIndex]?.method === "QR"
-                        ? "QR (Banco)"
-                        : stagedPayments[currentProcessingIndex]?.method === "CASH"
-                          ? "Efectivo"
-                          : stagedPayments[currentProcessingIndex]?.method === "TRANSFER"
-                            ? "Transferencia"
-                            : "Cheque"}
-                    </Text>
-                  </View>
-
-                  {/* BARRA DE AVANCE */}
-                  <View
-                    style={{
-                      height: 5,
-                      backgroundColor: theme.colors.secondary,
-                      borderRadius: 3,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: `${((currentProcessingIndex + (processingStepStatus === "APPROVED" ? 1 : 0.5)) / stagedPayments.length) * 100}%`,
-                        height: "100%",
-                        backgroundColor: theme.colors.primary,
-                        borderRadius: 3,
-                      }}
-                    />
-                  </View>
-                </View>
-
-                {/* TARJETA INTERACTIVA DE PROCESAMIENTO DEL PASO */}
-                <View
-                  style={{
-                    backgroundColor: theme.colors.cardBackground,
-                    borderRadius: 16,
-                    borderWidth: 1,
                     borderColor: theme.colors.border,
-                    padding: 16,
-                    gap: 14,
+                    padding: 18,
                     alignItems: "center",
+                    gap: 6,
                   }}
                 >
-                  {/* MONTO DEL PASO */}
-                  <View style={{ alignItems: "center", gap: 2 }}>
-                    <Text
-                      variant="caption"
-                      style={{ color: theme.colors.mutedForeground, fontSize: 12 }}
-                    >
-                      Monto a Cobrar en este Paso
-                    </Text>
-                    <Text
-                      variant="header"
-                      style={{
-                        fontSize: 24,
-                        color: theme.colors.primary,
-                        fontWeight: "800",
-                        fontVariant: ["tabular-nums"],
-                      }}
-                    >
-                      Bs. {formatMoney(stagedPayments[currentProcessingIndex]?.amount)}
-                    </Text>
-                    {stagedPayments[currentProcessingIndex]?.currency === "USD" && (
-                      <Text
-                        variant="caption"
-                        style={{
-                          fontSize: 11,
-                          color: theme.colors.mutedForeground,
-                        }}
-                      >
-                        (Equivalente a USD {formatMoney(stagedPayments[currentProcessingIndex].originalAmount)} x {stagedPayments[currentProcessingIndex].exchangeRate})
-                      </Text>
-                    )}
-                  </View>
-
-                  {/* RENDERIZAR CÓDIGO QR EN SU TAMAÑO COMPLETO ORIGINAL */}
-                  {stagedPayments[currentProcessingIndex]?.method === "QR" && (
-                    <View style={{ alignItems: "center", gap: 12, alignSelf: "stretch" }}>
-                      <View
-                        style={{
-                          backgroundColor: "#ffffff",
-                          padding: 16,
-                          borderRadius: 18,
-                          borderWidth: 3,
-                          borderColor: theme.colors.primary,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          elevation: 6,
-                          shadowColor: "#000",
-                          shadowOffset: { width: 0, height: 4 },
-                          shadowOpacity: 0.15,
-                          shadowRadius: 8,
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: 160,
-                            height: 160,
-                            backgroundColor: "#0f172a",
-                            borderRadius: 12,
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <QrCode size={120} color="#ffffff" />
-                        </View>
-                      </View>
-                      <Text
-                        variant="caption"
-                        style={{
-                          color: theme.colors.mutedForeground,
-                          textAlign: "center",
-                          fontSize: 12,
-                        }}
-                      >
-                        Muestra este código QR al cliente para que realice el escaneo desde su banca móvil.
-                      </Text>
-                    </View>
-                  )}
-
-                  {stagedPayments[currentProcessingIndex]?.method === "CASH" && (
-                    <View
-                      style={{
-                        backgroundColor: theme.colors.secondary,
-                        padding: 12,
-                        borderRadius: 10,
-                        width: "100%",
-                        alignItems: "center",
-                        gap: 6,
-                      }}
-                    >
-                      <Banknote size={28} color={theme.colors.primary} />
-                      <Text
-                        variant="label"
-                        style={{
-                          fontSize: 13,
-                          color: theme.colors.foreground,
-                          textAlign: "center",
-                        }}
-                      >
-                        Verifica la entrega física del dinero en efectivo.
-                      </Text>
-                      <Text
-                        variant="caption"
-                        style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
-                      >
-                        Recibo: {stagedPayments[currentProcessingIndex].reference || "REC-00982"}
-                      </Text>
-                    </View>
-                  )}
-
-                  {stagedPayments[currentProcessingIndex]?.method === "TRANSFER" && (
-                    <View
-                      style={{
-                        backgroundColor: theme.colors.secondary,
-                        padding: 12,
-                        borderRadius: 10,
-                        width: "100%",
-                        gap: 4,
-                      }}
-                    >
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                        <Building size={18} color={theme.colors.primary} />
-                        <Text
-                          variant="label"
-                          style={{ fontSize: 13, color: theme.colors.foreground, fontWeight: "700" }}
-                        >
-                          Transferencia Bancaria
-                        </Text>
-                      </View>
-                      <Text
-                        variant="caption"
-                        numberOfLines={1}
-                        style={{ color: theme.colors.foreground, fontSize: 12, fontWeight: "600" }}
-                      >
-                        Banco: {stagedPayments[currentProcessingIndex].bank || "N/A"}
-                      </Text>
-                      <Text
-                        variant="caption"
-                        style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
-                      >
-                        Ref: {stagedPayments[currentProcessingIndex].reference || "N/A"} • Foto comprobante adjunta
-                      </Text>
-                    </View>
-                  )}
-
-                  {stagedPayments[currentProcessingIndex]?.method === "CHECK" && (
-                    <View
-                      style={{
-                        backgroundColor: theme.colors.secondary,
-                        padding: 12,
-                        borderRadius: 10,
-                        width: "100%",
-                        gap: 4,
-                      }}
-                    >
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                        <FileText size={18} color={theme.colors.primary} />
-                        <Text
-                          variant="label"
-                          style={{ fontSize: 13, color: theme.colors.foreground, fontWeight: "700" }}
-                        >
-                          Cheque
-                        </Text>
-                      </View>
-                      <Text
-                        variant="caption"
-                        numberOfLines={1}
-                        style={{ color: theme.colors.foreground, fontSize: 12, fontWeight: "600" }}
-                      >
-                        Banco: {stagedPayments[currentProcessingIndex].bank || "N/A"}
-                      </Text>
-                      <Text
-                        variant="caption"
-                        style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
-                      >
-                        Ref: {stagedPayments[currentProcessingIndex].reference || "N/A"} • Fotos frente y dorso adjuntas
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* ESTADO DE VALIDACIÓN / BANNER DE ÉXITO COMPACTO */}
-                  {processingStepStatus === "APPROVED" ? (
-                    <View
-                      style={{
-                        backgroundColor: theme.colors.successSoft,
-                        borderWidth: 1.5,
-                        borderColor: theme.colors.success,
-                        padding: 10,
-                        borderRadius: 10,
-                        width: "100%",
-                        alignItems: "center",
-                        gap: 4,
-                      }}
-                    >
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                        <CheckCircle2 size={20} color={theme.colors.success} />
-                        <Text
-                          variant="title"
-                          style={{ fontSize: 15, color: theme.colors.success, fontWeight: "700" }}
-                        >
-                          Pago Realizado
-                        </Text>
-                      </View>
-                      <Text
-                        variant="caption"
-                        style={{ color: theme.colors.success, textAlign: "center", fontSize: 11 }}
-                      >
-                        {stagedPayments[currentProcessingIndex]?.method === "QR"
-                          ? "El banco ha verificado el pago por QR con éxito."
-                          : "El pago se ha registrado correctamente."}
-                      </Text>
-                    </View>
-                  ) : processingStepStatus === "VALIDATING" ? (
-                    <View
-                      style={{
-                        backgroundColor: theme.colors.primarySoft,
-                        padding: 10,
-                        borderRadius: 10,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 6,
-                        width: "100%",
-                      }}
-                    >
-                      <RefreshCw size={16} color={theme.colors.primary} />
-                      <Text
-                        variant="caption"
-                        style={{ color: theme.colors.primary, fontWeight: "600", fontSize: 12 }}
-                      >
-                        Verificando transferencia con el banco...
-                      </Text>
-                    </View>
-                  ) : (
-                    <View
-                      style={{
-                        backgroundColor: theme.colors.secondary,
-                        padding: 10,
-                        borderRadius: 8,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 6,
-                        width: "100%",
-                      }}
-                    >
-                      <ShieldCheck size={14} color={theme.colors.mutedForeground} />
-                      <Text
-                        variant="caption"
-                        style={{ color: theme.colors.mutedForeground, fontSize: 11 }}
-                      >
-                        {'Presiona "Validar pago" para continuar.'}
-                      </Text>
-                    </View>
-                  )}
+                  <DollarSign size={24} color={theme.colors.mutedForeground} />
+                  <Text
+                    variant="bodySmall"
+                    style={{
+                      color: theme.colors.mutedForeground,
+                      textAlign: "center",
+                    }}
+                  >
+                    No hay pagos registrados aún. Selecciona un método para registrar el cobro.
+                  </Text>
                 </View>
-              </View>
-            ) : (
-              /* MODO NORMAL: AGREGAR PAGOS CON SELECT DROPDOWN + LISTA */
-              <>
-                {/* SELECT DROPDOWN DE MÉTODOS DE PAGO */}
+              ) : (
                 <View
                   style={{
                     backgroundColor: theme.colors.cardBackground,
-                    borderRadius: 16,
+                    borderRadius: 14,
                     borderWidth: 1,
                     borderColor: theme.colors.border,
-                    padding: 16,
-                    gap: 12,
-                    zIndex: 100,
-                    position: "relative",
+                    overflow: "hidden",
                   }}
                 >
-                  <View style={{ gap: 2 }}>
-                    <Text variant="title" style={{ fontSize: 16 }}>
-                      Seleccionar Método de Pago
-                    </Text>
-                    <Text
-                      variant="caption"
-                      style={{ fontSize: 11, color: theme.colors.mutedForeground }}
-                    >
-                      Selecciona un método para ingresar el monto en la hoja inferior.
-                    </Text>
-                  </View>
-
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    disabled={isFullyCoveredByAdvance || unallocatedBalance === 0}
-                    onPress={() => setIsSelectMethodOpen(!isSelectMethodOpen)}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      backgroundColor: theme.colors.secondary,
-                      borderRadius: 12,
-                      borderWidth: 1.5,
-                      borderColor: isSelectMethodOpen
-                        ? theme.colors.primary
-                        : theme.colors.border,
-                      paddingHorizontal: 14,
-                      paddingVertical: 12,
-                      opacity:
-                        isFullyCoveredByAdvance || unallocatedBalance === 0 ? 0.6 : 1,
-                    }}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1, flexShrink: 1 }}>
-                      {methodSelectValue ? (
-                        (() => {
-                          const opt = PAYMENT_METHOD_OPTIONS.find(
-                            (o) => o.method === methodSelectValue,
-                          );
-                          const IconComp = opt?.icon || Banknote;
-                          return (
-                            <>
-                              <IconComp size={20} color={theme.colors.primary} />
-                              <Text
-                                variant="label"
-                                numberOfLines={1}
-                                ellipsizeMode="tail"
-                                style={{
-                                  fontSize: 14,
-                                  fontWeight: "700",
-                                  color: theme.colors.foreground,
-                                  flex: 1,
-                                }}
-                              >
-                                {opt?.pickerLabel}
-                              </Text>
-                            </>
-                          );
-                        })()
-                      ) : (
-                        <>
-                          <DollarSign size={20} color={theme.colors.mutedForeground} />
-                          <Text
-                            variant="bodySmall"
-                            numberOfLines={1}
-                            ellipsizeMode="tail"
-                            style={{
-                              fontSize: 14,
-                              color: theme.colors.mutedForeground,
-                              flex: 1,
-                            }}
-                          >
-                            {unallocatedBalance === 0
-                              ? "Saldo cubierto 100%"
-                              : "Efectivo, Pago QR, Cheque o Transferencia..."}
-                          </Text>
-                        </>
-                      )}
-                    </View>
-                    <ChevronDown
-                      size={20}
-                      color={theme.colors.mutedForeground}
-                      style={{
-                        flexShrink: 0,
-                        transform: [{ rotate: isSelectMethodOpen ? "180deg" : "0deg" }],
-                      }}
-                    />
-                  </TouchableOpacity>
-
-                  {/* OPCIONES FLOTANTES DEL SELECT */}
-                  {isSelectMethodOpen && (
-                    <View
-                      style={{
-                        position: "absolute",
-                        top: 78,
-                        left: 16,
-                        right: 16,
-                        zIndex: 9999,
-                        backgroundColor: theme.colors.cardBackground,
-                        borderRadius: 14,
-                        borderWidth: 1,
-                        borderColor: theme.colors.border,
-                        overflow: "hidden",
-                        elevation: 12,
-                        shadowColor: "#000",
-                        shadowOffset: { width: 0, height: 4 },
-                        shadowOpacity: 0.25,
-                        shadowRadius: 8,
-                      }}
-                    >
-                      {PAYMENT_METHOD_OPTIONS.map((option, idx) => {
-                        const OptionIcon = option.icon;
-                        const isLast = idx === PAYMENT_METHOD_OPTIONS.length - 1;
-                        return (
-                          <TouchableOpacity
-                            key={option.method}
-                            activeOpacity={0.7}
-                            onPress={() => {
-                              setMethodSelectValue(option.method);
-                              handleSelectPaymentMethod(option.method);
-                            }}
-                            style={{
-                              flexDirection: "row",
-                              alignItems: "center",
-                              gap: 12,
-                              paddingVertical: 14,
-                              paddingHorizontal: 16,
-                              borderBottomWidth: isLast ? 0 : 1,
-                              borderBottomColor: theme.colors.border,
-                              backgroundColor:
-                                methodSelectValue === option.method
-                                  ? theme.colors.primarySoft
-                                  : "transparent",
-                            }}
-                          >
-                            <View
-                              style={{
-                                width: 34,
-                                height: 34,
-                                borderRadius: 17,
-                                backgroundColor: theme.colors.secondary,
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <OptionIcon size={18} color={theme.colors.primary} />
-                            </View>
-                            <Text
-                              variant="label"
-                              style={{
-                                fontSize: 14,
-                                fontWeight:
-                                  methodSelectValue === option.method ? "700" : "500",
-                                color: theme.colors.foreground,
-                              }}
-                            >
-                              {option.pickerLabel}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  )}
-
-                  {/* AVISO: EL ANTICIPO CUBRE TODA LA ENTREGA */}
-                  {isFullyCoveredByAdvance && (
-                    <View
-                      style={{
-                        backgroundColor: theme.colors.successSoft,
-                        borderWidth: 1,
-                        borderColor: theme.colors.success,
-                        borderRadius: 10,
-                        padding: 12,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                    >
-                      <ShieldCheck size={18} color={theme.colors.success} />
-                      <Text
-                        variant="label"
-                        style={{
-                          flex: 1,
-                          fontSize: 12,
-                          color: theme.colors.success,
-                        }}
-                      >
-                        Esta entrega queda cubierta por el anticipo. No corresponde cobro en sitio.
-                      </Text>
-                    </View>
-                  )}
-                </View>
-
-                {/* LISTA DE PAGOS AGREGADOS (MOSTRADA AL INICIO Y MIENTRAS SE CONFIGURA EL COBRO) */}
-                {(payments.length === 0 || stagedPayments.length > 0 || unallocatedBalance > 0) && (
-                  <View style={{ gap: 10 }}>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
-                      <Text variant="title" style={{ fontSize: 16 }}>
-                        Pagos Agregados ({stagedPayments.length})
-                      </Text>
-                      {stagedPayments.length > 0 && (
-                        <Text
-                          variant="caption"
-                          style={{ color: theme.colors.primary, fontWeight: "700" }}
-                        >
-                          Total: Bs. {formatMoney(totalStaged)}
-                        </Text>
-                      )}
-                    </View>
-
-                    {stagedPayments.length === 0 ? (
+                  {payments.map((p, idx) => {
+                    const opt = PAYMENT_METHOD_OPTIONS.find(
+                      (o) => o.method === p.method,
+                    );
+                    const IconComp = opt?.icon || Banknote;
+                    return (
                       <View
+                        key={p.id}
                         style={{
-                          backgroundColor: theme.colors.cardBackground,
-                          borderRadius: 14,
-                          borderWidth: 1,
-                          borderColor: theme.colors.border,
-                          padding: 18,
+                          flexDirection: "row",
                           alignItems: "center",
-                          gap: 6,
+                          justifyContent: "space-between",
+                          padding: 12,
+                          borderBottomWidth: idx === payments.length - 1 ? 0 : 1,
+                          borderBottomColor: theme.colors.border,
                         }}
                       >
-                        <DollarSign size={24} color={theme.colors.mutedForeground} />
-                        <Text
-                          variant="bodySmall"
-                          style={{
-                            color: theme.colors.mutedForeground,
-                            textAlign: "center",
-                          }}
-                        >
-                          Presiona el select de arriba para elegir un método de pago e ingresar el monto.
-                        </Text>
-                      </View>
-                    ) : (
-                      <View
-                        style={{
-                          backgroundColor: theme.colors.cardBackground,
-                          borderRadius: 14,
-                          borderWidth: 1,
-                          borderColor: theme.colors.border,
-                          overflow: "hidden",
-                        }}
-                      >
-                        {stagedPayments.map((p, idx) => {
-                          const opt = PAYMENT_METHOD_OPTIONS.find(
-                            (o) => o.method === p.method,
-                          );
-                          const IconComp = opt?.icon || Banknote;
-                          return (
-                            <View
-                              key={p.id}
-                              style={{
-                                flexDirection: "row",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                padding: 12,
-                                borderBottomWidth:
-                                  idx === stagedPayments.length - 1 ? 0 : 1,
-                                borderBottomColor: theme.colors.border,
-                              }}
-                            >
-                              <View
-                                style={{
-                                  flexDirection: "row",
-                                  alignItems: "center",
-                                  gap: 10,
-                                  flexShrink: 1,
-                                }}
-                              >
-                                <View
-                                  style={{
-                                    width: 34,
-                                    height: 34,
-                                    borderRadius: 17,
-                                    backgroundColor: theme.colors.primarySoft,
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                  }}
-                                >
-                                  <IconComp size={18} color={theme.colors.primary} />
-                                </View>
-                                <View style={{ gap: 1, flexShrink: 1 }}>
-                                  <Text
-                                    variant="label"
-                                    numberOfLines={1}
-                                    style={{ fontSize: 13, fontWeight: "700" }}
-                                  >
-                                    {p.method === "CASH"
-                                      ? "Efectivo"
-                                      : p.method === "QR"
-                                        ? "Pago QR Banco"
-                                        : p.method === "TRANSFER"
-                                          ? "Transferencia"
-                                          : "Cheque"}
-                                  </Text>
-                                  {(p.method === "CHECK" || p.method === "TRANSFER") && p.bank ? (
-                                    <Text
-                                      variant="caption"
-                                      numberOfLines={1}
-                                      style={{
-                                        fontSize: 11,
-                                        fontWeight: "600",
-                                        color: theme.colors.foreground,
-                                      }}
-                                    >
-                                      Banco: {p.bank}
-                                    </Text>
-                                  ) : null}
-                                  <Text
-                                    variant="caption"
-                                    numberOfLines={1}
-                                    style={{
-                                      fontSize: 11,
-                                      color: theme.colors.mutedForeground,
-                                    }}
-                                  >
-                                    {p.reference ? `Ref: ${p.reference}` : "Pendiente de cobro"}
-                                  </Text>
-                                </View>
-                              </View>
-
-                              <View
-                                style={{
-                                  flexDirection: "row",
-                                  alignItems: "center",
-                                  gap: 10,
-                                  flexShrink: 0,
-                                }}
-                              >
-                                <Text
-                                  variant="label"
-                                  style={{
-                                    fontSize: 14,
-                                    fontWeight: "800",
-                                    color: theme.colors.primary,
-                                    fontVariant: ["tabular-nums"],
-                                  }}
-                                >
-                                  Bs. {formatMoney(p.amount)}
-                                </Text>
-                                <TouchableOpacity
-                                  onPress={() => handleRemoveStagedPayment(p.id)}
-                                  style={{ padding: 4 }}
-                                >
-                                  <Trash2 size={16} color={theme.colors.danger} />
-                                </TouchableOpacity>
-                              </View>
-                            </View>
-                          );
-                        })}
-                      </View>
-                    )}
-                  </View>
-                )}
-
-                {/* HISTORIAL DINÁMICO DE COBROS PROCESADOS/CONFIRMADOS (SÓLO CUANDO EXISTAN PAGOS PROCESADOS) */}
-                {payments.length > 0 && (
-                  <View style={{ gap: 10 }}>
-                    <Text variant="title" style={{ fontSize: 16 }}>
-                      Pagos Procesados ({payments.length})
-                    </Text>
-
-                    <View
-                      style={{
-                        backgroundColor: theme.colors.cardBackground,
-                        borderRadius: 14,
-                        borderWidth: 1,
-                        borderColor: theme.colors.border,
-                        overflow: "hidden",
-                      }}
-                    >
-                      {payments.map((p, idx) => (
                         <View
-                          key={p.id}
                           style={{
                             flexDirection: "row",
                             alignItems: "center",
-                            justifyContent: "space-between",
-                            padding: 12,
-                            borderBottomWidth: idx === payments.length - 1 ? 0 : 1,
-                            borderBottomColor: theme.colors.border,
+                            gap: 10,
+                            flexShrink: 1,
                           }}
                         >
-                          <View style={{ gap: 2, flexShrink: 1 }}>
+                          <View
+                            style={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: 17,
+                              backgroundColor: theme.colors.primarySoft,
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <IconComp size={18} color={theme.colors.primary} />
+                          </View>
+                          <View style={{ gap: 1, flexShrink: 1 }}>
                             <Text
                               variant="label"
                               numberOfLines={1}
-                              style={{ fontSize: 14, fontWeight: "700" }}
+                              style={{ fontSize: 13, fontWeight: "700" }}
                             >
                               {p.method === "CASH"
                                 ? "Efectivo"
@@ -3892,52 +3454,58 @@ export const DeliveryDetailScreen = () => {
                               }}
                             >
                               Ref: {p.reference || "N/A"}{" "}
-                              {p.hasPhoto ? "• Foto" : ""}
+                              {p.hasPhoto ? "• Foto comprobante" : ""}
                             </Text>
                           </View>
+                        </View>
 
-                          <View
-                            style={{
-                              flexDirection: "row",
-                              alignItems: "center",
-                              gap: 10,
-                              flexShrink: 0,
-                            }}
-                          >
-                            <View style={{ alignItems: "flex-end", gap: 1 }}>
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 10,
+                            flexShrink: 0,
+                          }}
+                        >
+                          <View style={{ alignItems: "flex-end", gap: 1 }}>
+                            <Text
+                              variant="label"
+                              style={{
+                                fontSize: 15,
+                                fontWeight: "800",
+                                color: theme.colors.success,
+                                fontVariant: ["tabular-nums"],
+                              }}
+                            >
+                              Bs. {formatMoney(p.amount)}
+                            </Text>
+                            {p.currency === "USD" && (
                               <Text
-                                variant="label"
+                                variant="caption"
                                 style={{
-                                  fontSize: 15,
-                                  fontWeight: "800",
-                                  color: theme.colors.success,
+                                  fontSize: 10,
+                                  color: theme.colors.mutedForeground,
                                   fontVariant: ["tabular-nums"],
                                 }}
                               >
-                                Bs. {formatMoney(p.amount)}
+                                USD {formatMoney(p.originalAmount)} x{" "}
+                                {p.exchangeRate}
                               </Text>
-                              {p.currency === "USD" && (
-                                <Text
-                                  variant="caption"
-                                  style={{
-                                    fontSize: 10,
-                                    color: theme.colors.mutedForeground,
-                                    fontVariant: ["tabular-nums"],
-                                  }}
-                                >
-                                  USD {formatMoney(p.originalAmount)} x{" "}
-                                  {p.exchangeRate}
-                                </Text>
-                              )}
-                            </View>
+                            )}
                           </View>
+                          <TouchableOpacity
+                            onPress={() => handleRemovePayment(p.id)}
+                            style={{ padding: 4 }}
+                          >
+                            <Trash2 size={16} color={theme.colors.danger} />
+                          </TouchableOpacity>
                         </View>
-                      ))}
-                    </View>
-                  </View>
-                )}
-              </>
-            )}
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
           </View>
         )}
       </ScrollView>
@@ -3977,7 +3545,7 @@ export const DeliveryDetailScreen = () => {
         method={selectedMethod}
         title={activePaymentOption?.modalTitle ?? "Registro de Cobro"}
         pendingBalance={pendingBalance}
-        onClose={() => setIsPaymentModalOpen(false)}
+        onClose={handleClosePaymentModal}
         onSubmit={paymentSubmit.onPress}
         submitLabel={paymentSubmit.label}
         submitIcon={paymentSubmit.icon}
@@ -3987,6 +3555,24 @@ export const DeliveryDetailScreen = () => {
       >
         {renderPaymentForm()}
       </PaymentMethodModal>
+
+      {/* MODAL DE ENVÍO DE FACTURA Y QR POR WHATSAPP AL MICROSERVICIO */}
+      <SendInvoiceWhatsAppModal
+        visible={isWhatsAppModalOpen}
+        onClose={() => setIsWhatsAppModalOpen(false)}
+        customerName={stop.contactName || stop.clientName}
+        defaultPhone={stop.contactPhone || "+591 71234567"}
+        invoiceNumbers={["FAC-100482"]}
+        totalAmount={netAmountToCollect}
+        hasQr={true}
+        onSuccessSent={(sentPhone) => {
+          showDialog(
+            "WhatsApp Enviado",
+            `La factura y el código QR de cobro fueron enviados exitosamente al ${sentPhone} mediante el microservicio corporativo.`,
+            "success",
+          );
+        }}
+      />
 
       {/* DIÁLOGO CENTRADO DE REGISTRO DE INCIDENCIAS */}
       <Modal

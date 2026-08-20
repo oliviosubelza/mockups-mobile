@@ -13,6 +13,7 @@ import {
   Map as MapIcon,
   MapPin,
   Minus,
+  Navigation,
   Package,
   Phone,
   Plus,
@@ -682,6 +683,13 @@ export function RouteMapView({
 
   const handleCall = (phone: string) => {
     Linking.openURL(`tel:${phone}`);
+  };
+
+  const handleOpenGoogleMaps = (stop: DeliveryStop) => {
+    const lat = stop.latitude || -17.783;
+    const lng = stop.longitude || -63.182;
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+    Linking.openURL(url).catch(() => {});
   };
 
   const handleSelectStop = (stop: DeliveryStop) => {
@@ -1835,12 +1843,12 @@ export function RouteMapView({
                 <>
                   <View style={{ flex: 1 }}>
                     <Button
-                      label="Llamar"
-                      icon={Phone}
+                      label="Cómo llegar"
+                      icon={Navigation}
                       variant="outline"
                       size="sm"
                       fullWidth
-                      onPress={() => handleCall(selectedStop.contactPhone)}
+                      onPress={() => handleOpenGoogleMaps(selectedStop)}
                     />
                   </View>
                   <View style={{ flex: 1.5 }}>
@@ -1862,12 +1870,12 @@ export function RouteMapView({
                 <>
                   <View style={{ flex: 1 }}>
                     <Button
-                      label="Llamar"
-                      icon={Phone}
+                      label="Cómo llegar"
+                      icon={Navigation}
                       variant="outline"
                       size="sm"
                       fullWidth
-                      onPress={() => handleCall(selectedStop.contactPhone)}
+                      onPress={() => handleOpenGoogleMaps(selectedStop)}
                     />
                   </View>
                   <View style={{ flex: 1.5 }}>
@@ -1890,12 +1898,12 @@ export function RouteMapView({
                 <>
                   <View style={{ flex: 1 }}>
                     <Button
-                      label="Llamar"
-                      icon={Phone}
+                      label="Cómo llegar"
+                      icon={Navigation}
                       variant="outline"
                       size="sm"
                       fullWidth
-                      onPress={() => handleCall(selectedStop.contactPhone)}
+                      onPress={() => handleOpenGoogleMaps(selectedStop)}
                     />
                   </View>
                   <View style={{ flex: 1.5 }}>

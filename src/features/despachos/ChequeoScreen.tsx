@@ -35,6 +35,7 @@ import { FormSkeleton, ListSkeleton } from "@/shared/ui/Skeleton";
 import { Box, Text, useAppTheme } from "@/theme";
 import { useDespachos } from "./store";
 import { CheckTimer } from "./components/CheckTimer";
+import { BandeoActivosTab } from "./components/BandeoActivosTab";
 import type { EstadoDespacho } from "./types";
 
 const EMPTY: any[] = [];
@@ -151,6 +152,7 @@ export default function ChequeoScreen({ despachoId }: Props) {
 
   // Estados locales del formulario de la cabecera
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"MERCADERIA" | "BANDEO">("MERCADERIA");
   const [productoTexto, setProductoTexto] = useState("");
   const [productoSeleccionado, setProductoSeleccionado] = useState<any>(null);
   const [cantCajas, setCantCajas] = useState("");
@@ -553,11 +555,103 @@ export default function ChequeoScreen({ despachoId }: Props) {
           />
         </View>
 
+        {/* SELECTOR DE PESTAÑAS: MERCADERÍA VS BANDEO Y ACTIVOS */}
+        <View
+          style={{
+            flexDirection: "row",
+            backgroundColor: theme.colors.secondary,
+            borderRadius: 12,
+            padding: 3,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => setActiveTab("MERCADERIA")}
+            style={{
+              flex: 1,
+              paddingVertical: 8,
+              borderRadius: 9,
+              backgroundColor:
+                activeTab === "MERCADERIA"
+                  ? theme.colors.cardBackground
+                  : "transparent",
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "row",
+              gap: 6,
+            }}
+          >
+            <Package
+              size={15}
+              color={
+                activeTab === "MERCADERIA"
+                  ? theme.colors.primary
+                  : theme.colors.mutedForeground
+              }
+            />
+            <Text
+              variant="label"
+              style={{
+                fontSize: 13,
+                fontWeight: activeTab === "MERCADERIA" ? "700" : "500",
+                color:
+                  activeTab === "MERCADERIA"
+                    ? theme.colors.foreground
+                    : theme.colors.mutedForeground,
+              }}
+            >
+              Mercadería ({items.length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setActiveTab("BANDEO")}
+            style={{
+              flex: 1,
+              paddingVertical: 8,
+              borderRadius: 9,
+              backgroundColor:
+                activeTab === "BANDEO"
+                  ? theme.colors.cardBackground
+                  : "transparent",
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "row",
+              gap: 6,
+            }}
+          >
+            <Layers
+              size={15}
+              color={
+                activeTab === "BANDEO"
+                  ? theme.colors.primary
+                  : theme.colors.mutedForeground
+              }
+            />
+            <Text
+              variant="label"
+              style={{
+                fontSize: 13,
+                fontWeight: activeTab === "BANDEO" ? "700" : "500",
+                color:
+                  activeTab === "BANDEO"
+                    ? theme.colors.foreground
+                    : theme.colors.mutedForeground,
+              }}
+            >
+              Bandeo y Activos (3)
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {isLoading ? (
           <View style={{ gap: 16 }}>
             <FormSkeleton />
             <ListSkeleton />
           </View>
+        ) : activeTab === "BANDEO" ? (
+          <BandeoActivosTab isReadOnly={conteoCerrado} />
         ) : (
           <View style={{ gap: 14 }}>
             {conteoCerrado ? (

@@ -178,6 +178,16 @@ CREATE TABLE candidate_orders (
     refund_order_id BIGINT NULL, -- Referencia si proviene de devolución
     transfer_id BIGINT NULL, -- Referencia si proviene de traslado de almacén
 
+    sales_order_split_id BIGINT, -- Order Dividida
+    employee_id BIGINT, -- Empleado vendedor
+    employee_code BIGINT, -- Empleado  Codigo --
+    employee_name VARCHAR(100), -- Empleado nombre
+    owner_id BIGINT, -- Dueño negocio id
+    owner_name VARCHAR(100), -- Dueño name
+    customer_id BIGINT, -- Dueño h negocio id
+    customer_name VARCHAR(100), -- Dueño h name
+    reception_date DATE, -- Fecha programada para reception
+
     created_by VARCHAR(255),
     updated_by VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

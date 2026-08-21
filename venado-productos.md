@@ -7,6 +7,7 @@ Actualizado al 13 de agosto de 2026.
 Este archivo consolida productos encontrados en fuentes oficiales publicas de Grupo Venado, IVSA y VEMASSA.
 
 Nota importante:
+
 - El catalogo publico vigente de Grupo Venado esta integrado por grupo y no siempre separa los productos por razon social.
 - Por eso, en este archivo se usa esta logica:
 - `Confirmado`: la sociedad o la linea esta explicitamente respaldada por una fuente oficial.
@@ -31,6 +32,7 @@ Nota importante:
 ## IVSA
 
 Estado general:
+
 - `Confirmado` que IVSA opera alimentos salados, alimentos dulces, panificacion y cuidado personal/del hogar.
 - `Confirmado` por el reporte IVSA que produce salsas, mostaza, gelatinas, refrescos en polvo, polvo para hornear, mejorador de masa, achocolatados, flanes, pudines, avena, cereales, caldos, sopas, cremas y productos de limpieza/higiene del hogar.
 
@@ -283,6 +285,7 @@ Estos aparecen en recetas oficiales de Grupo Venado y sirven para ampliar el inv
 ## VEMASSA
 
 Estado general:
+
 - `Confirmado` por el perfil oficial de VEMASSA en LinkedIn que su cartera incluye Frussion, Raptor, Chicha Camba, Mocochinchi y Agua Esperanza.
 - `Confirmado` por la linea de tiempo de Grupo Venado que Frussion, Speranza y Tolon son lineas oficiales del grupo, y que Speranza se produce en El Alto.
 - `Inferido` que las bebidas liquidas del catalogo integrado corresponden a VEMASSA, porque su perfil corporativo y sus publicaciones oficiales la presentan como la empresa de bebidas del grupo en El Alto.
@@ -319,6 +322,7 @@ Estado general:
 ## FACRULESA
 
 Estado general:
+
 - `Confirmado` por la linea de tiempo oficial de Grupo Venado que FACRULESA es la Fábrica Cruceña de Levaduras en Warnes.
 - `Confirmado` por el reporte de IVSA que en Warnes se elabora levadura fresca y seca para panificacion.
 
